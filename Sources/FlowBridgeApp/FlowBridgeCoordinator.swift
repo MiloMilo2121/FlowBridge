@@ -24,7 +24,6 @@ final class FlowBridgeCoordinator: ObservableObject {
     private var pendingCommandStore: PendingCommandStore?
     private var elapsedTask: Task<Void, Never>?
     private var maxDurationTask: Task<Void, Never>?
-    private var warmTask: Task<Void, Never>?
     private var memoryWarningObserver: NSObjectProtocol?
 
     init() {
@@ -42,7 +41,6 @@ final class FlowBridgeCoordinator: ObservableObject {
     deinit {
         elapsedTask?.cancel()
         maxDurationTask?.cancel()
-        warmTask?.cancel()
         if let memoryWarningObserver {
             NotificationCenter.default.removeObserver(memoryWarningObserver)
         }
@@ -63,8 +61,11 @@ final class FlowBridgeCoordinator: ObservableObject {
             await consumePendingCommand()
             await processQueuedAudioIfNeeded()
         case .background:
-            await stopIfRecording()
-            await transcriber.unload()
+            if case .recording = state {
+                statusMessage = "Live bridge active"
+            } else {
+                await transcriber.unload()
+            }
         case .inactive:
             break
         @unknown default:
@@ -86,7 +87,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     func toggleRecording() async {
         switch state {
         case .recording:
-            await stopRecordingAndTranscribe(source: .microphone)
+            await stopRecordingAndTranscribe()
         case .transcribing, .warming:
             break
         case .idle, .ready, .failed:
@@ -112,27 +113,33 @@ final class FlowBridgeCoordinator: ObservableObject {
             }
 
             let startedAt = Date()
-            try await recorder.start()
+            state = .warming
+            statusMessage = "Loading local Whisper"
+            try await transcriber.startLiveTranscription(sessionID: UUID())
             state = .recording(startedAt: startedAt)
-            statusMessage = nil
+            statusMessage = "Live bridge active"
             startElapsedTimer(from: startedAt)
             startMaxDurationTimer()
-            warmModelWhileRecording()
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } catch {
             fail(error)
         }
     }
 
-    private func stopRecordingAndTranscribe(source: TranscriptRecord.Source) async {
+    private func stopRecordingAndTranscribe() async {
         elapsedTask?.cancel()
         maxDurationTask?.cancel()
         recordingElapsed = nil
-        state = .transcribing
 
         do {
-            let recording = try await recorder.stop()
-            let record = try await transcriber.transcribe(recording: recording, source: source)
+            let duration: TimeInterval
+            if case .recording(let startedAt) = state {
+                duration = Date().timeIntervalSince(startedAt)
+            } else {
+                duration = 0
+            }
+            state = .transcribing
+            let record = try await transcriber.stopLiveTranscription(duration: duration)
             try await transcriptStore?.save(record)
             lastTranscript = record
             UIPasteboard.general.string = record.text
@@ -172,28 +179,15 @@ final class FlowBridgeCoordinator: ObservableObject {
 
     private func stopIfRecording() async {
         if case .recording = state {
-            await stopRecordingAndTranscribe(source: .microphone)
+            await stopRecordingAndTranscribe()
         }
     }
 
     private func handleMemoryWarning() async {
-        await transcriber.unload()
         if case .recording = state {
-            statusMessage = "Memory pressure: model unloaded"
+            await stopRecordingAndTranscribe()
         }
-    }
-
-    private func warmModelWhileRecording() {
-        warmTask?.cancel()
-        warmTask = Task { [weak self] in
-            do {
-                try await self?.transcriber.warmUp()
-            } catch {
-                await MainActor.run {
-                    self?.statusMessage = error.localizedDescription
-                }
-            }
-        }
+        await transcriber.unload()
     }
 
     private func startElapsedTimer(from startDate: Date) {
@@ -223,4 +217,3 @@ final class FlowBridgeCoordinator: ObservableObject {
         UINotificationFeedbackGenerator().notificationOccurred(.error)
     }
 }
-

@@ -26,5 +26,17 @@ let loaded = await transcriptStore.latest()
 require(loaded == record, "Transcript was not persisted")
 require(TranscriptStore.latest(defaults: defaults) == record, "Synchronous transcript read failed")
 
-print("FlowBridgeSharedCheck passed")
+let liveStore = try LiveTranscriptStore(defaults: defaults)
+let liveSnapshot = LiveTranscriptSnapshot(
+    sessionID: UUID(),
+    sequence: 1,
+    text: "Hello live.",
+    previewText: "Hello live.",
+    isRecording: true,
+    isFinal: false
+)
+try liveStore.write(liveSnapshot)
+require(liveStore.latest() == liveSnapshot, "Live transcript was not persisted")
+require(LiveTranscriptStore.latest(defaults: defaults) == liveSnapshot, "Synchronous live read failed")
 
+print("FlowBridgeSharedCheck passed")

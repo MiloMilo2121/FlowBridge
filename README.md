@@ -6,6 +6,7 @@ FlowBridge is a local-only iOS dictation utility. It records instantly, runs Whi
 
 - The main app is the only target that links WhisperKit or loads CoreML models.
 - The keyboard extension never records audio and never loads Whisper. It reads the last transcript from the App Group and inserts it through `UITextDocumentProxy`.
+- Live mode uses the main app for microphone + Whisper and the keyboard extension for insertion. Keep the FlowBridge keyboard active in the destination app while recording.
 - The share extension only queues audio files into the App Group and opens the app. The app performs transcription to avoid extension memory pressure.
 - The App Intent opens the app and writes a pending `toggleRecording` command so Action Button and Back Tap shortcuts can trigger the same recording pipeline.
 - WhisperKit is configured with `download: false`. Runtime model downloads are not allowed.
@@ -46,7 +47,17 @@ FlowBridge is a local-only iOS dictation utility. It records instantly, runs Whi
 
 - Action Button: create a Shortcut that runs the FlowBridge "Toggle Dictation" app intent, then assign it to the Action Button.
 - Back Tap: assign the same Shortcut in Settings > Accessibility > Touch > Back Tap.
-- Keyboard insertion: add the FlowBridge keyboard in Settings > General > Keyboard. Enable Full Access only if you want the keyboard extension to read the App Group transcript. The keyboard code does not make network requests.
+- Live insertion: add the FlowBridge keyboard in Settings > General > Keyboard and enable Full Access so it can read the App Group live transcript. Open any text field, switch to the FlowBridge keyboard, then trigger dictation with Action Button or Back Tap.
+- Manual insertion: tap the insert button on the FlowBridge keyboard to insert the last finished transcript.
+
+## TestFlight and App Store path
+
+FlowBridge is designed as a normal iOS app bundle with a custom keyboard extension and share extension. That makes it suitable for TestFlight and App Store review, as long as the App Store metadata clearly explains:
+
+- speech is captured only after microphone permission and explicit user trigger;
+- transcription runs locally on device;
+- the keyboard extension needs Full Access only to read the shared local transcript;
+- no user speech or transcript data is sent to a server.
 
 ## Runtime guarantee
 

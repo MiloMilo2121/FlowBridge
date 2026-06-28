@@ -24,6 +24,7 @@
 		49EBD2B635C75D1F5C62F833 /* FlowBridgeShared.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		52C34B7F588061303A75F48D /* FlowBridgeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64715A622B6B8DB9C2621BE5 /* FlowBridgeCoordinator.swift */; };
 		71BDE4A6933C0A7B6D22EE02 /* PendingCommandStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CD98E41DD5DE1B773A30C7B /* PendingCommandStoreTests.swift */; };
+		7AE15868C09DEC446AA8F018 /* LiveTranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A92346DD44793FF6133012EB /* LiveTranscriptStore.swift */; };
 		8FC10AE539C765251A26314C /* DictationTextNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCF98DF41D148D8A7BFDD142 /* DictationTextNormalizer.swift */; };
 		90E6C2BB567DF4A4228E3A2E /* TranscriptStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CCF23ED7E9492A89A378F07 /* TranscriptStoreTests.swift */; };
 		95BE94A5859002168A2BA040 /* PendingCommandStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1486D85A361FEE64331127F6 /* PendingCommandStore.swift */; };
@@ -144,6 +145,7 @@
 		95A1A56F4B31CBD5EF94C4DE /* ToggleDictationIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToggleDictationIntent.swift; sourceTree = "<group>"; };
 		9A4096FE560985EB14367364 /* FlowBridgeError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeError.swift; sourceTree = "<group>"; };
 		A8E02D0F174821DC9C6189BE /* FlowBridgeApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FlowBridgeApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A92346DD44793FF6133012EB /* LiveTranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranscriptStore.swift; sourceTree = "<group>"; };
 		B54A746A43497CB353DB7071 /* DictationTextNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationTextNormalizerTests.swift; sourceTree = "<group>"; };
 		C11AE725B3ADE0516C84B25F /* QueuedAudioStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueuedAudioStore.swift; sourceTree = "<group>"; };
 		CA149C0EF32FD199CF8FE8DD /* FlowBridgeConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeConstants.swift; sourceTree = "<group>"; };
@@ -261,6 +263,7 @@
 				FCF98DF41D148D8A7BFDD142 /* DictationTextNormalizer.swift */,
 				CA149C0EF32FD199CF8FE8DD /* FlowBridgeConstants.swift */,
 				9A4096FE560985EB14367364 /* FlowBridgeError.swift */,
+				A92346DD44793FF6133012EB /* LiveTranscriptStore.swift */,
 				D2DF086A59984159DC095240 /* NetworkGuard.swift */,
 				1486D85A361FEE64331127F6 /* PendingCommandStore.swift */,
 				C11AE725B3ADE0516C84B25F /* QueuedAudioStore.swift */,
@@ -441,6 +444,7 @@
 				8FC10AE539C765251A26314C /* DictationTextNormalizer.swift in Sources */,
 				2C47274F120E8031AF924D0F /* FlowBridgeConstants.swift in Sources */,
 				BD9AD1178F3B6F47A9EAA812 /* FlowBridgeError.swift in Sources */,
+				7AE15868C09DEC446AA8F018 /* LiveTranscriptStore.swift in Sources */,
 				0BB002587B4667A395F887CF /* NetworkGuard.swift in Sources */,
 				95BE94A5859002168A2BA040 /* PendingCommandStore.swift in Sources */,
 				07C0BE46F639764371503D96 /* QueuedAudioStore.swift in Sources */,

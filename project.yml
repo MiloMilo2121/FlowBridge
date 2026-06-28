@@ -44,6 +44,18 @@ targets:
       path: Entitlements/FlowBridgeApp.entitlements
     info:
       path: Configuration/FlowBridgeApp-Info.plist
+      properties:
+        CFBundleDisplayName: FlowBridge
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSMicrophoneUsageDescription: FlowBridge records speech locally and transcribes it on this device.
+        UIApplicationSupportsIndirectInputEvents: true
+        UIBackgroundModes:
+          - audio
+        CFBundleURLTypes:
+          - CFBundleURLName: com.marcomilanello.flowbridge
+            CFBundleURLSchemes:
+              - flowbridge
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.marcomilanello.flowbridge
@@ -59,6 +71,18 @@ targets:
       path: Entitlements/FlowBridgeKeyboard.entitlements
     info:
       path: Configuration/FlowBridgeKeyboard-Info.plist
+      properties:
+        CFBundleDisplayName: FlowBridge Keyboard
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionAttributes:
+            IsASCIICapable: true
+            PrefersRightToLeft: false
+            PrimaryLanguage: en-US
+            RequestsOpenAccess: true
+          NSExtensionPointIdentifier: com.apple.keyboard-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.marcomilanello.flowbridge.keyboard
@@ -73,6 +97,17 @@ targets:
       path: Entitlements/FlowBridgeShareExtension.entitlements
     info:
       path: Configuration/FlowBridgeShareExtension-Info.plist
+      properties:
+        CFBundleDisplayName: FlowBridge Import
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsAudioWithMaxCount: 1
+              NSExtensionActivationSupportsMovieWithMaxCount: 1
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.marcomilanello.flowbridge.share
