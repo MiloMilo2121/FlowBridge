@@ -1,0 +1,900 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		05E5BFCE4048D77AED936ADA /* TranscriptRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00DB535FD420E969C6AE424C /* TranscriptRecord.swift */; };
+		0627519F0831E811DD2B2CC7 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A88C5488798C0EBBF2DC392 /* ShareViewController.swift */; };
+		07C0BE46F639764371503D96 /* QueuedAudioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11AE725B3ADE0516C84B25F /* QueuedAudioStore.swift */; };
+		081FA5C1D34A98F5283614F9 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786B1AE80A62F3B8718B36D4 /* KeyboardViewController.swift */; };
+		0BB002587B4667A395F887CF /* NetworkGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2DF086A59984159DC095240 /* NetworkGuard.swift */; };
+		0EB9CBD54D1AF6CAF867563D /* FlowBridgeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D3BEA99E7DB4AE0BE1A7340 /* FlowBridgeApp.swift */; };
+		221F2651F56146C26642D27D /* AudioFileDurationReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 675BDFD16C278E4C6834CE04 /* AudioFileDurationReader.swift */; };
+		2C28275EA977E840147E0392 /* FlowBridgeKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 748711B42A512CA9A05AA1AC /* FlowBridgeKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		2C47274F120E8031AF924D0F /* FlowBridgeConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA149C0EF32FD199CF8FE8DD /* FlowBridgeConstants.swift */; };
+		3A11F241FD8BFDFD8A3222E9 /* FlowBridgeShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; };
+		3E0E8C586E1E6C34612D7F2D /* FlowBridgeShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; };
+		43EB0A4CFD7AF3BF23EF18C0 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 399A0AEAA06EC3C5FC0410F2 /* ContentView.swift */; };
+		448DA9F4C7777DF83979FBDA /* DictationTextNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B54A746A43497CB353DB7071 /* DictationTextNormalizerTests.swift */; };
+		44A1B4B0BC4CD44C781AF948 /* WhisperTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE308FDE496B0A9BCE4E20B /* WhisperTranscriber.swift */; };
+		49EBD2B635C75D1F5C62F833 /* FlowBridgeShared.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		52C34B7F588061303A75F48D /* FlowBridgeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64715A622B6B8DB9C2621BE5 /* FlowBridgeCoordinator.swift */; };
+		71BDE4A6933C0A7B6D22EE02 /* PendingCommandStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CD98E41DD5DE1B773A30C7B /* PendingCommandStoreTests.swift */; };
+		8FC10AE539C765251A26314C /* DictationTextNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCF98DF41D148D8A7BFDD142 /* DictationTextNormalizer.swift */; };
+		90E6C2BB567DF4A4228E3A2E /* TranscriptStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CCF23ED7E9492A89A378F07 /* TranscriptStoreTests.swift */; };
+		95BE94A5859002168A2BA040 /* PendingCommandStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1486D85A361FEE64331127F6 /* PendingCommandStore.swift */; };
+		A691EAAEA84F3163C5AB37DC /* FlowBridgeShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; };
+		ADD0AE1EB217B3651350548F /* FlowBridgeRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E15070C9DE4DA14187206E9 /* FlowBridgeRecorder.swift */; };
+		B19CC0FAC0ECE4703984AB78 /* FlowBridgeShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D412B4D4FD9766E9DF8D3D32 /* FlowBridgeShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		BA21DA869BB6148743AFAF67 /* FlowBridgeShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; };
+		BA4B572DAC67E0A46383D35A /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 048BFA8FD28603AE6F27DE18 /* TranscriptStore.swift */; };
+		BAF4CF35D1494B8C92F1DCCD /* ToggleDictationIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95A1A56F4B31CBD5EF94C4DE /* ToggleDictationIntent.swift */; };
+		BCABA4B3C0EED74B8E1B0806 /* SharedContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A094609470340B331D09D78 /* SharedContainer.swift */; };
+		BD9AD1178F3B6F47A9EAA812 /* FlowBridgeError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4096FE560985EB14367364 /* FlowBridgeError.swift */; };
+		C877340C9AA50852CB5E2124 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8E6AB7B92651395A03A424E8 /* WhisperKit */; };
+		E6D4FFBB36D53CF49FB78B71 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FC38FD292248ABAC08C9CE1 /* AppDelegate.swift */; };
+		F4BD965A8C9CD401933AA3C6 /* FlowBridgeShared.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		645E62369D6859B804A7562A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9B9B6CF5C049CE7F2FA12FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 700D60A100CEFCE59AFAEE94;
+			remoteInfo = FlowBridgeShared;
+		};
+		79B8B49A2CE80192BA0BDDBD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9B9B6CF5C049CE7F2FA12FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 700D60A100CEFCE59AFAEE94;
+			remoteInfo = FlowBridgeShared;
+		};
+		A1FB3096B5121B3788B9F434 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9B9B6CF5C049CE7F2FA12FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 700D60A100CEFCE59AFAEE94;
+			remoteInfo = FlowBridgeShared;
+		};
+		BC0EE71DDFACE3C7015D71BC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9B9B6CF5C049CE7F2FA12FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 63E48A33DDBE6E5CCE1AF77C;
+			remoteInfo = FlowBridgeShareExtension;
+		};
+		F6FAB3AFC9B9DBA8BC7AFFFE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9B9B6CF5C049CE7F2FA12FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 700D60A100CEFCE59AFAEE94;
+			remoteInfo = FlowBridgeShared;
+		};
+		FE5D067569D66A8E81AC53CA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9B9B6CF5C049CE7F2FA12FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DFCC6EA2907D3D52C92FD3EB;
+			remoteInfo = FlowBridgeKeyboard;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		684A6AF88274FC00AA951A1A /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				49EBD2B635C75D1F5C62F833 /* FlowBridgeShared.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9959BC640BF989D86448B856 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				F4BD965A8C9CD401933AA3C6 /* FlowBridgeShared.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A4AD65F0BF6762B3A178E48A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				2C28275EA977E840147E0392 /* FlowBridgeKeyboard.appex in Embed Foundation Extensions */,
+				B19CC0FAC0ECE4703984AB78 /* FlowBridgeShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		00DB535FD420E969C6AE424C /* TranscriptRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptRecord.swift; sourceTree = "<group>"; };
+		048BFA8FD28603AE6F27DE18 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
+		0A094609470340B331D09D78 /* SharedContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedContainer.swift; sourceTree = "<group>"; };
+		1486D85A361FEE64331127F6 /* PendingCommandStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingCommandStore.swift; sourceTree = "<group>"; };
+		1AE308FDE496B0A9BCE4E20B /* WhisperTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperTranscriber.swift; sourceTree = "<group>"; };
+		1CD98E41DD5DE1B773A30C7B /* PendingCommandStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingCommandStoreTests.swift; sourceTree = "<group>"; };
+		1D3BEA99E7DB4AE0BE1A7340 /* FlowBridgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeApp.swift; sourceTree = "<group>"; };
+		2CCF23ED7E9492A89A378F07 /* TranscriptStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStoreTests.swift; sourceTree = "<group>"; };
+		399A0AEAA06EC3C5FC0410F2 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		465635746E8BA96BAC9A9DC3 /* FlowBridgeSharedTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FlowBridgeSharedTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		4FC38FD292248ABAC08C9CE1 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = FlowBridgeShared.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		64715A622B6B8DB9C2621BE5 /* FlowBridgeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeCoordinator.swift; sourceTree = "<group>"; };
+		675BDFD16C278E4C6834CE04 /* AudioFileDurationReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFileDurationReader.swift; sourceTree = "<group>"; };
+		6E15070C9DE4DA14187206E9 /* FlowBridgeRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeRecorder.swift; sourceTree = "<group>"; };
+		748711B42A512CA9A05AA1AC /* FlowBridgeKeyboard.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = FlowBridgeKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		786B1AE80A62F3B8718B36D4 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
+		8A88C5488798C0EBBF2DC392 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		95A1A56F4B31CBD5EF94C4DE /* ToggleDictationIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToggleDictationIntent.swift; sourceTree = "<group>"; };
+		9A4096FE560985EB14367364 /* FlowBridgeError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeError.swift; sourceTree = "<group>"; };
+		A8E02D0F174821DC9C6189BE /* FlowBridgeApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FlowBridgeApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B54A746A43497CB353DB7071 /* DictationTextNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationTextNormalizerTests.swift; sourceTree = "<group>"; };
+		C11AE725B3ADE0516C84B25F /* QueuedAudioStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueuedAudioStore.swift; sourceTree = "<group>"; };
+		CA149C0EF32FD199CF8FE8DD /* FlowBridgeConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeConstants.swift; sourceTree = "<group>"; };
+		D2DF086A59984159DC095240 /* NetworkGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkGuard.swift; sourceTree = "<group>"; };
+		D412B4D4FD9766E9DF8D3D32 /* FlowBridgeShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = FlowBridgeShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		FCF98DF41D148D8A7BFDD142 /* DictationTextNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationTextNormalizer.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7E92F5615DC560E3BB0206C8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BA21DA869BB6148743AFAF67 /* FlowBridgeShared.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8286C55F5FD9FCC699217BFD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3A11F241FD8BFDFD8A3222E9 /* FlowBridgeShared.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D9224CD96F8367E1CB953031 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3E0E8C586E1E6C34612D7F2D /* FlowBridgeShared.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DBFFBB27A75A2976BAAEDC2B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A691EAAEA84F3163C5AB37DC /* FlowBridgeShared.framework in Frameworks */,
+				C877340C9AA50852CB5E2124 /* WhisperKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3088F17D38E9E0E41A73C3D7 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A8E02D0F174821DC9C6189BE /* FlowBridgeApp.app */,
+				748711B42A512CA9A05AA1AC /* FlowBridgeKeyboard.appex */,
+				58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */,
+				465635746E8BA96BAC9A9DC3 /* FlowBridgeSharedTests.xctest */,
+				D412B4D4FD9766E9DF8D3D32 /* FlowBridgeShareExtension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		3E7F44397CFEBDA085D03FAF /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				B9B4CB0F6CB47AC4EA802C74 /* FlowBridgeSharedTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		8717567B2720A7EF0E8648EC /* FlowBridgeShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				8A88C5488798C0EBBF2DC392 /* ShareViewController.swift */,
+			);
+			path = FlowBridgeShareExtension;
+			sourceTree = "<group>";
+		};
+		A5B74E9B90DD524D277C280D /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				FB683D9F39369F60F2398B66 /* FlowBridgeApp */,
+				ACF95AE3984D3EFF9D84D709 /* FlowBridgeKeyboard */,
+				C07ED503AAE916086EA4C880 /* FlowBridgeShared */,
+				8717567B2720A7EF0E8648EC /* FlowBridgeShareExtension */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		ACF95AE3984D3EFF9D84D709 /* FlowBridgeKeyboard */ = {
+			isa = PBXGroup;
+			children = (
+				786B1AE80A62F3B8718B36D4 /* KeyboardViewController.swift */,
+			);
+			path = FlowBridgeKeyboard;
+			sourceTree = "<group>";
+		};
+		B9B4CB0F6CB47AC4EA802C74 /* FlowBridgeSharedTests */ = {
+			isa = PBXGroup;
+			children = (
+				B54A746A43497CB353DB7071 /* DictationTextNormalizerTests.swift */,
+				1CD98E41DD5DE1B773A30C7B /* PendingCommandStoreTests.swift */,
+				2CCF23ED7E9492A89A378F07 /* TranscriptStoreTests.swift */,
+			);
+			path = FlowBridgeSharedTests;
+			sourceTree = "<group>";
+		};
+		BE0177806B6D9D7A6CBED163 = {
+			isa = PBXGroup;
+			children = (
+				A5B74E9B90DD524D277C280D /* Sources */,
+				3E7F44397CFEBDA085D03FAF /* Tests */,
+				3088F17D38E9E0E41A73C3D7 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C07ED503AAE916086EA4C880 /* FlowBridgeShared */ = {
+			isa = PBXGroup;
+			children = (
+				FCF98DF41D148D8A7BFDD142 /* DictationTextNormalizer.swift */,
+				CA149C0EF32FD199CF8FE8DD /* FlowBridgeConstants.swift */,
+				9A4096FE560985EB14367364 /* FlowBridgeError.swift */,
+				D2DF086A59984159DC095240 /* NetworkGuard.swift */,
+				1486D85A361FEE64331127F6 /* PendingCommandStore.swift */,
+				C11AE725B3ADE0516C84B25F /* QueuedAudioStore.swift */,
+				0A094609470340B331D09D78 /* SharedContainer.swift */,
+				00DB535FD420E969C6AE424C /* TranscriptRecord.swift */,
+				048BFA8FD28603AE6F27DE18 /* TranscriptStore.swift */,
+			);
+			path = FlowBridgeShared;
+			sourceTree = "<group>";
+		};
+		FB683D9F39369F60F2398B66 /* FlowBridgeApp */ = {
+			isa = PBXGroup;
+			children = (
+				4FC38FD292248ABAC08C9CE1 /* AppDelegate.swift */,
+				675BDFD16C278E4C6834CE04 /* AudioFileDurationReader.swift */,
+				399A0AEAA06EC3C5FC0410F2 /* ContentView.swift */,
+				1D3BEA99E7DB4AE0BE1A7340 /* FlowBridgeApp.swift */,
+				64715A622B6B8DB9C2621BE5 /* FlowBridgeCoordinator.swift */,
+				6E15070C9DE4DA14187206E9 /* FlowBridgeRecorder.swift */,
+				95A1A56F4B31CBD5EF94C4DE /* ToggleDictationIntent.swift */,
+				1AE308FDE496B0A9BCE4E20B /* WhisperTranscriber.swift */,
+			);
+			path = FlowBridgeApp;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0D39C4A65F96B265B3705C68 /* FlowBridgeApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E3CCC5607A408596F3F38742 /* Build configuration list for PBXNativeTarget "FlowBridgeApp" */;
+			buildPhases = (
+				9B5888C4F76ED9C13FCABC2D /* Sources */,
+				DBFFBB27A75A2976BAAEDC2B /* Frameworks */,
+				A4AD65F0BF6762B3A178E48A /* Embed Foundation Extensions */,
+				684A6AF88274FC00AA951A1A /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0DDBE85E0D991DAC5644B119 /* PBXTargetDependency */,
+				A0FFA0ED1BBF7CE1E1CBDE9A /* PBXTargetDependency */,
+				943EB742B1324F9593604880 /* PBXTargetDependency */,
+			);
+			name = FlowBridgeApp;
+			packageProductDependencies = (
+				8E6AB7B92651395A03A424E8 /* WhisperKit */,
+			);
+			productName = FlowBridgeApp;
+			productReference = A8E02D0F174821DC9C6189BE /* FlowBridgeApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		36681D2C1F7E6CA0DED629C6 /* FlowBridgeSharedTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 747F88A81B07FE6005391E2E /* Build configuration list for PBXNativeTarget "FlowBridgeSharedTests" */;
+			buildPhases = (
+				F3455934C078209C572AF7DD /* Sources */,
+				D9224CD96F8367E1CB953031 /* Frameworks */,
+				9959BC640BF989D86448B856 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6766C6FC3C1FF92C4F792DD4 /* PBXTargetDependency */,
+			);
+			name = FlowBridgeSharedTests;
+			packageProductDependencies = (
+			);
+			productName = FlowBridgeSharedTests;
+			productReference = 465635746E8BA96BAC9A9DC3 /* FlowBridgeSharedTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		63E48A33DDBE6E5CCE1AF77C /* FlowBridgeShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DE95FBCC2AB0003D980F34DE /* Build configuration list for PBXNativeTarget "FlowBridgeShareExtension" */;
+			buildPhases = (
+				DD57F82000C6A8DCCFBA1791 /* Sources */,
+				7E92F5615DC560E3BB0206C8 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1EDB5166B2E666317FF78C1D /* PBXTargetDependency */,
+			);
+			name = FlowBridgeShareExtension;
+			packageProductDependencies = (
+			);
+			productName = FlowBridgeShareExtension;
+			productReference = D412B4D4FD9766E9DF8D3D32 /* FlowBridgeShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		700D60A100CEFCE59AFAEE94 /* FlowBridgeShared */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3DC375BFAF28FD55ADC6B57A /* Build configuration list for PBXNativeTarget "FlowBridgeShared" */;
+			buildPhases = (
+				589DF40BFE669BC10E2896CC /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FlowBridgeShared;
+			packageProductDependencies = (
+			);
+			productName = FlowBridgeShared;
+			productReference = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		DFCC6EA2907D3D52C92FD3EB /* FlowBridgeKeyboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 92A512356F5BC4EF43810717 /* Build configuration list for PBXNativeTarget "FlowBridgeKeyboard" */;
+			buildPhases = (
+				179375F454928632E526C1C9 /* Sources */,
+				8286C55F5FD9FCC699217BFD /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0FC74148F3F00DAB43320CA2 /* PBXTargetDependency */,
+			);
+			name = FlowBridgeKeyboard;
+			packageProductDependencies = (
+			);
+			productName = FlowBridgeKeyboard;
+			productReference = 748711B42A512CA9A05AA1AC /* FlowBridgeKeyboard.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9B9B6CF5C049CE7F2FA12FD0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 0A804B2CEC0D1DD43FF5B652 /* Build configuration list for PBXProject "FlowBridge" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = BE0177806B6D9D7A6CBED163;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				107D2EAB8A53694A37DE30B2 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 3088F17D38E9E0E41A73C3D7 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0D39C4A65F96B265B3705C68 /* FlowBridgeApp */,
+				DFCC6EA2907D3D52C92FD3EB /* FlowBridgeKeyboard */,
+				63E48A33DDBE6E5CCE1AF77C /* FlowBridgeShareExtension */,
+				700D60A100CEFCE59AFAEE94 /* FlowBridgeShared */,
+				36681D2C1F7E6CA0DED629C6 /* FlowBridgeSharedTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		179375F454928632E526C1C9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				081FA5C1D34A98F5283614F9 /* KeyboardViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		589DF40BFE669BC10E2896CC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8FC10AE539C765251A26314C /* DictationTextNormalizer.swift in Sources */,
+				2C47274F120E8031AF924D0F /* FlowBridgeConstants.swift in Sources */,
+				BD9AD1178F3B6F47A9EAA812 /* FlowBridgeError.swift in Sources */,
+				0BB002587B4667A395F887CF /* NetworkGuard.swift in Sources */,
+				95BE94A5859002168A2BA040 /* PendingCommandStore.swift in Sources */,
+				07C0BE46F639764371503D96 /* QueuedAudioStore.swift in Sources */,
+				BCABA4B3C0EED74B8E1B0806 /* SharedContainer.swift in Sources */,
+				05E5BFCE4048D77AED936ADA /* TranscriptRecord.swift in Sources */,
+				BA4B572DAC67E0A46383D35A /* TranscriptStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9B5888C4F76ED9C13FCABC2D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E6D4FFBB36D53CF49FB78B71 /* AppDelegate.swift in Sources */,
+				221F2651F56146C26642D27D /* AudioFileDurationReader.swift in Sources */,
+				43EB0A4CFD7AF3BF23EF18C0 /* ContentView.swift in Sources */,
+				0EB9CBD54D1AF6CAF867563D /* FlowBridgeApp.swift in Sources */,
+				52C34B7F588061303A75F48D /* FlowBridgeCoordinator.swift in Sources */,
+				ADD0AE1EB217B3651350548F /* FlowBridgeRecorder.swift in Sources */,
+				BAF4CF35D1494B8C92F1DCCD /* ToggleDictationIntent.swift in Sources */,
+				44A1B4B0BC4CD44C781AF948 /* WhisperTranscriber.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DD57F82000C6A8DCCFBA1791 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0627519F0831E811DD2B2CC7 /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F3455934C078209C572AF7DD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				448DA9F4C7777DF83979FBDA /* DictationTextNormalizerTests.swift in Sources */,
+				71BDE4A6933C0A7B6D22EE02 /* PendingCommandStoreTests.swift in Sources */,
+				90E6C2BB567DF4A4228E3A2E /* TranscriptStoreTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		0DDBE85E0D991DAC5644B119 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 700D60A100CEFCE59AFAEE94 /* FlowBridgeShared */;
+			targetProxy = A1FB3096B5121B3788B9F434 /* PBXContainerItemProxy */;
+		};
+		0FC74148F3F00DAB43320CA2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 700D60A100CEFCE59AFAEE94 /* FlowBridgeShared */;
+			targetProxy = 645E62369D6859B804A7562A /* PBXContainerItemProxy */;
+		};
+		1EDB5166B2E666317FF78C1D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 700D60A100CEFCE59AFAEE94 /* FlowBridgeShared */;
+			targetProxy = 79B8B49A2CE80192BA0BDDBD /* PBXContainerItemProxy */;
+		};
+		6766C6FC3C1FF92C4F792DD4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 700D60A100CEFCE59AFAEE94 /* FlowBridgeShared */;
+			targetProxy = F6FAB3AFC9B9DBA8BC7AFFFE /* PBXContainerItemProxy */;
+		};
+		943EB742B1324F9593604880 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 63E48A33DDBE6E5CCE1AF77C /* FlowBridgeShareExtension */;
+			targetProxy = BC0EE71DDFACE3C7015D71BC /* PBXContainerItemProxy */;
+		};
+		A0FFA0ED1BBF7CE1E1CBDE9A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DFCC6EA2907D3D52C92FD3EB /* FlowBridgeKeyboard */;
+			targetProxy = FE5D067569D66A8E81AC53CA /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		03AD1B71A01F9A372060FC42 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.marcomilanello.flowbridge.shared;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		03F0CA6B3DF3C00FF6CC5437 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Entitlements/FlowBridgeApp.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = "Configuration/FlowBridgeApp-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.marcomilanello.flowbridge;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		38703F87B88D2BE1053AF29E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		443D034CD6AC438E204145FB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		5D4347F803A9DC357BB18E5B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Entitlements/FlowBridgeShareExtension.entitlements;
+				INFOPLIST_FILE = "Configuration/FlowBridgeShareExtension-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.marcomilanello.flowbridge.share;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9B35600E06E1E631C6A20860 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.marcomilanello.FlowBridgeSharedTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A197D3D16BED9426586E913A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Entitlements/FlowBridgeApp.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = "Configuration/FlowBridgeApp-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.marcomilanello.flowbridge;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A7C2D9F01DFE65AA7845A1BE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.marcomilanello.FlowBridgeSharedTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		E2CD84B87FD6BBA6F97F662E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_IDENTITY = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.marcomilanello.flowbridge.shared;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		EC89CFF8972E9A4C4B2C1CD1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Entitlements/FlowBridgeKeyboard.entitlements;
+				INFOPLIST_FILE = "Configuration/FlowBridgeKeyboard-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.marcomilanello.flowbridge.keyboard;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		EE38BA087BD643A3D6FA6A74 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Entitlements/FlowBridgeKeyboard.entitlements;
+				INFOPLIST_FILE = "Configuration/FlowBridgeKeyboard-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.marcomilanello.flowbridge.keyboard;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		FC83ADF31B6A4F073A3A206D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Entitlements/FlowBridgeShareExtension.entitlements;
+				INFOPLIST_FILE = "Configuration/FlowBridgeShareExtension-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.marcomilanello.flowbridge.share;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0A804B2CEC0D1DD43FF5B652 /* Build configuration list for PBXProject "FlowBridge" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				38703F87B88D2BE1053AF29E /* Debug */,
+				443D034CD6AC438E204145FB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		3DC375BFAF28FD55ADC6B57A /* Build configuration list for PBXNativeTarget "FlowBridgeShared" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				03AD1B71A01F9A372060FC42 /* Debug */,
+				E2CD84B87FD6BBA6F97F662E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		747F88A81B07FE6005391E2E /* Build configuration list for PBXNativeTarget "FlowBridgeSharedTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9B35600E06E1E631C6A20860 /* Debug */,
+				A7C2D9F01DFE65AA7845A1BE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		92A512356F5BC4EF43810717 /* Build configuration list for PBXNativeTarget "FlowBridgeKeyboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EC89CFF8972E9A4C4B2C1CD1 /* Debug */,
+				EE38BA087BD643A3D6FA6A74 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		DE95FBCC2AB0003D980F34DE /* Build configuration list for PBXNativeTarget "FlowBridgeShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FC83ADF31B6A4F073A3A206D /* Debug */,
+				5D4347F803A9DC357BB18E5B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E3CCC5607A408596F3F38742 /* Build configuration list for PBXNativeTarget "FlowBridgeApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A197D3D16BED9426586E913A /* Debug */,
+				03F0CA6B3DF3C00FF6CC5437 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		107D2EAB8A53694A37DE30B2 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		8E6AB7B92651395A03A424E8 /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 107D2EAB8A53694A37DE30B2 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
+			productName = WhisperKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 9B9B6CF5C049CE7F2FA12FD0 /* Project object */;
+}

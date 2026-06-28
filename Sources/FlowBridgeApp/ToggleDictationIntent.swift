@@ -1,0 +1,49 @@
+import AppIntents
+import FlowBridgeShared
+import Foundation
+
+struct ToggleDictationIntent: AppIntent {
+    static var title: LocalizedStringResource = "Toggle Dictation"
+    static var description = IntentDescription("Start or stop FlowBridge dictation.")
+    static var openAppWhenRun = true
+
+    func perform() async throws -> some IntentResult {
+        try PendingCommandStore().write(.toggleRecording)
+        return .result()
+    }
+}
+
+struct TranscribeQueuedAudioIntent: AppIntent {
+    static var title: LocalizedStringResource = "Transcribe Queued Audio"
+    static var description = IntentDescription("Transcribe the latest audio file queued by FlowBridge.")
+    static var openAppWhenRun = true
+
+    func perform() async throws -> some IntentResult {
+        try PendingCommandStore().write(.transcribeQueuedAudio)
+        return .result()
+    }
+}
+
+struct FlowBridgeShortcutsProvider: AppShortcutsProvider {
+    static var appShortcuts: [AppShortcut] {
+        AppShortcut(
+            intent: ToggleDictationIntent(),
+            phrases: [
+                "Toggle \(.applicationName)",
+                "Start \(.applicationName) dictation"
+            ],
+            shortTitle: "Dictate",
+            systemImageName: "mic.fill"
+        )
+
+        AppShortcut(
+            intent: TranscribeQueuedAudioIntent(),
+            phrases: [
+                "Transcribe with \(.applicationName)"
+            ],
+            shortTitle: "Transcribe",
+            systemImageName: "waveform"
+        )
+    }
+}
+

@@ -1,0 +1,10 @@
+.DS_Store
+.build/
+DerivedData/
+*.xcworkspace
+Package.resolved
+Resources/WhisperModels/WhisperSmall/
+Resources/WhisperModels/**/*.mlmodelc
+Resources/WhisperModels/**/*.mlpackage
+*.xcuserstate
+xcuserdata/
