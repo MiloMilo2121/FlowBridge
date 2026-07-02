@@ -11,6 +11,9 @@ public struct TranscriptRecord: Codable, Equatable, Identifiable, Sendable {
 
     public let id: UUID
     public let text: String
+    /// Verbatim transcript before on-device polishing. Nil when the record
+    /// was never polished (raw and text are the same).
+    public let rawText: String?
     public let language: String
     public let createdAt: Date
     public let audioDuration: TimeInterval
@@ -19,6 +22,7 @@ public struct TranscriptRecord: Codable, Equatable, Identifiable, Sendable {
     public init(
         id: UUID = UUID(),
         text: String,
+        rawText: String? = nil,
         language: String,
         createdAt: Date = Date(),
         audioDuration: TimeInterval,
@@ -26,10 +30,24 @@ public struct TranscriptRecord: Codable, Equatable, Identifiable, Sendable {
     ) {
         self.id = id
         self.text = text
+        self.rawText = rawText
         self.language = language
         self.createdAt = createdAt
         self.audioDuration = audioDuration
         self.source = source
+    }
+
+    /// Same record with polished text applied and the verbatim original kept.
+    public func polished(_ polishedText: String) -> TranscriptRecord {
+        TranscriptRecord(
+            id: id,
+            text: polishedText,
+            rawText: rawText ?? text,
+            language: language,
+            createdAt: createdAt,
+            audioDuration: audioDuration,
+            source: source
+        )
     }
 }
 

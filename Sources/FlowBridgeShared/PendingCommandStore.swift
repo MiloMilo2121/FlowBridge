@@ -2,6 +2,7 @@ import Foundation
 
 public enum FlowBridgeCommand: String, Codable, Sendable {
     case toggleRecording
+    case stopRecording
     case transcribeQueuedAudio
 }
 
@@ -27,6 +28,7 @@ public final class PendingCommandStore: @unchecked Sendable {
     public func write(_ command: FlowBridgeCommand) throws {
         let data = try JSONEncoder.flowBridge.encode(PendingCommand(command: command))
         defaults.set(data, forKey: FlowBridgeConstants.pendingCommandKey)
+        DarwinNotifier.post(FlowBridgeConstants.pendingCommandDidChangeDarwinName)
     }
 
     public func consume() -> PendingCommand? {

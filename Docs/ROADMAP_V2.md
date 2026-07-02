@@ -274,17 +274,19 @@ Il prodotto che vince è quello con **il percorso idea→testo-pulito più corto
 
 *Da fare su device (non possibile in questo ambiente): verifica in Xcode dei target app/keyboard, dogfood del recovery e degli update Darwin, registrazione del set di benchmark italiano. Gli spike `AudioRecordingIntent` e Whisper Mode restano attività da device reale prima della Fase 1.*
 
-### Fase 1 — Il cuore della V2: zero frizione *(3–4 settimane)* → **V2.0**
+### Fase 1 — Il cuore della V2: zero frizione *(3–4 settimane)* → **V2.0** — ✅ implementata in codice (da validare su device)
 
-| # | Task | Note |
+| # | Task | Stato |
 |---|---|---|
-| 1.1 | `AppleSpeechEngine` (SpeechTranscriber streaming + AssetInventory) | Default per it/en; A/B col bench 0.4 |
-| 1.2 | `StartDictationIntent: AudioRecordingIntent` — avvio registrazione **senza aprire l'app** | La feature bandiera. Fallback foreground dietro flag remoto locale |
-| 1.3 | `DictationActivity`: Dynamic Island compact (waveform+timer) ed expanded (anteprima+Stop) + lock screen | `Text(timerInterval:)` per il timer (zero budget); update locali per l'anteprima |
-| 1.4 | `TranscriptPolisher` (FoundationModels): filler via, punteggiatura, prima maiuscola; toggle Grezzo/Pulito | Fallback al grezzo su qualsiasi errore; prewarm in registrazione |
-| 1.5 | Control Center control + Lock Screen control + widget Home | Stessi App Intents riusati su tutte le superfici |
-| 1.6 | Onboarding nuovo: 3 schermate (permesso mic → Action Button → tastiera), col messaggio privacy verificabile | Il permesso Full Access va spiegato *bene*: è il punto di abbandono classico |
-| 1.7 | Frase Siri "Ehi Siri, FlowBridge" via App Shortcuts | Pronto per la Siri AI di iOS 27 (stessi intents) |
+| 1.1 | `AppleSpeechEngine` (SpeechTranscriber streaming + AssetInventory) | ✅ `AppleSpeechEngine.swift`; opt-in via `preferredEngine` (Whisper resta default finché il bench 0.4 non decide) |
+| 1.2 | `StartDictationIntent: AudioRecordingIntent` — avvio registrazione **senza aprire l'app** | ✅ `Sources/FlowBridgeAppIntents/DictationIntents.swift`; fallback foreground via `ForegroundContinuableIntent`; Live Activity avviata sincrona come richiesto dall'API |
+| 1.3 | `DictationActivity`: Dynamic Island compact (waveform+timer) ed expanded (anteprima+Stop) + lock screen | ✅ target `FlowBridgeWidgets` (`DictationLiveActivity.swift`); timer `Text(timerInterval:)` a budget zero; anteprima via update locali dal coordinator |
+| 1.4 | `TranscriptPolisher` (FoundationModels): filler via, punteggiatura; grezzo sempre conservato | ✅ `TranscriptPolisher.swift`; guided generation + greedy sampling; fallback al grezzo su ogni errore; prewarm all'avvio registrazione; `rawText` sul record |
+| 1.5 | Control Center control + Lock Screen control + widget Home | ✅ `DictationControlWidget.swift` (piazzabile anche sull'Action Button), `FlowBridgeHomeWidget.swift` |
+| 1.6 | Onboarding nuovo: 3 schermate (parla → Action Button → tastiera con spiegazione Full Access onesta) | ✅ `OnboardingView.swift`, permessi contestuali |
+| 1.7 | Frase Siri via App Shortcuts | ✅ "Dictate with FlowBridge" su `StartDictationIntent` (pronto per Siri AI di iOS 27) |
+
+*Note di implementazione: `AppleSpeechEngine` e `TranscriptPolisher` sono scritti contro la superficie API documentata di iOS 26 (SpeechAnalyzer / FoundationModels) e vanno validati con l'SDK in Xcode — questo ambiente compila solo il framework condiviso (Linux). Il nuovo target `FlowBridgeWidgets` è definito in `project.yml`: serve `xcodegen generate` per materializzarlo nel progetto Xcode. Lo spike su device di `AudioRecordingIntent` resta il primo test da fare.*
 
 **Definition of done V2.0:** dal click dell'Action Button alla prima parola trascritta < 1,5s (target < 1s); dettatura completa senza mai vedere l'app; testo pulito in clipboard + inseribile da tastiera; zero dettature perse in 2 settimane di dogfood.
 

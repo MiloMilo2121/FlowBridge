@@ -1,10 +1,12 @@
+import FlowBridgeShared
 import SwiftUI
 
 @main
 struct FlowBridgeApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var coordinator = FlowBridgeCoordinator()
+    @StateObject private var coordinator = FlowBridgeCoordinator.shared
+    @State private var showOnboarding = !UserDefaults.standard.bool(forKey: FlowBridgeConstants.onboardingCompletedKey)
 
     var body: some Scene {
         WindowGroup {
@@ -19,7 +21,11 @@ struct FlowBridgeApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     Task { await coordinator.handleScenePhase(phase) }
                 }
+                .sheet(isPresented: $showOnboarding) {
+                    OnboardingView {
+                        showOnboarding = false
+                    }
+                }
         }
     }
 }
-

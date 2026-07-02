@@ -46,6 +46,14 @@
 		593E3086D09192EAEE6A74BE /* DarwinNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FFC763355C88C47C13C4E64 /* DarwinNotifier.swift */; };
 		FE55EA6B52CA92298D4A51DF /* WERCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E08DD0A37679DA0D8EA0B36 /* WERCalculatorTests.swift */; };
 		249F7D9394123C3EB0BFF6FF /* AudioSafetyBufferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87343B9C61E29B130E93C080 /* AudioSafetyBufferTests.swift */; };
+		19358A2DF30041165D871AF4 /* AppleSpeechEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A7613DEA175B541BF78EBBA /* AppleSpeechEngine.swift */; };
+		392A4F80FB5F9578E947A205 /* TranscriptPolisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9E1B4501B6974456BA794F8 /* TranscriptPolisher.swift */; };
+		3F05C7B6A6F81BE3A94B42EA /* DictationActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37336211DB250AD54E6151F2 /* DictationActivityController.swift */; };
+		D01228D77C73182EA6A388C7 /* EngineSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E841D99C9EAD4E0FC1D1A9 /* EngineSelection.swift */; };
+		EBCD4D3326189A72B173AA04 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 240C08C1276F469A3E84CE1E /* OnboardingView.swift */; };
+		DBBF6F29A7C0CD087930C7E6 /* DictationIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = C231AD0D57DA3D3D8177D546 /* DictationIntents.swift */; };
+		B1AAE20BC0111EED711C71E0 /* DictationActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA74A75F08286C9EF84D460E /* DictationActivityAttributes.swift */; };
+		A9289EED212E8A938CD51133 /* DictationCommandHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 366BE3AF18AB43F1F2C16339 /* DictationCommandHub.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -166,6 +174,14 @@
 		9FFC763355C88C47C13C4E64 /* DarwinNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarwinNotifier.swift; sourceTree = "<group>"; };
 		0E08DD0A37679DA0D8EA0B36 /* WERCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WERCalculatorTests.swift; sourceTree = "<group>"; };
 		87343B9C61E29B130E93C080 /* AudioSafetyBufferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSafetyBufferTests.swift; sourceTree = "<group>"; };
+		2A7613DEA175B541BF78EBBA /* AppleSpeechEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeechEngine.swift; sourceTree = "<group>"; };
+		F9E1B4501B6974456BA794F8 /* TranscriptPolisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPolisher.swift; sourceTree = "<group>"; };
+		37336211DB250AD54E6151F2 /* DictationActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationActivityController.swift; sourceTree = "<group>"; };
+		F1E841D99C9EAD4E0FC1D1A9 /* EngineSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSelection.swift; sourceTree = "<group>"; };
+		240C08C1276F469A3E84CE1E /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		C231AD0D57DA3D3D8177D546 /* DictationIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationIntents.swift; sourceTree = "<group>"; };
+		CA74A75F08286C9EF84D460E /* DictationActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationActivityAttributes.swift; sourceTree = "<group>"; };
+		366BE3AF18AB43F1F2C16339 /* DictationCommandHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationCommandHub.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -237,11 +253,20 @@
 			isa = PBXGroup;
 			children = (
 				FB683D9F39369F60F2398B66 /* FlowBridgeApp */,
+				764FE63F06A60FDB18F42E0E /* FlowBridgeAppIntents */,
 				ACF95AE3984D3EFF9D84D709 /* FlowBridgeKeyboard */,
 				C07ED503AAE916086EA4C880 /* FlowBridgeShared */,
 				8717567B2720A7EF0E8648EC /* FlowBridgeShareExtension */,
 			);
 			path = Sources;
+			sourceTree = "<group>";
+		};
+		764FE63F06A60FDB18F42E0E /* FlowBridgeAppIntents */ = {
+			isa = PBXGroup;
+			children = (
+				C231AD0D57DA3D3D8177D546 /* DictationIntents.swift */,
+			);
+			path = FlowBridgeAppIntents;
 			sourceTree = "<group>";
 		};
 		ACF95AE3984D3EFF9D84D709 /* FlowBridgeKeyboard */ = {
@@ -278,6 +303,8 @@
 			children = (
 				BF072D238C1E025F99264663 /* AudioSafetyBuffer.swift */,
 				9FFC763355C88C47C13C4E64 /* DarwinNotifier.swift */,
+				CA74A75F08286C9EF84D460E /* DictationActivityAttributes.swift */,
+				366BE3AF18AB43F1F2C16339 /* DictationCommandHub.swift */,
 				FCF98DF41D148D8A7BFDD142 /* DictationTextNormalizer.swift */,
 				CA149C0EF32FD199CF8FE8DD /* FlowBridgeConstants.swift */,
 				9A4096FE560985EB14367364 /* FlowBridgeError.swift */,
@@ -297,13 +324,18 @@
 			isa = PBXGroup;
 			children = (
 				4FC38FD292248ABAC08C9CE1 /* AppDelegate.swift */,
+				2A7613DEA175B541BF78EBBA /* AppleSpeechEngine.swift */,
 				675BDFD16C278E4C6834CE04 /* AudioFileDurationReader.swift */,
 				48933B745CDF3FA1746073FC /* BenchmarkHarness.swift */,
 				399A0AEAA06EC3C5FC0410F2 /* ContentView.swift */,
+				37336211DB250AD54E6151F2 /* DictationActivityController.swift */,
+				F1E841D99C9EAD4E0FC1D1A9 /* EngineSelection.swift */,
 				1D3BEA99E7DB4AE0BE1A7340 /* FlowBridgeApp.swift */,
 				64715A622B6B8DB9C2621BE5 /* FlowBridgeCoordinator.swift */,
 				6E15070C9DE4DA14187206E9 /* FlowBridgeRecorder.swift */,
+				240C08C1276F469A3E84CE1E /* OnboardingView.swift */,
 				95A1A56F4B31CBD5EF94C4DE /* ToggleDictationIntent.swift */,
+				F9E1B4501B6974456BA794F8 /* TranscriptPolisher.swift */,
 				4D71C6348A1BBBAC3CB94E41 /* TranscriptionEngine.swift */,
 				1AE308FDE496B0A9BCE4E20B /* WhisperEngine.swift */,
 			);
@@ -464,6 +496,8 @@
 			files = (
 				2FE9A05B68A741540057FFFF /* AudioSafetyBuffer.swift in Sources */,
 				593E3086D09192EAEE6A74BE /* DarwinNotifier.swift in Sources */,
+				B1AAE20BC0111EED711C71E0 /* DictationActivityAttributes.swift in Sources */,
+				A9289EED212E8A938CD51133 /* DictationCommandHub.swift in Sources */,
 				8FC10AE539C765251A26314C /* DictationTextNormalizer.swift in Sources */,
 				2C47274F120E8031AF924D0F /* FlowBridgeConstants.swift in Sources */,
 				BD9AD1178F3B6F47A9EAA812 /* FlowBridgeError.swift in Sources */,
@@ -483,13 +517,19 @@
 			buildActionMask = 2147483647;
 			files = (
 				E6D4FFBB36D53CF49FB78B71 /* AppDelegate.swift in Sources */,
+				19358A2DF30041165D871AF4 /* AppleSpeechEngine.swift in Sources */,
 				221F2651F56146C26642D27D /* AudioFileDurationReader.swift in Sources */,
 				659CE0BD352340B4B7C6FEEA /* BenchmarkHarness.swift in Sources */,
 				43EB0A4CFD7AF3BF23EF18C0 /* ContentView.swift in Sources */,
+				3F05C7B6A6F81BE3A94B42EA /* DictationActivityController.swift in Sources */,
+				DBBF6F29A7C0CD087930C7E6 /* DictationIntents.swift in Sources */,
+				D01228D77C73182EA6A388C7 /* EngineSelection.swift in Sources */,
 				0EB9CBD54D1AF6CAF867563D /* FlowBridgeApp.swift in Sources */,
 				52C34B7F588061303A75F48D /* FlowBridgeCoordinator.swift in Sources */,
 				ADD0AE1EB217B3651350548F /* FlowBridgeRecorder.swift in Sources */,
+				EBCD4D3326189A72B173AA04 /* OnboardingView.swift in Sources */,
 				BAF4CF35D1494B8C92F1DCCD /* ToggleDictationIntent.swift in Sources */,
+				392A4F80FB5F9578E947A205 /* TranscriptPolisher.swift in Sources */,
 				A347EE0EBF2C5BD2A9B2BF76 /* TranscriptionEngine.swift in Sources */,
 				44A1B4B0BC4CD44C781AF948 /* WhisperEngine.swift in Sources */,
 			);

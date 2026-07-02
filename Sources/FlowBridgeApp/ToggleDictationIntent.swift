@@ -27,6 +27,16 @@ struct TranscribeQueuedAudioIntent: AppIntent {
 struct FlowBridgeShortcutsProvider: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
+            intent: StartDictationIntent(),
+            phrases: [
+                "Dictate with \(.applicationName)",
+                "\(.applicationName) dictation"
+            ],
+            shortTitle: "Quick Dictation",
+            systemImageName: "waveform"
+        )
+
+        AppShortcut(
             intent: ToggleDictationIntent(),
             phrases: [
                 "Toggle \(.applicationName)",

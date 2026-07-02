@@ -40,6 +40,35 @@ inside the main app's budget (extensions never record). The existing
 memory-warning handler still stops and finalizes the active transcript before
 unloading the model.
 
+## Zero-friction capture path (V2 Phase 1)
+
+`StartDictationIntent` (`AudioRecordingIntent` + `ForegroundContinuableIntent`,
+in `Sources/FlowBridgeAppIntents`, compiled into both the app and the widget
+extension) starts dictation without opening the app: the system runs it in the
+app process, `DictationCommandHub` routes it to `FlowBridgeCoordinator.shared`,
+and the coordinator starts the Live Activity synchronously — the platform
+requirement for background microphone starts, and our Dynamic Island stage.
+When the background path is not viable (no mic permission yet, audio-session
+failure) the intent continues in the foreground, which is the V1 behavior.
+The same intent powers the Control Center/Lock Screen/Action Button control
+and the Home Screen widget; `StopDictationIntent` (`LiveActivityIntent`) backs
+the stop button in the island and on the Lock Screen.
+
+The `FlowBridgeWidgets` extension renders the Live Activity
+(`DictationActivityAttributes` lives in the shared framework): compact =
+phase symbol + self-updating `Text(timerInterval:)`, expanded = streaming
+transcript preview + Stop. The coordinator mirrors every live snapshot into
+the activity via the same Darwin notification the keyboard uses.
+
+Engines: `EngineFactory` picks WhisperKit (default, V1 behavior) or
+`AppleSpeechEngine` (iOS 26 SpeechAnalyzer/SpeechTranscriber, system-managed
+model, opt-in via the `preferredEngine` App Group default) — decided by
+benchmark, not by taste. After stop, `TranscriptPolisher` (FoundationModels,
+on-device) removes fillers and fixes punctuation with guided generation and
+greedy sampling; any failure returns the verbatim transcript, which is always
+kept in `TranscriptRecord.rawText`. The polisher prewarms while recording so
+the cleanup adds no perceptible latency at stop.
+
 ## System-wide constraints
 
 iOS does not let a normal app inject arbitrary text into another app's active text field. The system-sanctioned insertion surface is a custom keyboard through `UITextDocumentProxy`, but custom keyboards are the wrong process for microphone capture and a CoreML Whisper Small model. FlowBridge therefore separates the product into a heavy main app and lightweight extensions.

@@ -97,7 +97,7 @@ public actor AudioSafetyBuffer {
 
     public static func pendingRecordings(
         in directory: URL,
-        sampleRate: Double = FlowBridgeConstants.safetyBufferSampleRate
+        sampleRate fallbackSampleRate: Double = FlowBridgeConstants.safetyBufferSampleRate
     ) -> [PendingRecording] {
         guard let urls = try? FileManager.default.contentsOfDirectory(
             at: directory,
@@ -113,11 +113,26 @@ public actor AudioSafetyBuffer {
                 guard let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize else {
                     return nil
                 }
+                let sampleRate = headerSampleRate(of: url) ?? fallbackSampleRate
                 let payloadBytes = max(0, size - headerByteCount)
                 let duration = Double(payloadBytes / bytesPerSample) / sampleRate
                 return PendingRecording(url: url, duration: duration)
             }
             .sorted { $0.url.lastPathComponent < $1.url.lastPathComponent }
+    }
+
+    /// Sample rate as recorded in the WAV header (bytes 24–27), so recovery
+    /// duration stays correct whichever engine wrote the file.
+    private static func headerSampleRate(of url: URL) -> Double? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let header = try? handle.read(upToCount: headerByteCount),
+              header.count == headerByteCount else {
+            return nil
+        }
+        let value = header[24..<28].withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }
+        let sampleRate = Double(UInt32(littleEndian: value))
+        return sampleRate > 0 ? sampleRate : nil
     }
 
     public static func remove(_ pending: PendingRecording) {
