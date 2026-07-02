@@ -69,6 +69,35 @@ greedy sampling; any failure returns the verbatim transcript, which is always
 kept in `TranscriptRecord.rawText`. The polisher prewarms while recording so
 the cleanup adds no perceptible latency at stop.
 
+## Personal layer (V2 Phases 2–3)
+
+After the engine returns a transcript, the pipeline is: deterministic spoken
+commands (`VoiceCommandProcessor`: punto/virgola/a capo/… in Italian and
+English, regex whole-word replacements — instant and predictable, never LLM
+interpretation) → on-device polish with the current tone. Tone comes from
+`ToneContextStore`: the keyboard publishes a hint derived from the active
+field's traits (keyboards cannot read the host app's identity via public API;
+a "send" return key means a chat box, an email-address field means mail),
+falling back to the user's default. The engine-verbatim text always survives
+in `rawText`.
+
+`VocabularyStore` holds the user's terms; `WhisperEngine` injects them as a
+prompt bias (`promptTokens`) on both file and live decoding — the custom
+vocabulary neither system dictation nor SpeechTranscriber offers.
+`WhisperModelLocator` adds an optional "Precision" model variant loaded from
+Application Support (populated at build time or sideloaded — never a runtime
+download, preserving the offline guarantee), with automatic fallback to the
+bundled model.
+
+Every finished dictation lands in `TranscriptHistoryStore` (capped local JSON,
+pinned entries never evicted, full-text search) and in `DictationStatsStore`
+(sessions/words/speaking time → "time given back", computed locally for the
+user only). Session Append merges a dictation finished within a configurable
+window into the previously delivered text — the clipboard/keyboard get the
+continuation, history keeps the individual takes. `HapticPlayer` implements
+the fixed haptic vocabulary (listening start/stop, transcript ready, failure)
+so the app is fully usable from the pocket.
+
 ## System-wide constraints
 
 iOS does not let a normal app inject arbitrary text into another app's active text field. The system-sanctioned insertion surface is a custom keyboard through `UITextDocumentProxy`, but custom keyboards are the wrong process for microphone capture and a CoreML Whisper Small model. FlowBridge therefore separates the product into a heavy main app and lightweight extensions.

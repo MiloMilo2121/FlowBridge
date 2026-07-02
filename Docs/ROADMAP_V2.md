@@ -290,27 +290,29 @@ Il prodotto che vince è quello con **il percorso idea→testo-pulito più corto
 
 **Definition of done V2.0:** dal click dell'Action Button alla prima parola trascritta < 1,5s (target < 1s); dettatura completa senza mai vedere l'app; testo pulito in clipboard + inseribile da tastiera; zero dettature perse in 2 settimane di dogfood.
 
-### Fase 2 — Le cose che nessun locale ha *(3–4 settimane)* → **V2.1**
+### Fase 2 — Le cose che nessun locale ha *(3–4 settimane)* → **V2.1** — ✅ implementata in codice (da validare su device)
 
-| # | Task | Note |
+| # | Task | Stato |
 |---|---|---|
-| 2.1 | `VocabularyStore` + UI ("Il mio vocabolario"): prompt bias WhisperKit + `contextualStrings` DictationTranscriber | Il gap dichiarato di Apple e SpeechTranscriber |
-| 2.2 | Motore "Precision": WhisperKit large-v3-turbo compresso, selezionabile; download modello **al primo uso con consenso esplicito** (unica eccezione di rete, chiaramente comunicata, oppure bundle separato) | Decidere: bundle da 626MB vs download on-demand — trade-off dimensione App Store |
-| 2.3 | Tono per-app: il Polisher riceve il bundle id dell'app di destinazione (dalla tastiera) → informale per Messages, formale per Mail | Solo euristica locale, niente contenuto dell'app letto |
-| 2.4 | Cronologia: libreria locale con ricerca, pin, export share sheet | |
-| 2.5 | Keyboard V2: diff incrementale, indicatore stato, tasto "ritrascrivi con Precision" | |
-| 2.6 | Localizzazione completa IT/EN dell'app | |
+| 2.1 | `VocabularyStore` + UI ("Il mio vocabolario"): prompt bias WhisperKit | ✅ store condiviso testato + editor in Settings + `vocabularyPromptTokens` in `WhisperEngine` (bias su file e live). `contextualStrings` per DictationTranscriber: quando aggiungeremo quel modulo |
+| 2.2 | Motore "Precision" selezionabile | ✅ `WhisperModelLocator` + variante `.precision` (cartella in Application Support, **nessun download runtime** — bundle/sideload esplicito, coerente con la postura offline); fallback automatico al bundled |
+| 2.3 | Tono per-contesto | ✅ ma con correzione di rotta: le tastiere **non possono leggere il bundle id dell'app host** (API pubblica) → il tono si inferisce dai trait del campo di testo (return key "send" → casual, campo email → formal), spesso un segnale migliore. `ToneContextStore` + hint dalla tastiera + default utente |
+| 2.4 | Cronologia: libreria locale con ricerca, pin, export | ✅ `TranscriptHistoryStore` (cap 200, i pin non vengono mai evitti, testato) + `HistoryView` (ricerca, copia, copia verbatim, share, pin, delete) |
+| 2.5 | Keyboard V2: diff incrementale, tono, "Inserisci e invia" | ✅ diff a prefisso comune (il testo committato non sfarfalla mai), hint di tono, tasto ↵; "ritrascrivi con Precision" rinviato (richiede retention audio, v. backlog) |
+| 2.6 | Localizzazione completa IT/EN | ⏳ da fare in Xcode (String Catalog) |
 
-### Fase 3 — Lancio e superfici estese *(3–4 settimane)* → **V2.2 / lancio pubblico**
+### Fase 3 — Lancio e superfici estese — parzialmente implementata
 
-| # | Task | Note |
+| # | Task | Stato |
 |---|---|---|
-| 3.1 | `.supplementalActivityFamilies([.small])`: Live Activity su Watch Smart Stack + CarPlay + Mac menu bar | Quasi gratis, grande effetto demo |
-| 3.2 | Comandi vocali minimi nel Polisher: "a capo", "punto", "virgola" (sostituzione locale, non LLM) | Poche cose fatte bene: solo i 5–6 comandi core |
-| 3.3 | Paywall + IAP una tantum (v. §9); schermata "Perché niente abbonamento" | |
-| 3.4 | Materiale App Store: screenshot con Dynamic Island, video demo in modalità aereo, descrizione §4.2 | La demo in aereo è il momento di marketing |
-| 3.5 | Pagine di confronto SEO (vs Wispr Flow, vs Superwhisper, vs dettatura Apple) + press kit indie | |
-| 3.6 | TestFlight pubblico → lancio | |
+| 3.1 | Live Activity su Watch Smart Stack + CarPlay | ✅ `.supplementalActivityFamilies([.small])` |
+| 3.2 | Comandi vocali essenziali | ✅ `VoiceCommandProcessor` deterministico IT/EN (punto, virgola, a capo, nuovo paragrafo, punti interrogativo/esclamativo, due punti, punto e virgola), testato, toggle in Settings |
+| 3.3 | Paywall + IAP una tantum | ⏳ richiede App Store Connect (prodotti, prezzi): da fare al momento del lancio |
+| 3.4–3.6 | Materiale App Store, SEO, TestFlight | ⏳ attività di lancio, non di codice |
+
+**Extra implementati dalle killer feature** (oltre roadmap): Session Append (#4, finestra configurabile, default 5 min), statistiche "Tempo restituito" (#20, `DictationStatsStore` locale + sezione in Settings), vocabolario aptico (#UX §2.2, `HapticPlayer`), sezione Privacy verificabile in Settings.
+
+*(La tabella originale della Fase 3 è stata assorbita nella tabella di stato qui sopra.)*
 
 ### Dopo la V2 (backlog esplicito, non promesso)
 

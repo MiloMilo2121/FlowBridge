@@ -42,6 +42,9 @@ struct DictationLiveActivity: Widget {
                 PhaseSymbol(phase: context.state.phase)
             }
         }
+        // One implementation, four surfaces: the small family relays the
+        // activity to the Apple Watch Smart Stack and CarPlay for free.
+        .supplementalActivityFamilies([.small])
     }
 }
 

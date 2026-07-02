@@ -3,6 +3,8 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var coordinator: FlowBridgeCoordinator
+    @State private var showHistory = false
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
@@ -15,6 +17,19 @@ struct ContentView: View {
             .padding(20)
             .navigationTitle("FlowBridge")
             .toolbar {
+                ToolbarItemGroup(placement: .topBarLeading) {
+                    Button {
+                        showHistory = true
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         Task { await coordinator.copyLastTranscript() }
@@ -29,6 +44,12 @@ struct ContentView: View {
                         Image(systemName: "memorychip")
                     }
                 }
+            }
+            .sheet(isPresented: $showHistory) {
+                HistoryView()
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
             }
         }
     }

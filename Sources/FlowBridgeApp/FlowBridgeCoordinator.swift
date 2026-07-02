@@ -28,6 +28,9 @@ final class FlowBridgeCoordinator: ObservableObject {
     private let activityController = DictationActivityController()
     private let polisher = TranscriptPolisher.shared
     private var transcriptStore: TranscriptStore?
+    private var historyStore: TranscriptHistoryStore?
+    private var statsStore: DictationStatsStore?
+    private var toneStore: ToneContextStore?
     private var pendingCommandStore: PendingCommandStore?
     private var elapsedTask: Task<Void, Never>?
     private var maxDurationTask: Task<Void, Never>?
@@ -58,6 +61,9 @@ final class FlowBridgeCoordinator: ObservableObject {
     func bootstrap() async {
         NetworkGuard.install()
         transcriptStore = try? TranscriptStore()
+        historyStore = try? TranscriptHistoryStore()
+        statsStore = try? DictationStatsStore()
+        toneStore = try? ToneContextStore()
         pendingCommandStore = try? PendingCommandStore()
         lastTranscript = await transcriptStore?.latest()
         registerSystemIntegration()
@@ -164,6 +170,10 @@ final class FlowBridgeCoordinator: ObservableObject {
         await recorder.requestPermission()
     }
 
+    var history: TranscriptHistoryStore? { historyStore }
+    var stats: DictationStatsStore? { statsStore }
+    var toneContext: ToneContextStore? { toneStore }
+
     func copyLastTranscript() async {
         guard let text = lastTranscript?.text else { return }
         UIPasteboard.general.string = text
@@ -200,7 +210,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             statusMessage = "Live bridge active"
             startElapsedTimer(from: startedAt)
             startMaxDurationTimer()
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            HapticPlayer.listeningStarted()
             Task { await polisher.prewarm() }
         } catch {
             activityController.end(immediately: true)
@@ -212,6 +222,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         elapsedTask?.cancel()
         maxDurationTask?.cancel()
         recordingElapsed = nil
+        HapticPlayer.listeningStopped()
 
         let recordingStartedAt: Date
         if case .recording(let startedAt) = state {
@@ -230,20 +241,66 @@ final class FlowBridgeCoordinator: ObservableObject {
             )
 
             let record = try await transcriber.stopLiveTranscription(duration: duration)
-            let polishedText = await polisher.polish(record.text)
-            let finalRecord = polishedText == record.text ? record : record.polished(polishedText)
 
-            try await transcriptStore?.save(finalRecord)
-            lastTranscript = finalRecord
-            UIPasteboard.general.string = finalRecord.text
+            // Deterministic spoken commands first ("punto", "a capo", …),
+            // then the on-device polish with the current tone target. The
+            // engine's verbatim text always survives in rawText.
+            var workingText = record.text
+            if Self.voiceCommandsEnabled {
+                workingText = VoiceCommandProcessor.apply(to: workingText)
+            }
+            let tone = toneStore?.currentTone() ?? .neutral
+            workingText = await polisher.polish(workingText, tone: tone)
+            let finalRecord = workingText == record.text ? record : record.polished(workingText)
+
+            try? await historyStore?.add(finalRecord)
+            statsStore?.record(text: finalRecord.text, audioDuration: duration)
+
+            let delivered = sessionAppendedRecord(for: finalRecord) ?? finalRecord
+            try await transcriptStore?.save(delivered)
+            lastTranscript = delivered
+            UIPasteboard.general.string = delivered.text
             state = .ready
-            statusMessage = "Clipboard updated"
-            activityController.finish(transcriptPreview: finalRecord.text, startedAt: recordingStartedAt)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            statusMessage = delivered.id == finalRecord.id ? "Clipboard updated" : "Appended to previous dictation"
+            activityController.finish(transcriptPreview: delivered.text, startedAt: recordingStartedAt)
+            HapticPlayer.transcriptReady()
         } catch {
             activityController.finish(transcriptPreview: "", startedAt: recordingStartedAt, failed: true)
             fail(error)
         }
+    }
+
+    private static var voiceCommandsEnabled: Bool {
+        let defaults = try? SharedContainer.userDefaults()
+        return defaults?.object(forKey: FlowBridgeConstants.voiceCommandsEnabledKey) as? Bool ?? true
+    }
+
+    private static var sessionAppendWindow: TimeInterval {
+        let defaults = try? SharedContainer.userDefaults()
+        guard let value = defaults?.object(forKey: FlowBridgeConstants.sessionAppendWindowKey) as? Double else {
+            return FlowBridgeConstants.sessionAppendWindowDefault
+        }
+        return value
+    }
+
+    /// Session append: a dictation finished shortly after the previous one
+    /// continues it — the delivered transcript (clipboard/keyboard) is the
+    /// merge, while history keeps the individual takes.
+    private func sessionAppendedRecord(for record: TranscriptRecord) -> TranscriptRecord? {
+        let window = Self.sessionAppendWindow
+        guard window > 0,
+              let last = lastTranscript,
+              last.source == .microphone || last.source == .recovered,
+              record.createdAt.timeIntervalSince(last.createdAt) <= window else {
+            return nil
+        }
+
+        return TranscriptRecord(
+            text: last.text + " " + record.text,
+            language: record.language,
+            audioDuration: last.audioDuration + record.audioDuration,
+            source: .microphone
+        )
     }
 
     /// Streams the latest live snapshot into the Live Activity while

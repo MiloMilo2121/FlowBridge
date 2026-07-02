@@ -31,6 +31,36 @@ public enum FlowBridgeConstants {
     /// dismissing itself.
     public static let liveActivityIdleDismissSeconds: TimeInterval = 6
 
+    /// UserDefaults (App Group) key holding the user vocabulary (JSON).
+    public static let vocabularyKey = "userVocabulary"
+    /// File name of the transcript history JSON in the App Group container.
+    public static let historyFileName = "TranscriptHistory.json"
+    /// Maximum records kept in the local history.
+    public static let historyCapacity = 200
+    /// UserDefaults (App Group) key holding cumulative dictation stats (JSON).
+    public static let statsKey = "dictationStats"
+    /// UserDefaults (App Group) key holding the latest tone hint from the
+    /// keyboard (JSON).
+    public static let toneHintKey = "toneHint"
+    /// UserDefaults key: default tone when no fresh hint exists.
+    public static let defaultToneKey = "defaultTone"
+    /// Tone hints older than this are ignored.
+    public static let toneHintMaxAgeSeconds: TimeInterval = 600
+    /// UserDefaults key: apply spoken punctuation/newline commands.
+    public static let voiceCommandsEnabledKey = "voiceCommandsEnabled"
+    /// UserDefaults key: window (seconds) in which a new dictation is
+    /// appended to the previous one. 0 disables session append.
+    public static let sessionAppendWindowKey = "sessionAppendWindow"
+    public static let sessionAppendWindowDefault: TimeInterval = 300
+    /// Words-per-minute baselines used for the "time given back" stat:
+    /// average mobile typing ~38 WPM vs speaking ~150 WPM.
+    public static let typingWordsPerMinute: Double = 38
+    /// Folder (in the app's Application Support) where an optional
+    /// higher-accuracy Whisper model can be installed for the Precision
+    /// engine. No runtime download: the folder is populated at build time or
+    /// sideloaded explicitly by the user.
+    public static let precisionModelFolderName = "PrecisionModel"
+
     /// Keyboard live updates are Darwin-notification driven. The legacy
     /// 250ms polling loop is kept behind this flag as a fallback; when the
     /// flag is off the keyboard still runs a slow safety refresh so a missed

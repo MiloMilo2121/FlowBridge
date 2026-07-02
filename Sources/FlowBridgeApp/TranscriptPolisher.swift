@@ -58,13 +58,31 @@ actor TranscriptPolisher {
         session?.prewarm()
     }
 
+    private static func toneClause(for tone: ToneProfile) -> String {
+        switch tone {
+        case .neutral:
+            return ""
+        case .casual:
+            return " Target: a chat message — keep it relaxed, drop the trailing period on the final sentence."
+        case .formal:
+            return " Target: an email or document — complete sentences and standard punctuation."
+        }
+    }
+
     /// Returns the polished text, or the input unchanged on any failure.
-    func polish(_ text: String) async -> String {
+    func polish(_ text: String, tone: ToneProfile = .neutral) async -> String {
         guard isEnabled, isAvailable, !text.isEmpty else { return text }
 
         // One fresh session per transcript: no history accumulation, and the
         // 4096-token window (instructions + input + output) stays predictable.
-        let session = self.session ?? LanguageModelSession(instructions: Self.instructions)
+        // The prewarmed session carries the neutral instructions; tone is
+        // appended per call, so a non-neutral tone builds a fresh session.
+        let session: LanguageModelSession
+        if tone == .neutral, let prewarmed = self.session {
+            session = prewarmed
+        } else {
+            session = LanguageModelSession(instructions: Self.instructions + Self.toneClause(for: tone))
+        }
         self.session = nil
 
         do {
@@ -84,6 +102,6 @@ actor TranscriptPolisher {
 #else
     var isAvailable: Bool { false }
     func prewarm() {}
-    func polish(_ text: String) async -> String { text }
+    func polish(_ text: String, tone: ToneProfile = .neutral) async -> String { text }
 #endif
 }
