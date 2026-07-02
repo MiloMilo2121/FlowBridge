@@ -31,8 +31,11 @@ targets:
     platform: iOS
     sources:
       - path: Sources/FlowBridgeApp
+      - path: Sources/FlowBridgeAppIntents
     resources:
       - path: Resources/WhisperModels
+        optional: true
+      - path: Resources/Benchmark
         optional: true
     dependencies:
       - target: FlowBridgeShared
@@ -40,6 +43,7 @@ targets:
         product: WhisperKit
       - target: FlowBridgeKeyboard
       - target: FlowBridgeShareExtension
+      - target: FlowBridgeWidgets
     entitlements:
       path: Entitlements/FlowBridgeApp.entitlements
     info:
@@ -49,6 +53,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSMicrophoneUsageDescription: FlowBridge records speech locally and transcribes it on this device.
+        NSSupportsLiveActivities: true
         UIApplicationSupportsIndirectInputEvents: true
         UIBackgroundModes:
           - audio
@@ -111,6 +116,27 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.marcomilanello.flowbridge.share
+  FlowBridgeWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Sources/FlowBridgeWidgets
+      - path: Sources/FlowBridgeAppIntents
+    dependencies:
+      - target: FlowBridgeShared
+    entitlements:
+      path: Entitlements/FlowBridgeWidgets.entitlements
+    info:
+      path: Configuration/FlowBridgeWidgets-Info.plist
+      properties:
+        CFBundleDisplayName: FlowBridge Widgets
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.marcomilanello.flowbridge.widgets
   FlowBridgeSharedTests:
     type: bundle.unit-test
     platform: iOS

@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 public final class NetworkDeniedURLProtocol: URLProtocol {
     public override class func canInit(with request: URLRequest) -> Bool {
         guard let scheme = request.url?.scheme?.lowercased() else { return false }

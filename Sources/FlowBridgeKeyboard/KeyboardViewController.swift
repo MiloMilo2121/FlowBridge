@@ -6,6 +6,7 @@ final class KeyboardViewController: UIInputViewController {
     private let insertButton = UIButton(type: .system)
     private let liveButton = UIButton(type: .system)
     private var liveTimer: Timer?
+    private var darwinObserver: DarwinNotificationObserver?
     private var liveModeEnabled = true
     private var lastInsertedText = ""
     private var lastSessionID: UUID?
@@ -22,13 +23,12 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         refresh()
-        startLivePolling()
+        startLiveUpdates()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        liveTimer?.invalidate()
-        liveTimer = nil
+        stopLiveUpdates()
     }
 
     private func buildInterface() {
@@ -103,11 +103,34 @@ final class KeyboardViewController: UIInputViewController {
         textDocumentProxy.deleteBackward()
     }
 
-    private func startLivePolling() {
+    /// Live updates are push-based: the app posts a Darwin notification after
+    /// every snapshot write and the keyboard reloads on delivery. A timer
+    /// remains as the fallback path — at the legacy 250ms cadence when the
+    /// compatibility flag is on, otherwise as a slow safety refresh that
+    /// covers a missed notification without burning CPU.
+    private func startLiveUpdates() {
+        darwinObserver = DarwinNotificationObserver(
+            name: FlowBridgeConstants.liveTranscriptDidChangeDarwinName
+        ) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.applyLiveSnapshotIfNeeded()
+            }
+        }
+
+        let interval = FlowBridgeConstants.keyboardLegacyPollingEnabled
+            ? FlowBridgeConstants.keyboardLegacyPollingInterval
+            : FlowBridgeConstants.keyboardSafetyRefreshInterval
+
         liveTimer?.invalidate()
-        liveTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+        liveTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             self?.applyLiveSnapshotIfNeeded()
         }
+    }
+
+    private func stopLiveUpdates() {
+        darwinObserver = nil
+        liveTimer?.invalidate()
+        liveTimer = nil
     }
 
     private func applyLiveSnapshotIfNeeded() {

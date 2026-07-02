@@ -19,6 +19,12 @@ actor FlowBridgeRecorder {
         }
     }
 
+    /// Whether recording can start without showing a permission prompt —
+    /// the prerequisite for background starts, where no prompt can appear.
+    func hasGrantedPermission() -> Bool {
+        AVAudioApplication.shared.recordPermission == .granted
+    }
+
     func start() async throws {
         guard recorder == nil else {
             throw FlowBridgeError.alreadyRecording

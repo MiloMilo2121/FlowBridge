@@ -4,12 +4,15 @@ import FlowBridgeShared
 import Foundation
 import WhisperKit
 
-actor WhisperTranscriber {
+actor WhisperEngine: TranscriptionEngine {
     private var whisperKit: WhisperKit?
     private var unloadTask: Task<Void, Never>?
     private var streamTranscriber: AudioStreamTranscriber?
     private var streamTask: Task<Void, Never>?
     private var liveSessionID: UUID?
+    private var safetyBuffer: AudioSafetyBuffer?
+    private var safetyFlushTask: Task<Void, Never>?
+    private var lastFlushedSampleCount = 0
 
     func transcribe(recording: RecordedAudio, source: TranscriptRecord.Source) async throws -> TranscriptRecord {
         let kit = try await model()
@@ -142,6 +145,8 @@ actor WhisperTranscriber {
                 )
             }
         }
+
+        startSafetyFlush(sessionID: sessionID, audioProcessor: kit.audioProcessor)
     }
 
     func stopLiveTranscription(duration: TimeInterval) async throws -> TranscriptRecord {
@@ -169,6 +174,12 @@ actor WhisperTranscriber {
                     isFinal: true
                 )
             )
+            // Streaming produced nothing. If real audio was captured, keep the
+            // safety file so the next launch can retry via file transcription;
+            // sub-second recordings hold no speech and are dropped.
+            await stopSafetyFlush(
+                keepFileForRecovery: duration >= FlowBridgeConstants.safetyBufferMinimumRecoverySeconds
+            )
             throw FlowBridgeError.emptyTranscript
         }
 
@@ -182,6 +193,7 @@ actor WhisperTranscriber {
                 isFinal: true
             )
         )
+        await stopSafetyFlush(keepFileForRecovery: false)
         scheduleIdleUnload()
 
         return TranscriptRecord(
@@ -195,6 +207,9 @@ actor WhisperTranscriber {
     func unload() async {
         unloadTask?.cancel()
         unloadTask = nil
+        // An unload during a live session is an interruption (memory pressure,
+        // teardown): keep the safety file so the dictation can be recovered.
+        await stopSafetyFlush(keepFileForRecovery: liveSessionID != nil)
         streamTranscriber?.stopStreamTranscription()
         streamTask?.cancel()
         streamTask = nil
@@ -203,6 +218,59 @@ actor WhisperTranscriber {
         guard let whisperKit else { return }
         await whisperKit.unloadModels()
         self.whisperKit = nil
+    }
+
+    private func startSafetyFlush(sessionID: UUID, audioProcessor: any AudioProcessing) {
+        lastFlushedSampleCount = 0
+        guard let directory = try? AudioSafetyBuffer.defaultDirectory() else {
+            safetyBuffer = nil
+            return
+        }
+
+        let buffer = AudioSafetyBuffer(directory: directory)
+        safetyBuffer = buffer
+        safetyFlushTask = Task {
+            try? await buffer.begin(sessionID: sessionID)
+            while !Task.isCancelled {
+                await flushSafetySamples(from: audioProcessor, into: buffer)
+                try? await Task.sleep(for: .seconds(FlowBridgeConstants.safetyBufferFlushInterval))
+            }
+        }
+    }
+
+    private func stopSafetyFlush(keepFileForRecovery: Bool) async {
+        safetyFlushTask?.cancel()
+        safetyFlushTask = nil
+
+        guard let buffer = safetyBuffer else { return }
+        if let audioProcessor = whisperKit?.audioProcessor {
+            await flushSafetySamples(from: audioProcessor, into: buffer)
+        }
+        if keepFileForRecovery {
+            await buffer.closeKeepingFile()
+        } else {
+            await buffer.completeAndRemove()
+        }
+        safetyBuffer = nil
+        lastFlushedSampleCount = 0
+    }
+
+    private func flushSafetySamples(from audioProcessor: any AudioProcessing, into buffer: AudioSafetyBuffer) async {
+        let samples = audioProcessor.audioSamples
+        let count = samples.count
+
+        if count < lastFlushedSampleCount {
+            // The stream purged already-processed samples. Skipping the purged
+            // range leaves a gap in the safety file instead of duplicating
+            // audio; a gapped recovery beats a corrupted one.
+            lastFlushedSampleCount = count
+            return
+        }
+
+        guard count > lastFlushedSampleCount else { return }
+        let newSamples = Array(samples[lastFlushedSampleCount..<count])
+        lastFlushedSampleCount = count
+        try? await buffer.append(newSamples)
     }
 
     private func model() async throws -> WhisperKit {
