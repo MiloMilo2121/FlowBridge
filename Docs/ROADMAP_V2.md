@@ -3,6 +3,8 @@
 > Stato: **proposta** · Data: 2 luglio 2026 · Base: FlowBridge V1 completata (dettatura offline con WhisperKit, keyboard extension, App Intent per Action Button/Back Tap)
 >
 > Principio guida della V2: **poche cose, fatte benissimo, tutte in locale.** Nessun cloud, mai. Il codice V1 si conserva integralmente: la V2 è additiva, non una riscrittura.
+>
+> Documento correlato: [KILLER_FEATURES_V2.md](KILLER_FEATURES_V2.md) — le 20 killer feature e la specifica UX super premium che riempiono a livello feature le fasi di questa roadmap.
 
 ---
 
