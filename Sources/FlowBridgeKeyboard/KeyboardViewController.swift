@@ -23,6 +23,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         refresh()
+        publishToneHint()
         startLiveUpdates()
     }
 
@@ -44,6 +45,11 @@ final class KeyboardViewController: UIInputViewController {
         insertButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
         insertButton.addTarget(self, action: #selector(insertLatestTranscript), for: .touchUpInside)
 
+        let sendButton = UIButton(type: .system)
+        sendButton.setImage(UIImage(systemName: "arrow.turn.down.left"), for: .normal)
+        sendButton.addTarget(self, action: #selector(insertLatestTranscriptAndReturn), for: .touchUpInside)
+        sendButton.widthAnchor.constraint(equalToConstant: 54).isActive = true
+
         liveButton.setImage(UIImage(systemName: "waveform.circle.fill"), for: .normal)
         liveButton.addTarget(self, action: #selector(toggleLiveMode), for: .touchUpInside)
 
@@ -55,7 +61,7 @@ final class KeyboardViewController: UIInputViewController {
         nextKeyboardButton.setImage(UIImage(systemName: "globe"), for: .normal)
         nextKeyboardButton.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
 
-        let buttonRow = UIStackView(arrangedSubviews: [nextKeyboardButton, liveButton, insertButton, deleteButton])
+        let buttonRow = UIStackView(arrangedSubviews: [nextKeyboardButton, liveButton, insertButton, sendButton, deleteButton])
         buttonRow.axis = .horizontal
         buttonRow.alignment = .fill
         buttonRow.distribution = .fill
@@ -92,6 +98,30 @@ final class KeyboardViewController: UIInputViewController {
         refresh()
         guard let text = TranscriptStore.latest()?.text, !text.isEmpty else { return }
         textDocumentProxy.insertText(text)
+    }
+
+    /// Insert the transcript and hit return — in most chat apps the return
+    /// key sends, so one tap goes from clipboard to sent message.
+    @objc private func insertLatestTranscriptAndReturn() {
+        refresh()
+        guard let text = TranscriptStore.latest()?.text, !text.isEmpty else { return }
+        textDocumentProxy.insertText(text)
+        textDocumentProxy.insertText("\n")
+    }
+
+    /// Tone from the active field's traits (public API; keyboards cannot see
+    /// the host app's identity): a "send" return key is a chat box → casual;
+    /// an email-address field belongs to a mail flow → formal.
+    private func publishToneHint() {
+        let profile: ToneProfile
+        if textDocumentProxy.returnKeyType == .send {
+            profile = .casual
+        } else if textDocumentProxy.keyboardType == .emailAddress {
+            profile = .formal
+        } else {
+            profile = .neutral
+        }
+        (try? ToneContextStore())?.writeHint(ToneHint(profile: profile))
     }
 
     @objc private func toggleLiveMode() {
@@ -156,18 +186,32 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
 
-        for _ in lastInsertedText {
-            textDocumentProxy.deleteBackward()
-        }
-
-        if !nextText.isEmpty {
-            textDocumentProxy.insertText(nextText)
-        }
-
+        applyIncrementalDiff(from: lastInsertedText, to: nextText)
         lastInsertedText = nextText
 
         if snapshot.isFinal {
             completedSessionID = snapshot.sessionID
+        }
+    }
+
+    /// Replaces only the unstable tail instead of delete-all/reinsert: the
+    /// committed prefix never flickers and long dictations stay smooth.
+    private func applyIncrementalDiff(from old: String, to new: String) {
+        let oldChars = Array(old)
+        let newChars = Array(new)
+
+        var commonPrefix = 0
+        let limit = min(oldChars.count, newChars.count)
+        while commonPrefix < limit, oldChars[commonPrefix] == newChars[commonPrefix] {
+            commonPrefix += 1
+        }
+
+        for _ in 0..<(oldChars.count - commonPrefix) {
+            textDocumentProxy.deleteBackward()
+        }
+
+        if commonPrefix < newChars.count {
+            textDocumentProxy.insertText(String(newChars[commonPrefix...]))
         }
     }
 }

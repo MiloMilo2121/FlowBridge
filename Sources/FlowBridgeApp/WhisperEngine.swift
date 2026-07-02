@@ -14,6 +14,12 @@ actor WhisperEngine: TranscriptionEngine {
     private var safetyFlushTask: Task<Void, Never>?
     private var lastFlushedSampleCount = 0
 
+    private let variant: WhisperModelVariant
+
+    init(variant: WhisperModelVariant = .bundled) {
+        self.variant = variant
+    }
+
     func transcribe(recording: RecordedAudio, source: TranscriptRecord.Source) async throws -> TranscriptRecord {
         let kit = try await model()
         let options = DecodingOptions(
@@ -27,6 +33,7 @@ actor WhisperEngine: TranscriptionEngine {
             skipSpecialTokens: true,
             withoutTimestamps: true,
             wordTimestamps: false,
+            promptTokens: Self.vocabularyPromptTokens(for: kit),
             concurrentWorkerCount: 1,
             chunkingStrategy: .vad
         )
@@ -93,6 +100,7 @@ actor WhisperEngine: TranscriptionEngine {
             skipSpecialTokens: true,
             withoutTimestamps: true,
             wordTimestamps: false,
+            promptTokens: Self.vocabularyPromptTokens(for: kit),
             concurrentWorkerCount: 1,
             chunkingStrategy: .vad
         )
@@ -273,13 +281,26 @@ actor WhisperEngine: TranscriptionEngine {
         try? await buffer.append(newSamples)
     }
 
+    /// The user's vocabulary as a Whisper prompt bias: the terms become
+    /// decoding context, nudging recognition toward them — the feature the
+    /// system dictation and SpeechTranscriber both lack.
+    private static func vocabularyPromptTokens(for kit: WhisperKit) -> [Int]? {
+        guard let bias = (try? VocabularyStore())?.promptBiasText(),
+              let tokenizer = kit.tokenizer else {
+            return nil
+        }
+        let tokens = tokenizer.encode(text: " " + bias)
+            .filter { $0 < tokenizer.specialTokens.specialTokenBegin }
+        return tokens.isEmpty ? nil : tokens
+    }
+
     private func model() async throws -> WhisperKit {
         if let whisperKit {
             scheduleIdleUnload()
             return whisperKit
         }
 
-        let modelFolder = try bundledModelFolder()
+        let modelFolder = try WhisperModelLocator.folder(for: variant)
         let compute = ModelComputeOptions(
             melCompute: .cpuAndGPU,
             audioEncoderCompute: .cpuAndNeuralEngine,
@@ -302,34 +323,6 @@ actor WhisperEngine: TranscriptionEngine {
         whisperKit = kit
         scheduleIdleUnload()
         return kit
-    }
-
-    private func bundledModelFolder() throws -> URL {
-        guard let url = Bundle.main.url(
-            forResource: FlowBridgeConstants.modelFolderName,
-            withExtension: nil,
-            subdirectory: FlowBridgeConstants.modelResourceSubdirectory
-        ) else {
-            throw FlowBridgeError.modelMissing(
-                "\(FlowBridgeConstants.modelResourceSubdirectory)/\(FlowBridgeConstants.modelFolderName)"
-            )
-        }
-
-        let requiredFiles = ["MelSpectrogram", "AudioEncoder", "TextDecoder"]
-        for file in requiredFiles {
-            let compiled = url.appendingPathComponent(file).appendingPathExtension("mlmodelc")
-            let package = url.appendingPathComponent(file).appendingPathExtension("mlpackage")
-            if !FileManager.default.fileExists(atPath: compiled.path),
-               !FileManager.default.fileExists(atPath: package.path) {
-                throw FlowBridgeError.modelMissing(url.path)
-            }
-        }
-
-        if !FileManager.default.fileExists(atPath: url.appendingPathComponent("tokenizer.json").path) {
-            throw FlowBridgeError.modelMissing(url.appendingPathComponent("tokenizer.json").path)
-        }
-
-        return url
     }
 
     private func scheduleIdleUnload() {
