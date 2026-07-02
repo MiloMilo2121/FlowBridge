@@ -49,6 +49,7 @@ public final class LiveTranscriptStore: @unchecked Sendable {
     public func write(_ snapshot: LiveTranscriptSnapshot) throws {
         let data = try encoder.encode(snapshot)
         defaults.set(data, forKey: Self.key)
+        DarwinNotifier.post(FlowBridgeConstants.liveTranscriptDidChangeDarwinName)
     }
 
     public func latest() -> LiveTranscriptSnapshot? {

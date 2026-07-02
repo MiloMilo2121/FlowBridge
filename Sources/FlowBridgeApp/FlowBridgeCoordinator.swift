@@ -19,7 +19,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     @Published private(set) var recordingElapsed: TimeInterval?
 
     private let recorder = FlowBridgeRecorder()
-    private let transcriber = WhisperTranscriber()
+    private let transcriber: any TranscriptionEngine = WhisperEngine()
     private var transcriptStore: TranscriptStore?
     private var pendingCommandStore: PendingCommandStore?
     private var elapsedTask: Task<Void, Never>?
@@ -51,6 +51,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         transcriptStore = try? TranscriptStore()
         pendingCommandStore = try? PendingCommandStore()
         lastTranscript = await transcriptStore?.latest()
+        await recoverInterruptedDictationIfNeeded()
         await consumePendingCommand()
         await processQueuedAudioIfNeeded()
     }
@@ -174,6 +175,40 @@ final class FlowBridgeCoordinator: ObservableObject {
             statusMessage = "Clipboard updated"
         } catch {
             fail(error)
+        }
+    }
+
+    private func recoverInterruptedDictationIfNeeded() async {
+        guard case .idle = state else { return }
+        guard let directory = try? AudioSafetyBuffer.defaultDirectory() else { return }
+
+        let pending = AudioSafetyBuffer.pendingRecordings(in: directory)
+        guard !pending.isEmpty else { return }
+
+        for recording in pending {
+            guard recording.duration >= FlowBridgeConstants.safetyBufferMinimumRecoverySeconds else {
+                AudioSafetyBuffer.remove(recording)
+                continue
+            }
+
+            state = .transcribing
+            statusMessage = "Recovering interrupted dictation"
+
+            do {
+                let audio = RecordedAudio(url: recording.url, duration: recording.duration)
+                let record = try await transcriber.transcribe(recording: audio, source: .recovered)
+                try await transcriptStore?.save(record)
+                lastTranscript = record
+                UIPasteboard.general.string = record.text
+                state = .ready
+                statusMessage = "Recovered interrupted dictation"
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } catch {
+                state = .idle
+                statusMessage = "Interrupted dictation could not be recovered"
+            }
+
+            AudioSafetyBuffer.remove(recording)
         }
     }
 

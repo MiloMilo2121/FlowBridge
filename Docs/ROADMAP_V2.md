@@ -262,15 +262,17 @@ Il prodotto che vince è quello con **il percorso idea→testo-pulito più corto
 
 > Stime per uno sviluppatore singolo con AI assist. Ogni fase termina con una build TestFlight utilizzabile quotidianamente ("dogfood gate"): se la fase non migliora l'uso quotidiano reale, non si passa alla successiva.
 
-### Fase 0 — Fondamenta *(1–2 settimane)*
+### Fase 0 — Fondamenta *(1–2 settimane)* — ✅ implementata
 
-| # | Task | Note |
+| # | Task | Stato |
 |---|---|---|
-| 0.1 | Protocollo `TranscriptionEngine`; `WhisperTranscriber` → `WhisperEngine` | Zero regressioni: la V1 continua a funzionare identica |
-| 0.2 | Darwin notifications app↔tastiera (sostituisce polling) | Mantenere il polling come fallback dietro flag |
-| 0.3 | `AudioSafetyBuffer`: registrazione sempre su disco + recovery al riavvio | Prerequisito della promessa di affidabilità |
-| 0.4 | Bench harness locale: WER/latency su set di frasi italiane registrate | Serve per decidere il default engine coi *nostri* dati, non coi benchmark altrui |
-| 0.5 | Bump `maxRecordingSeconds` 90 → 600 con gestione memoria verificata | Il limite attuale uccide il job "bozze lunghe" |
+| 0.1 | Protocollo `TranscriptionEngine`; `WhisperTranscriber` → `WhisperEngine` | ✅ `TranscriptionEngine.swift`, `WhisperEngine.swift` |
+| 0.2 | Darwin notifications app↔tastiera (sostituisce polling) | ✅ `DarwinNotifier.swift`; polling legacy dietro `keyboardLegacyPollingEnabled`, safety refresh a 2s |
+| 0.3 | `AudioSafetyBuffer`: registrazione sempre su disco + recovery al riavvio | ✅ WAV crash-safe nell'App Group, flush 1s, recovery in `bootstrap()` con source `.recovered` |
+| 0.4 | Bench harness locale: WER/latency su set di frasi italiane registrate | ✅ `WERCalculator` (testato) + `BenchmarkHarness` su `Resources/Benchmark` |
+| 0.5 | Bump `maxRecordingSeconds` 90 → 600 con gestione memoria verificata | ✅ costante aggiornata; budget memoria documentato in ARCHITECTURE.md (~38MB stream + ~19MB WAV) |
+
+*Da fare su device (non possibile in questo ambiente): verifica in Xcode dei target app/keyboard, dogfood del recovery e degli update Darwin, registrazione del set di benchmark italiano. Gli spike `AudioRecordingIntent` e Whisper Mode restano attività da device reale prima della Fase 1.*
 
 ### Fase 1 — Il cuore della V2: zero frizione *(3–4 settimane)* → **V2.0**
 

@@ -4,8 +4,9 @@ FlowBridge is a local-only iOS dictation utility. It records instantly, runs Whi
 
 ## Architecture
 
-- The main app is the only target that links WhisperKit or loads CoreML models.
-- The keyboard extension never records audio and never loads Whisper. It reads the last transcript from the App Group and inserts it through `UITextDocumentProxy`.
+- The main app is the only target that links WhisperKit or loads CoreML models. Engines are abstracted behind the `TranscriptionEngine` protocol; `WhisperEngine` is the current implementation.
+- The keyboard extension never records audio and never loads Whisper. It reads the last transcript from the App Group and inserts it through `UITextDocumentProxy`. Live updates are pushed via Darwin notifications; a slow safety-refresh timer (or the legacy 250ms polling behind a flag) is the fallback.
+- Live sessions stream audio into a crash-safe WAV in the App Group (`AudioSafetyBuffer`). Interrupted dictations are recovered and transcribed on the next launch; completed ones delete the file.
 - Live mode uses the main app for microphone + Whisper and the keyboard extension for insertion. Keep the FlowBridge keyboard active in the destination app while recording.
 - The share extension only queues audio files into the App Group and opens the app. The app performs transcription to avoid extension memory pressure.
 - The App Intent opens the app and writes a pending `toggleRecording` command so Action Button and Back Tap shortcuts can trigger the same recording pipeline.
@@ -31,7 +32,7 @@ FlowBridge is a local-only iOS dictation utility. It records instantly, runs Whi
    ./scripts/fetch-whisper-small.sh
    ```
 
-4. Regenerate the Xcode project after editing `project.yml`:
+4. Regenerate the Xcode project after editing `project.yml` **or after adding/renaming source files** (sources are folder-based, so the committed project only knows the files that existed at generation time):
 
    ```sh
    xcodegen generate

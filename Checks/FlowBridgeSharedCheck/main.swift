@@ -39,4 +39,30 @@ try liveStore.write(liveSnapshot)
 require(liveStore.latest() == liveSnapshot, "Live transcript was not persisted")
 require(LiveTranscriptStore.latest(defaults: defaults) == liveSnapshot, "Synchronous live read failed")
 
+let wer = WERCalculator.evaluate(
+    reference: "il gatto dorme sul divano",
+    hypothesis: "il cane dorme divano"
+)
+require(wer.substitutions == 1, "Expected one substitution, got \(wer.substitutions)")
+require(wer.deletions == 1, "Expected one deletion, got \(wer.deletions)")
+require(wer.insertions == 0, "Expected zero insertions, got \(wer.insertions)")
+require(wer.errorRate == 0.4, "Unexpected WER: \(wer.errorRate)")
+
+let bufferDirectory = FileManager.default.temporaryDirectory
+    .appendingPathComponent("FlowBridgeSharedCheck-SafetyBuffer-\(UUID().uuidString)", isDirectory: true)
+try FileManager.default.createDirectory(at: bufferDirectory, withIntermediateDirectories: true)
+defer { try? FileManager.default.removeItem(at: bufferDirectory) }
+
+let safetyBuffer = AudioSafetyBuffer(directory: bufferDirectory, sampleRate: 16_000)
+try await safetyBuffer.begin(sessionID: UUID())
+try await safetyBuffer.append([Float](repeating: 0.1, count: 16_000))
+await safetyBuffer.closeKeepingFile()
+
+let pending = AudioSafetyBuffer.pendingRecordings(in: bufferDirectory, sampleRate: 16_000)
+require(pending.count == 1, "Expected one pending recording, got \(pending.count)")
+require(abs(pending[0].duration - 1.0) < 0.001, "Unexpected pending duration: \(pending[0].duration)")
+
+AudioSafetyBuffer.remove(pending[0])
+require(AudioSafetyBuffer.pendingRecordings(in: bufferDirectory).isEmpty, "Pending recording was not removed")
+
 print("FlowBridgeSharedCheck passed")

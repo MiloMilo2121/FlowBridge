@@ -14,9 +14,11 @@ public enum SharedContainer {
         appGroupIdentifier: String = FlowBridgeConstants.appGroupIdentifier,
         allowTemporaryFallback: Bool = false
     ) throws -> URL {
+        #if canImport(Darwin)
         if let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) {
             return url
         }
+        #endif
 
         if allowTemporaryFallback {
             let url = FileManager.default.temporaryDirectory.appendingPathComponent("FlowBridgeShared", isDirectory: true)

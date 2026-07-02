@@ -4,6 +4,9 @@ public struct TranscriptRecord: Codable, Equatable, Identifiable, Sendable {
     public enum Source: String, Codable, Sendable {
         case microphone
         case sharedAudio
+        /// Rebuilt from the crash-safe audio buffer after an interrupted
+        /// live session (see `AudioSafetyBuffer`).
+        case recovered
     }
 
     public let id: UUID
