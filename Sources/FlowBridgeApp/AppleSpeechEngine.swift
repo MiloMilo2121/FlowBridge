@@ -260,10 +260,14 @@ actor AppleSpeechEngine: TranscriptionEngine {
         input.installTap(onBus: 0, bufferSize: 4_096, format: format) { buffer, _ in
             continuation.yield(AnalyzerInput(buffer: buffer))
 
-            if let safetyBuffer,
-               let channel = buffer.floatChannelData?.pointee {
-                let samples = Array(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
-                Task { try? await safetyBuffer.append(samples) }
+            if let channel = buffer.floatChannelData?.pointee {
+                let frameCount = Int(buffer.frameLength)
+                AudioLevelMeter.shared.ingest(samples: channel, count: frameCount)
+
+                if let safetyBuffer {
+                    let samples = Array(UnsafeBufferPointer(start: channel, count: frameCount))
+                    Task { try? await safetyBuffer.append(samples) }
+                }
             }
         }
 

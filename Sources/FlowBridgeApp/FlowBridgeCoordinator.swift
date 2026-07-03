@@ -18,15 +18,46 @@ final class FlowBridgeCoordinator: ObservableObject {
         case failed(String)
     }
 
+    /// The raw→polished transformation of the take that just finished — the
+    /// payoff moment the transcript panel animates. Nil when polish left the
+    /// text untouched.
+    struct PolishReveal: Equatable {
+        let raw: String
+        let polished: String
+        /// Words removed by the polish (negative when it added words).
+        let wordsDelta: Int
+
+        init?(record: TranscriptRecord) {
+            guard let raw = record.rawText, raw != record.text else { return nil }
+            self.raw = raw
+            self.polished = record.text
+            let rawWords = raw.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
+            let polishedWords = record.text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
+            self.wordsDelta = rawWords - polishedWords
+        }
+    }
+
     @Published private(set) var state: State = .idle
     @Published private(set) var lastTranscript: TranscriptRecord?
     @Published private(set) var statusMessage: String?
     @Published private(set) var recordingElapsed: TimeInterval?
+    /// Live words as they stream in, for the in-app transcript view.
+    @Published private(set) var liveTranscript: LiveTranscriptSnapshot?
+    /// Set when a finished take was visibly improved by the polisher.
+    @Published private(set) var polishReveal: PolishReveal?
+    /// "Time given back" total, refreshed after every session (the ticker
+    /// under the Orb counts up to it).
+    @Published private(set) var timeSavedMinutes: Double = 0
+    /// Consecutive dictation days, and whether the last session opened a
+    /// new day (drives the streak celebration).
+    @Published private(set) var streakDays: Int = 0
+    @Published private(set) var isNewStreakDay: Bool = false
 
     private let recorder = FlowBridgeRecorder()
     private let transcriber: any TranscriptionEngine = EngineFactory.makeCurrent()
     private let activityController = DictationActivityController()
     private let polisher = TranscriptPolisher.shared
+    private let recordingFeedback = RecordingFeedbackDriver()
     private var transcriptStore: TranscriptStore?
     private var historyStore: TranscriptHistoryStore?
     private var statsStore: DictationStatsStore?
@@ -34,6 +65,8 @@ final class FlowBridgeCoordinator: ObservableObject {
     private var pendingCommandStore: PendingCommandStore?
     private var elapsedTask: Task<Void, Never>?
     private var maxDurationTask: Task<Void, Never>?
+    private var islandTask: Task<Void, Never>?
+    private var lastSentIslandState: DictationActivityAttributes.ContentState?
     private var memoryWarningObserver: NSObjectProtocol?
     private var commandObserver: DarwinNotificationObserver?
     private var liveSnapshotObserver: DarwinNotificationObserver?
@@ -53,6 +86,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     deinit {
         elapsedTask?.cancel()
         maxDurationTask?.cancel()
+        islandTask?.cancel()
         if let memoryWarningObserver {
             NotificationCenter.default.removeObserver(memoryWarningObserver)
         }
@@ -66,10 +100,17 @@ final class FlowBridgeCoordinator: ObservableObject {
         toneStore = try? ToneContextStore()
         pendingCommandStore = try? PendingCommandStore()
         lastTranscript = await transcriptStore?.latest()
+        refreshStatsSummary()
         registerSystemIntegration()
         await recoverInterruptedDictationIfNeeded()
         await consumePendingCommand()
         await processQueuedAudioIfNeeded()
+    }
+
+    private func refreshStatsSummary() {
+        guard let statsStore else { return }
+        timeSavedMinutes = statsStore.stats().timeSavedMinutes
+        streakDays = statsStore.currentStreak()
     }
 
     /// Wires App Intents and cross-process wakeups to this coordinator.
@@ -95,15 +136,23 @@ final class FlowBridgeCoordinator: ObservableObject {
             }
         }
 
-        // Mirror live transcript snapshots into the Live Activity so the
-        // Dynamic Island shows the words as they stream.
+        // Live transcript snapshots feed the in-app streaming view; the
+        // Dynamic Island reads the store on its own fixed tick instead, so
+        // one combined update carries text + waveform levels.
         liveSnapshotObserver = DarwinNotificationObserver(
             name: FlowBridgeConstants.liveTranscriptDidChangeDarwinName
         ) {
             Task { @MainActor in
-                FlowBridgeCoordinator.shared.pushLiveSnapshotToActivity()
+                FlowBridgeCoordinator.shared.handleLiveSnapshot()
             }
         }
+    }
+
+    private func handleLiveSnapshot() {
+        guard case .recording = state else { return }
+        guard let snapshot = LiveTranscriptStore.latest(), snapshot.isRecording else { return }
+        liveTranscript = snapshot
+        recordingFeedback.noteSnapshot(snapshot)
     }
 
     /// Start requested by `StartDictationIntent` while the app may be
@@ -201,6 +250,10 @@ final class FlowBridgeCoordinator: ObservableObject {
             let sessionID = UUID()
             state = .warming
             statusMessage = "Loading local engine"
+            polishReveal = nil
+            liveTranscript = nil
+            AudioLevelMeter.shared.reset()
+            HapticPlayer.prepare()
             // The Live Activity goes up before the engine warms: the island
             // responds to the trigger instantly, and background starts via
             // AudioRecordingIntent require a visible activity to keep audio.
@@ -210,17 +263,62 @@ final class FlowBridgeCoordinator: ObservableObject {
             statusMessage = "Live bridge active"
             startElapsedTimer(from: startedAt)
             startMaxDurationTimer()
+            startIslandTick(startedAt: startedAt)
+            recordingFeedback.start()
             HapticPlayer.listeningStarted()
             Task { await polisher.prewarm() }
         } catch {
-            activityController.end(immediately: true)
+            // Narrate the failure in the island instead of vanishing it.
+            activityController.markFailed(message: Self.errorMessage(for: error), startedAt: Date())
             fail(error)
         }
+    }
+
+    /// One combined Live Activity update per tick — waveform levels plus the
+    /// streaming text — replacing the unthrottled per-snapshot push (which
+    /// peaked at 5–10Hz on the Apple engine). 4Hz for the first two seconds
+    /// so the island reacts to the trigger instantly, then 2Hz; identical
+    /// states are skipped, so silence costs zero updates.
+    private func startIslandTick(startedAt: Date) {
+        islandTask?.cancel()
+        lastSentIslandState = nil
+        islandTask = Task { [weak self] in
+            var tick = 0
+            while !Task.isCancelled {
+                self?.pushIslandUpdate(startedAt: startedAt)
+                tick += 1
+                try? await Task.sleep(for: .milliseconds(tick < 8 ? 250 : 500))
+            }
+        }
+    }
+
+    private func stopIslandTick() {
+        islandTask?.cancel()
+        islandTask = nil
+        lastSentIslandState = nil
+    }
+
+    private func pushIslandUpdate(startedAt: Date) {
+        guard case .recording = state, activityController.isActive else { return }
+        let remaining = FlowBridgeConstants.maxRecordingSeconds - Date().timeIntervalSince(startedAt)
+        let snapshot = LiveTranscriptStore.latest()
+        let contentState = DictationActivityAttributes.ContentState(
+            phase: .recording,
+            transcriptPreview: (snapshot?.isRecording == true) ? (snapshot?.text ?? "") : "",
+            startedAt: startedAt,
+            levels: AudioLevelMeter.shared.barSnapshot(),
+            capWarning: remaining <= 60
+        )
+        guard contentState != lastSentIslandState else { return }
+        lastSentIslandState = contentState
+        activityController.update(contentState)
     }
 
     private func stopRecordingAndTranscribe() async {
         elapsedTask?.cancel()
         maxDurationTask?.cancel()
+        stopIslandTick()
+        recordingFeedback.stop()
         recordingElapsed = nil
         HapticPlayer.listeningStopped()
 
@@ -234,10 +332,16 @@ final class FlowBridgeCoordinator: ObservableObject {
         do {
             let duration = Date().timeIntervalSince(recordingStartedAt)
             state = .transcribing
+            // Freeze the wave at its last real levels while the widget
+            // narrates the polish phase.
             activityController.update(
-                phase: .transcribing,
-                transcriptPreview: LiveTranscriptStore.latest()?.text ?? "",
-                startedAt: recordingStartedAt
+                DictationActivityAttributes.ContentState(
+                    phase: .transcribing,
+                    transcriptPreview: LiveTranscriptStore.latest()?.text ?? "",
+                    startedAt: recordingStartedAt,
+                    levels: AudioLevelMeter.shared.barSnapshot(),
+                    recordedSeconds: Int(duration.rounded())
+                )
             )
 
             let record = try await transcriber.stopLiveTranscription(duration: duration)
@@ -254,18 +358,37 @@ final class FlowBridgeCoordinator: ObservableObject {
             let finalRecord = workingText == record.text ? record : record.polished(workingText)
 
             try? await historyStore?.add(finalRecord)
-            statsStore?.record(text: finalRecord.text, audioDuration: duration)
+            let outcome = statsStore?.record(text: finalRecord.text, audioDuration: duration)
 
             let delivered = sessionAppendedRecord(for: finalRecord) ?? finalRecord
             try await transcriptStore?.save(delivered)
             lastTranscript = delivered
+            liveTranscript = nil
+            // The reveal narrates this take (pre-append): a merged record
+            // has no rawText of its own.
+            polishReveal = PolishReveal(record: finalRecord)
             UIPasteboard.general.string = delivered.text
             state = .ready
             statusMessage = delivered.id == finalRecord.id ? "Clipboard updated" : "Appended to previous dictation"
-            activityController.finish(transcriptPreview: delivered.text, startedAt: recordingStartedAt)
+            activityController.finish(
+                transcriptPreview: delivered.text,
+                startedAt: recordingStartedAt,
+                wordCount: delivered.text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count,
+                recordedSeconds: Int(duration.rounded())
+            )
+            if let outcome {
+                streakDays = outcome.streakDays
+                isNewStreakDay = outcome.isNewStreakDay
+            }
+            timeSavedMinutes = statsStore?.stats().timeSavedMinutes ?? timeSavedMinutes
             HapticPlayer.transcriptReady()
         } catch {
-            activityController.finish(transcriptPreview: "", startedAt: recordingStartedAt, failed: true)
+            liveTranscript = nil
+            activityController.finish(
+                transcriptPreview: Self.errorMessage(for: error),
+                startedAt: recordingStartedAt,
+                failed: true
+            )
             fail(error)
         }
     }
@@ -300,19 +423,6 @@ final class FlowBridgeCoordinator: ObservableObject {
             language: record.language,
             audioDuration: last.audioDuration + record.audioDuration,
             source: .microphone
-        )
-    }
-
-    /// Streams the latest live snapshot into the Live Activity while
-    /// recording (triggered by the Darwin notification the engine posts on
-    /// every snapshot write).
-    private func pushLiveSnapshotToActivity() {
-        guard case .recording(let startedAt) = state, activityController.isActive else { return }
-        guard let snapshot = LiveTranscriptStore.latest(), snapshot.isRecording else { return }
-        activityController.update(
-            phase: .recording,
-            transcriptPreview: snapshot.text,
-            startedAt: startedAt
         )
     }
 
@@ -410,9 +520,13 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     private func fail(_ error: Error) {
-        let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        let message = Self.errorMessage(for: error)
         state = .failed(message)
         statusMessage = message
-        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        HapticPlayer.failed()
+    }
+
+    private static func errorMessage(for error: Error) -> String {
+        (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 }

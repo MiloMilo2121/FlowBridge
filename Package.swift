@@ -27,6 +27,11 @@ let package = Package(
             name: "FlowBridgeSharedCheck",
             dependencies: ["FlowBridgeShared"],
             path: "Checks/FlowBridgeSharedCheck"
+        ),
+        .testTarget(
+            name: "FlowBridgeSharedTests",
+            dependencies: ["FlowBridgeShared"],
+            path: "Tests/FlowBridgeSharedTests"
         )
     ]
 )

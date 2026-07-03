@@ -39,6 +39,19 @@ public enum FlowBridgeConstants {
     public static let historyCapacity = 200
     /// UserDefaults (App Group) key holding cumulative dictation stats (JSON).
     public static let statsKey = "dictationStats"
+    /// UserDefaults (App Group) key holding per-day dictation stats (JSON
+    /// array of day buckets) — feeds charts and the streak.
+    public static let dailyStatsKey = "dictationDailyStats"
+    /// Maximum daily buckets kept (~13 months of history).
+    public static let dailyStatsCapacity = 400
+    /// UserDefaults key: master switch for in-app haptics. CoreHaptics does
+    /// not follow the system haptics toggle, so the app offers its own.
+    public static let hapticsEnabledKey = "hapticsEnabled"
+    /// UserDefaults key: haptic micro-transients on voice peaks while
+    /// recording (off by default — an acquired taste).
+    public static let hapticVoicePeaksEnabledKey = "hapticVoicePeaks"
+    /// UserDefaults key: barely-perceptible tick when a streamed word lands.
+    public static let hapticWordTickEnabledKey = "hapticWordTick"
     /// UserDefaults (App Group) key holding the latest tone hint from the
     /// keyboard (JSON).
     public static let toneHintKey = "toneHint"

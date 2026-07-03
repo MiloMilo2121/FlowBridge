@@ -13,6 +13,8 @@ actor WhisperEngine: TranscriptionEngine {
     private var safetyBuffer: AudioSafetyBuffer?
     private var safetyFlushTask: Task<Void, Never>?
     private var lastFlushedSampleCount = 0
+    private var meteringTask: Task<Void, Never>?
+    private var lastMeteredSampleCount = 0
 
     private let variant: WhisperModelVariant
 
@@ -155,6 +157,7 @@ actor WhisperEngine: TranscriptionEngine {
         }
 
         startSafetyFlush(sessionID: sessionID, audioProcessor: kit.audioProcessor)
+        startMetering(audioProcessor: kit.audioProcessor)
     }
 
     func stopLiveTranscription(duration: TimeInterval) async throws -> TranscriptRecord {
@@ -167,6 +170,7 @@ actor WhisperEngine: TranscriptionEngine {
         streamTask = nil
         streamTranscriber = nil
         liveSessionID = nil
+        stopMetering()
 
         let liveStore = try LiveTranscriptStore()
         let latestText = liveStore.latest()?.text ?? ""
@@ -215,6 +219,7 @@ actor WhisperEngine: TranscriptionEngine {
     func unload() async {
         unloadTask?.cancel()
         unloadTask = nil
+        stopMetering()
         // An unload during a live session is an interruption (memory pressure,
         // teardown): keep the safety file so the dictation can be recovered.
         await stopSafetyFlush(keepFileForRecovery: liveSessionID != nil)
@@ -279,6 +284,41 @@ actor WhisperEngine: TranscriptionEngine {
         let newSamples = Array(samples[lastFlushedSampleCount..<count])
         lastFlushedSampleCount = count
         try? await buffer.append(newSamples)
+    }
+
+    /// WhisperKit owns the mic tap, so the level meter is fed by polling the
+    /// processor's sample buffer — same access pattern as the safety flush.
+    private func startMetering(audioProcessor: any AudioProcessing) {
+        lastMeteredSampleCount = 0
+        meteringTask = Task {
+            while !Task.isCancelled {
+                meterNewSamples(from: audioProcessor)
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+
+    private func stopMetering() {
+        meteringTask?.cancel()
+        meteringTask = nil
+        lastMeteredSampleCount = 0
+    }
+
+    private func meterNewSamples(from audioProcessor: any AudioProcessing) {
+        let samples = audioProcessor.audioSamples
+        let count = samples.count
+
+        if count < lastMeteredSampleCount {
+            // The stream purged processed samples; realign on fresh audio.
+            lastMeteredSampleCount = count
+            return
+        }
+
+        guard count > lastMeteredSampleCount else { return }
+        // Meter only the newest ~100ms so a slow poll can't skew the level.
+        let start = max(lastMeteredSampleCount, count - 1_600)
+        lastMeteredSampleCount = count
+        AudioLevelMeter.shared.ingest(samples: Array(samples[start..<count]))
     }
 
     /// The user's vocabulary as a Whisper prompt bias: the terms become

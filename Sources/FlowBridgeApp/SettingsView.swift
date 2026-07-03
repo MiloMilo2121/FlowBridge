@@ -13,6 +13,9 @@ struct SettingsView: View {
     @State private var voiceCommandsEnabled = true
     @State private var appendWindow: TimeInterval = FlowBridgeConstants.sessionAppendWindowDefault
     @State private var stats = DictationStatsStore.Stats()
+    @State private var hapticsEnabled = true
+    @State private var voicePeaksEnabled = false
+    @State private var wordTicksEnabled = true
 
     private let appendChoices: [(label: String, value: TimeInterval)] = [
         ("Off", 0), ("2 min", 120), ("5 min", 300), ("15 min", 900)
@@ -24,6 +27,7 @@ struct SettingsView: View {
                 engineSection
                 polishSection
                 captureSection
+                hapticsSection
                 vocabularySection
                 statsSection
                 privacySection
@@ -114,6 +118,32 @@ struct SettingsView: View {
         }
     }
 
+    private var hapticsSection: some View {
+        Section {
+            Toggle("Haptics", isOn: $hapticsEnabled)
+                .onChange(of: hapticsEnabled) { _, newValue in
+                    let defaults = try? SharedContainer.userDefaults()
+                    defaults?.set(newValue, forKey: FlowBridgeConstants.hapticsEnabledKey)
+                }
+            Toggle("Tick as words land", isOn: $wordTicksEnabled)
+                .disabled(!hapticsEnabled)
+                .onChange(of: wordTicksEnabled) { _, newValue in
+                    let defaults = try? SharedContainer.userDefaults()
+                    defaults?.set(newValue, forKey: FlowBridgeConstants.hapticWordTickEnabledKey)
+                }
+            Toggle("Pulse on voice peaks", isOn: $voicePeaksEnabled)
+                .disabled(!hapticsEnabled)
+                .onChange(of: voicePeaksEnabled) { _, newValue in
+                    let defaults = try? SharedContainer.userDefaults()
+                    defaults?.set(newValue, forKey: FlowBridgeConstants.hapticVoicePeaksEnabledKey)
+                }
+        } header: {
+            Text("Touch")
+        } footer: {
+            Text("A fixed vocabulary: heartbeat to start and stop, a crystal tap when the text is ready. The optional textures make dictation followable from the pocket.")
+        }
+    }
+
     private var vocabularySection: some View {
         Section {
             NavigationLink {
@@ -128,10 +158,18 @@ struct SettingsView: View {
 
     private var statsSection: some View {
         Section {
-            LabeledContent("Dictations", value: "\(stats.sessions)")
-            LabeledContent("Words", value: "\(stats.words)")
-            LabeledContent("Speaking speed", value: stats.wordsPerMinute.formatted(.number.precision(.fractionLength(0))) + " wpm")
-            LabeledContent("Time given back", value: stats.timeSavedMinutes.formatted(.number.precision(.fractionLength(0))) + " min")
+            NavigationLink {
+                StatsContent()
+                    .navigationTitle("Statistics")
+                    .navigationBarTitleDisplayMode(.inline)
+            } label: {
+                Label {
+                    Text("Statistics")
+                } icon: {
+                    Image(systemName: "chart.bar.xaxis")
+                }
+                .badge(stats.timeSavedMinutes.formatted(.number.precision(.fractionLength(0))) + " min")
+            }
             Button("Reset statistics", role: .destructive) {
                 coordinator.stats?.reset()
                 stats = DictationStatsStore.Stats()
@@ -145,10 +183,13 @@ struct SettingsView: View {
 
     private var privacySection: some View {
         Section {
-            LabeledContent("Audio & transcripts", value: "On-device only")
-            LabeledContent("Network access on the audio path", value: "None")
-        } header: {
-            Text("Privacy")
+            NavigationLink {
+                PrivacyCockpitContent()
+                    .navigationTitle("Privacy")
+                    .navigationBarTitleDisplayMode(.inline)
+            } label: {
+                Label("Privacy Cockpit", systemImage: "shield.lefthalf.filled")
+            }
         } footer: {
             Text("Not a policy — an architecture. The app installs a guard that rejects any network request, and dictation works in Airplane Mode. Try it.")
         }
@@ -163,6 +204,9 @@ struct SettingsView: View {
             ?? FlowBridgeConstants.sessionAppendWindowDefault
         defaultTone = coordinator.toneContext?.defaultTone() ?? .neutral
         stats = coordinator.stats?.stats() ?? DictationStatsStore.Stats()
+        hapticsEnabled = defaults?.object(forKey: FlowBridgeConstants.hapticsEnabledKey) as? Bool ?? true
+        voicePeaksEnabled = defaults?.object(forKey: FlowBridgeConstants.hapticVoicePeaksEnabledKey) as? Bool ?? false
+        wordTicksEnabled = defaults?.object(forKey: FlowBridgeConstants.hapticWordTickEnabledKey) as? Bool ?? true
     }
 }
 
