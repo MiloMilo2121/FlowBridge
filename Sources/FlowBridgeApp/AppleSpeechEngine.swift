@@ -19,6 +19,8 @@ actor AppleSpeechEngine: TranscriptionEngine {
     private var liveCommittedText = ""
     private var liveVolatileText = ""
     private var safetyBuffer: AudioSafetyBuffer?
+    private var safetyFlushTask: Task<Void, Never>?
+    private let sampleAccumulator = SampleAccumulator()
 
     private let locale: Locale
 
@@ -111,8 +113,9 @@ actor AppleSpeechEngine: TranscriptionEngine {
 
         let (inputStream, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self)
         inputContinuation = continuation
-        try await analyzer.start(inputSequence: inputStream)
 
+        // Subscribe to results BEFORE feeding audio, so the first words can't
+        // be produced before there is a consumer.
         resultsTask = Task {
             do {
                 for try await result in transcriber.results {
@@ -133,7 +136,8 @@ actor AppleSpeechEngine: TranscriptionEngine {
             }
         }
 
-        try startCapture(sessionID: sessionID, continuation: continuation)
+        try await analyzer.start(inputSequence: inputStream)
+        try await startCapture(sessionID: sessionID, continuation: continuation)
     }
 
     func stopLiveTranscription(duration: TimeInterval) async throws -> TranscriptRecord {
@@ -241,7 +245,7 @@ actor AppleSpeechEngine: TranscriptionEngine {
 
     // MARK: - Capture
 
-    private func startCapture(sessionID: UUID, continuation: AsyncStream<AnalyzerInput>.Continuation) throws {
+    private func startCapture(sessionID: UUID, continuation: AsyncStream<AnalyzerInput>.Continuation) async throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.record, mode: .spokenAudio, options: [.allowBluetoothHFP, .duckOthers])
         try session.setActive(true, options: [])
@@ -250,20 +254,34 @@ actor AppleSpeechEngine: TranscriptionEngine {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
 
+        // The tap fires on a realtime audio thread, so it only appends to a
+        // lock-protected accumulator (ordered, allocation-light). A periodic
+        // task drains it into the WAV in order — the file must exist first,
+        // so `begin` is awaited before the tap starts.
+        sampleAccumulator.reset()
         if let directory = try? AudioSafetyBuffer.defaultDirectory() {
             let buffer = AudioSafetyBuffer(directory: directory, sampleRate: format.sampleRate)
+            try? await buffer.begin(sessionID: sessionID)
             safetyBuffer = buffer
-            Task { try? await buffer.begin(sessionID: sessionID) }
+            safetyFlushTask = Task { [sampleAccumulator] in
+                while !Task.isCancelled {
+                    let pending = sampleAccumulator.drain()
+                    if !pending.isEmpty {
+                        try? await buffer.append(pending)
+                    }
+                    try? await Task.sleep(for: .seconds(FlowBridgeConstants.safetyBufferFlushInterval))
+                }
+            }
         }
-        let safetyBuffer = safetyBuffer
 
+        // Only accumulate when a safety buffer is draining; otherwise the
+        // tap would fill the accumulator with no consumer (unbounded growth).
+        let accumulator = safetyBuffer != nil ? sampleAccumulator : nil
         input.installTap(onBus: 0, bufferSize: 4_096, format: format) { buffer, _ in
             continuation.yield(AnalyzerInput(buffer: buffer))
 
-            if let safetyBuffer,
-               let channel = buffer.floatChannelData?.pointee {
-                let samples = Array(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
-                Task { try? await safetyBuffer.append(samples) }
+            if let accumulator, let channel = buffer.floatChannelData?.pointee {
+                accumulator.append(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
             }
         }
 
@@ -280,7 +298,14 @@ actor AppleSpeechEngine: TranscriptionEngine {
     }
 
     private func closeSafetyBuffer(keepFileForRecovery: Bool) async {
+        safetyFlushTask?.cancel()
+        safetyFlushTask = nil
         guard let buffer = safetyBuffer else { return }
+        // Drain whatever the tap accumulated since the last flush before closing.
+        let pending = sampleAccumulator.drain()
+        if !pending.isEmpty {
+            try? await buffer.append(pending)
+        }
         if keepFileForRecovery {
             await buffer.closeKeepingFile()
         } else {
@@ -295,5 +320,30 @@ actor AppleSpeechEngine: TranscriptionEngine {
         if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
             try await request.downloadAndInstall()
         }
+    }
+}
+
+/// Thread-safe FIFO sample accumulator. Single producer (the realtime audio
+/// tap) appends; a single consumer (the flush task) drains in order.
+private final class SampleAccumulator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var samples: [Float] = []
+
+    func append(_ buffer: UnsafeBufferPointer<Float>) {
+        lock.lock()
+        samples.append(contentsOf: buffer)
+        lock.unlock()
+    }
+
+    func drain() -> [Float] {
+        lock.lock()
+        defer { samples.removeAll(keepingCapacity: true); lock.unlock() }
+        return samples
+    }
+
+    func reset() {
+        lock.lock()
+        samples.removeAll(keepingCapacity: true)
+        lock.unlock()
     }
 }

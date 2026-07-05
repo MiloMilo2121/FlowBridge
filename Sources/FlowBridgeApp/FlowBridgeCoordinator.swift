@@ -390,7 +390,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         statusMessage = url.lastPathComponent
 
         do {
-            let duration = AudioFileDurationReader.duration(of: url) ?? 0
+            let duration = await AudioFileDurationReader.duration(of: url) ?? 0
             let recording = RecordedAudio(url: url, duration: duration)
             let record = try await transcriber.transcribe(recording: recording, source: .sharedAudio)
             try await transcriptStore?.save(record)
