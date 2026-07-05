@@ -110,6 +110,43 @@ restituire un valore indefinito (→ durata 0 nelle statistiche e sui record di
 audio condiviso). **Fix:** portato ad `await asset.load(.duration)`; i due
 call-site (coordinator, benchmark) erano già async.
 
+## Terzo giro — verifica pre-Xcode (bug corretti)
+
+Eseguita tutta la verifica automatizzabile in ambiente Linux prima del primo
+build su Mac. Ha trovato quattro problemi che **anche Xcode avrebbe colpito**:
+
+### C16 — Errore di concorrenza Swift 6 in `TranscriptStore` (build rotta)
+`TranscriptStore` era un `actor` che immagazzinava un `UserDefaults`
+(thread-safe ma non `Sendable`): passargli un defaults esterno da un contesto
+task-isolated è un errore di data-race sotto Swift 6 strict — che il target di
+test iOS avrebbe fatto fallire. **Fix:** convertito a `@unchecked Sendable
+final class`, coerente coi suoi fratelli (`LiveTranscriptStore`,
+`PendingCommandStore`); rimossi gli `await` ai call-site (metodi ora sincroni).
+Scoperto eseguendo `swift test` (prima giravano solo i "check").
+
+### C17 — `FlowBridgeWidgets-Info.plist` mancante (rischio xcodegen)
+`project.yml` referenzia `Configuration/FlowBridgeWidgets-Info.plist` ma il
+file non era stato creato. XcodeGen lo rigenera dalle properties, ma per
+coerenza del repo è stato aggiunto esplicitamente.
+
+### C18 — Test V1 senza prefisso `test` non eseguiti (era A6)
+`savesAndLoadsLatestTranscript`, `collapsesWhitespaceAndPunctuationSpacing`,
+`preservesEmptyText`, `consumesCommandOnce` non venivano eseguiti da XCTest.
+**Fix:** prefisso `test` aggiunto; ora girano (36 test totali, tutti verdi su
+Linux).
+
+### C19 — La suite XCTest non era eseguibile in CI
+Aggiunto un `.testTarget` a `Package.swift` così `swift test` esegue davvero
+la suite del framework condiviso su Linux, indipendente dal target
+`bundle.unit-test` iOS di `project.yml`. **36/36 test verdi.**
+
+### Nota operativa — il progetto Xcode committato NON ha il target widgets
+Verificato: `FlowBridge.xcodeproj` committato non contiene `FlowBridgeWidgets`.
+**Aprire direttamente il `.xcodeproj` senza `xcodegen generate` prima** fa
+mancare Live Activity/Dynamic Island. Lo script `scripts/preflight.sh`
+automatizza tutto (toolchain → swift build/test → xcodegen → xcodebuild di
+tutti i target per simulatore → test iOS).
+
 ## Aperti (con motivazione)
 
 ### A1 — API iOS 26 da validare in Xcode *(già tracciato in HANDOFF_NEXT_STEPS.md)*

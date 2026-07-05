@@ -27,6 +27,14 @@ let package = Package(
             name: "FlowBridgeSharedCheck",
             dependencies: ["FlowBridgeShared"],
             path: "Checks/FlowBridgeSharedCheck"
+        ),
+        // Lets the XCTest suite for the shared framework run on Linux CI
+        // (`swift test`), independent of the iOS `bundle.unit-test` target
+        // in project.yml that Xcode builds.
+        .testTarget(
+            name: "FlowBridgeSharedTests",
+            dependencies: ["FlowBridgeShared"],
+            path: "Tests/FlowBridgeSharedTests"
         )
     ]
 )
