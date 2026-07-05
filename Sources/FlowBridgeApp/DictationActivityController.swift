@@ -7,9 +7,15 @@ import Foundation
 /// `AudioRecordingIntent` — if no Live Activity is visible, the system stops
 /// the audio), updated locally as the transcript streams, ended shortly
 /// after the transcript is delivered.
+///
+/// Every ActivityKit call (request/update/end) is funneled through a single
+/// serial task chain so operations apply in the order they were requested —
+/// spawning an unordered `Task` per update let a stale snapshot land after a
+/// newer one, or after the activity had already ended.
 @MainActor
 final class DictationActivityController {
     private var activity: Activity<DictationActivityAttributes>?
+    private var tail: Task<Void, Never> = Task {}
 
     var isActive: Bool {
         activity != nil
@@ -37,7 +43,7 @@ final class DictationActivityController {
             transcriptPreview: transcriptPreview,
             startedAt: startedAt
         )
-        Task {
+        enqueue {
             await activity.update(ActivityContent(state: state, staleDate: nil))
         }
     }
@@ -52,7 +58,7 @@ final class DictationActivityController {
             transcriptPreview: transcriptPreview,
             startedAt: startedAt
         )
-        Task {
+        enqueue {
             await activity.end(
                 ActivityContent(state: state, staleDate: nil),
                 dismissalPolicy: .after(.now + FlowBridgeConstants.liveActivityIdleDismissSeconds)
@@ -63,8 +69,17 @@ final class DictationActivityController {
     func end(immediately: Bool) {
         guard let activity else { return }
         self.activity = nil
-        Task {
+        enqueue {
             await activity.end(nil, dismissalPolicy: immediately ? .immediate : .default)
+        }
+    }
+
+    /// Appends `operation` after whatever is already queued, preserving order.
+    private func enqueue(_ operation: @escaping @Sendable () async -> Void) {
+        let previous = tail
+        tail = Task {
+            await previous.value
+            await operation()
         }
     }
 }

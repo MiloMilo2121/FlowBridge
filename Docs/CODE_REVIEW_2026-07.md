@@ -73,6 +73,43 @@ cache del valore (no-op se invariato, zero churn di I/O).
 motore Apple). **Fix:** conversione bulk in un array `Int16` + una singola
 `Data(buffer:)`.
 
+## Secondo giro (review approfondita — bug corretti)
+
+### C11 — `AppleSpeechEngine`: safety buffer avviato fire-and-forget (dati persi)
+`begin(sessionID:)` girava in un `Task` non atteso mentre il tap installava
+subito `Task { append(...) }`: l'ordinamento dei task sull'actor non è FIFO,
+quindi `append` poteva eseguire prima di `begin` (file handle non ancora
+creato → campioni scartati) e — peggio — **due `append` potevano eseguire in
+ordine inverso, corrompendo l'ordine dei frame nel WAV di recovery**. **Fix:**
+`begin` è ora atteso prima di installare il tap; il tap accumula i campioni in
+un `SampleAccumulator` thread-safe (un produttore/un consumatore, ordinato) e
+un task periodico li drena nel WAV in ordine — stesso pattern collaudato di
+`WhisperEngine`.
+
+### C12 — `AppleSpeechEngine`: sottoscrizione ai risultati dopo l'avvio audio (parole perse)
+Il task che consuma `transcriber.results` veniva creato dopo `analyzer.start`
+e `startCapture`: se lo stream non bufferizza, le prime parole prodotte prima
+della sottoscrizione andavano perse (era il finding aperto A3). **Fix:** la
+sottoscrizione ai risultati avviene ora **prima** di alimentare l'audio.
+
+### C13 — `AppleSpeechEngine`: accumulo illimitato senza safety buffer (leak)
+Introdotto e corretto nello stesso giro: se la cartella del safety buffer non
+è disponibile, il tap non deve accumulare (nessuno drenerebbe). Gate esplicito
+sull'accumulatore.
+
+### C14 — `DictationActivityController`: update ActivityKit non ordinati (glitch isola)
+Ogni `update/finish/end` lanciava un `Task` scollegato: due update potevano
+applicarsi fuori ordine, o un update stantio poteva atterrare **dopo** che
+l'activity era già terminata (era il finding aperto A5). **Fix:** tutte le
+chiamate ActivityKit passano ora per una singola catena di task seriale, che
+preserva l'ordine di richiesta.
+
+### C15 — `AudioFileDurationReader`: API sincrona deprecata (durate errate)
+Usava `AVAsset.duration` sincrono, deprecato da iOS 16 e che su iOS 26 può
+restituire un valore indefinito (→ durata 0 nelle statistiche e sui record di
+audio condiviso). **Fix:** portato ad `await asset.load(.duration)`; i due
+call-site (coordinator, benchmark) erano già async.
+
 ## Aperti (con motivazione)
 
 ### A1 — API iOS 26 da validare in Xcode *(già tracciato in HANDOFF_NEXT_STEPS.md)*
@@ -84,16 +121,16 @@ contro la superficie documentata, non compilabili in questo ambiente.
 Sia `WhisperEngine.liveText` sia `AppleSpeechEngine.handleLiveResult`
 rinormalizzano l'intero testo accumulato a ogni callback: su dettature da 10
 minuti il costo cresce quadraticamente (regex su ~10k char, più volte al
-secondo a fine sessione). Su A19 è sostenibile ma è il primo candidato di
-ottimizzazione dopo la profilazione su device: cache del prefisso confermato,
-normalizzando solo la coda instabile. Non corretto ora perché tocca la logica
-di composizione del testo live e va verificato con lo streaming reale.
+secondo a fine sessione). **Non corretto di proposito:** gira su un actor in
+background (mai sul main thread, quindi nessuno stutter UI), e la
+normalizzazione capitalizza il *primo* carattere del testo combinato —
+normalizzare i pezzi singolarmente capitalizzerebbe a metà frase. Su A19 il
+costo è trascurabile per lunghezze realistiche; l'ottimizzazione corretta
+(prefisso confermato normalizzato una volta, capitalizzazione applicata solo
+alla fine) va fatta con lo streaming reale sotto profiler.
 
-### A3 — Possibile race nel collector di `AppleSpeechEngine.transcribe`
-Il task che consuma `transcriber.results` parte in concorrenza con
-`analyzeSequence`: se la sequenza non bufferizza i risultati emessi prima
-della sottoscrizione, si perdono segmenti. Da verificare col comportamento
-reale dell'SDK (A1); in caso, sottoscrivere prima di avviare l'analisi.
+*(Il finding A3 del primo giro — sottoscrizione ai risultati — è stato risolto
+in C12.)*
 
 ### A4 — Trigger utente ignorato durante la recovery al bootstrap
 Se l'utente preme l'Action Button mentre `recoverInterruptedDictationIfNeeded`
