@@ -21,8 +21,8 @@ require(commandStore.consume() == nil, "Command was not consumed")
 
 let transcriptStore = try TranscriptStore(defaults: defaults)
 let record = TranscriptRecord(text: "Hello.", language: "en", audioDuration: 1.2, source: .microphone)
-try await transcriptStore.save(record)
-let loaded = await transcriptStore.latest()
+try transcriptStore.save(record)
+let loaded = transcriptStore.latest()
 require(loaded == record, "Transcript was not persisted")
 require(TranscriptStore.latest(defaults: defaults) == record, "Synchronous transcript read failed")
 

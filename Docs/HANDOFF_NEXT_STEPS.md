@@ -27,10 +27,13 @@ Cosa è stato verificato e cosa no:
 
 ## TODO in ordine di priorità
 
+### 0. Preflight (fai PRIMA di aprire Xcode)
+- [ ] Su un Mac con Xcode 26: `./scripts/preflight.sh`. Fa tutto in sequenza e si ferma al primo errore: verifica toolchain → `swift build`+`swift test` (36 test) → `xcodegen generate` → `xcodebuild` di **tutti** i target iOS per simulatore → test iOS su simulatore. Nessuna firma, nessun device. Se passa, i file scritti contro l'SDK iOS 26 (`AppleSpeechEngine`, `TranscriptPolisher`) sono validati.
+
 ### 1. Primo build in Xcode (bloccante per tutto il resto)
-- [ ] `git checkout claude/flowbridge-v2-phase2-3` su un Mac con Xcode 26.
-- [ ] `brew install xcodegen && xcodegen generate` — **obbligatorio**: il target `FlowBridgeWidgets` esiste solo in `project.yml`; il `.xcodeproj` committato contiene già i file di app/shared/tests ma non il target widgets.
-- [ ] `./scripts/fetch-whisper-small.sh` per il modello.
+- [ ] `./scripts/preflight.sh` verde (v. sopra). In alternativa, manualmente:
+- [ ] `brew install xcodegen && xcodegen generate` — **obbligatorio**: il target `FlowBridgeWidgets` esiste solo in `project.yml`; il `.xcodeproj` committato **non** lo contiene (verificato). Aprire il `.xcodeproj` senza rigenerare fa mancare Live Activity/Dynamic Island.
+- [ ] `./scripts/fetch-whisper-small.sh` per il modello (serve a runtime, non per compilare).
 - [ ] Team di firma su tutti i target + App Group `group.com.marcomilanello.flowbridge` su app, keyboard, share **e widgets**.
 - [ ] Compilare e sistemare gli errori attesi, concentrati in due file scritti contro la superficie API documentata di iOS 26 ma mai validati con l'SDK:
   - `Sources/FlowBridgeApp/AppleSpeechEngine.swift` (SpeechAnalyzer/SpeechTranscriber/AssetInventory/AnalyzerInput: verificare firme di `start(inputSequence:)`, `analyzeSequence(from:)`, `finalizeAndFinish…`, preset, option sets)

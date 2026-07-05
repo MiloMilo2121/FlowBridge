@@ -68,7 +68,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         statsStore = try? DictationStatsStore()
         toneStore = try? ToneContextStore()
         pendingCommandStore = try? PendingCommandStore()
-        lastTranscript = await transcriptStore?.latest()
+        lastTranscript = transcriptStore?.latest()
         registerSystemIntegration()
         await recoverInterruptedDictationIfNeeded()
         await consumePendingCommand()
@@ -285,7 +285,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             statsStore?.record(text: finalRecord.text, audioDuration: duration)
 
             let delivered = sessionAppendedRecord(for: finalRecord) ?? finalRecord
-            try await transcriptStore?.save(delivered)
+            try transcriptStore?.save(delivered)
             lastTranscript = delivered
             UIPasteboard.general.string = delivered.text
             state = .ready
@@ -393,7 +393,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             let duration = await AudioFileDurationReader.duration(of: url) ?? 0
             let recording = RecordedAudio(url: url, duration: duration)
             let record = try await transcriber.transcribe(recording: recording, source: .sharedAudio)
-            try await transcriptStore?.save(record)
+            try transcriptStore?.save(record)
             try? QueuedAudioStore.clear(removeFile: true)
             lastTranscript = record
             UIPasteboard.general.string = record.text
@@ -423,7 +423,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             do {
                 let audio = RecordedAudio(url: recording.url, duration: recording.duration)
                 let record = try await transcriber.transcribe(recording: audio, source: .recovered)
-                try await transcriptStore?.save(record)
+                try transcriptStore?.save(record)
                 lastTranscript = record
                 UIPasteboard.general.string = record.text
                 state = .ready

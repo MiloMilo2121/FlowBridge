@@ -3,7 +3,7 @@ import Foundation
 import XCTest
 
 final class TranscriptStoreTests: XCTestCase {
-    func savesAndLoadsLatestTranscript() async throws {
+    func testSavesAndLoadsLatestTranscript() async throws {
         let defaults = try makeDefaults()
         let store = try TranscriptStore(defaults: defaults)
         let record = TranscriptRecord(
@@ -13,9 +13,9 @@ final class TranscriptStoreTests: XCTestCase {
             source: .microphone
         )
 
-        try await store.save(record)
+        try store.save(record)
 
-        let loaded = await store.latest()
+        let loaded = store.latest()
         XCTAssertEqual(loaded, record)
         XCTAssertEqual(TranscriptStore.latest(defaults: defaults), record)
     }
