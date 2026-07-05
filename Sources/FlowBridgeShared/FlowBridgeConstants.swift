@@ -61,6 +61,16 @@ public enum FlowBridgeConstants {
     /// sideloaded explicitly by the user.
     public static let precisionModelFolderName = "PrecisionModel"
 
+    /// Fluidity guards for the on-device polish: transcripts longer than
+    /// this skip polishing (they would blow the model's context anyway), and
+    /// a polish that takes longer than the deadline is abandoned in favor of
+    /// the raw text — stop-to-ready latency stays bounded.
+    public static let maxPolishCharacters = 3_500
+    public static let polishDeadlineSeconds: TimeInterval = 4
+    /// Minimum interval between Live Activity content updates while
+    /// streaming; intermediate snapshots are dropped (the next one lands).
+    public static let liveActivityMinUpdateInterval: TimeInterval = 0.3
+
     /// Keyboard live updates are Darwin-notification driven. The legacy
     /// 250ms polling loop is kept behind this flag as a fallback; when the
     /// flag is off the keyboard still runs a slow safety refresh so a missed

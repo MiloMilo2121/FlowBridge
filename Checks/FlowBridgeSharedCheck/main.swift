@@ -68,6 +68,12 @@ require(AudioSafetyBuffer.pendingRecordings(in: bufferDirectory).isEmpty, "Pendi
 let commanded = VoiceCommandProcessor.apply(to: "ciao Marco virgola come stai punto interrogativo")
 require(commanded == "Ciao Marco, come stai?", "Unexpected voice command output: \(commanded)")
 
+let urlSafe = VoiceCommandProcessor.apply(to: "vai su example.com punto poi scrivi a marco.rossi@example.com virgola grazie")
+require(
+    urlSafe == "Vai su example.com. Poi scrivi a marco.rossi@example.com, grazie",
+    "URLs/emails were mangled: \(urlSafe)"
+)
+
 let vocabulary = try VocabularyStore(defaults: defaults)
 try vocabulary.add("Milanello")
 require(vocabulary.promptBiasText() == "Glossary: Milanello.", "Unexpected vocabulary bias")

@@ -28,23 +28,39 @@ public enum DarwinNotifier {
 
 /// Observes one Darwin notification name for the lifetime of the instance.
 /// Deallocate (or hold `nil`) to stop observing.
+///
+/// Delivery goes through a lock-protected static registry keyed by the
+/// observer pointer: the C callback never dereferences the instance, so a
+/// notification racing with deallocation on another thread can at worst hit
+/// a missing registry entry — never freed memory.
 public final class DarwinNotificationObserver: @unchecked Sendable {
+    private struct Entry {
+        let queue: DispatchQueue
+        let handler: @Sendable () -> Void
+    }
+
+    private static let registryLock = NSLock()
+    private nonisolated(unsafe) static var registry: [UnsafeRawPointer: Entry] = [:]
+
     private let name: String
-    private let queue: DispatchQueue
-    private let handler: @Sendable () -> Void
 
     public init(name: String, queue: DispatchQueue = .main, handler: @escaping @Sendable () -> Void) {
         self.name = name
-        self.queue = queue
-        self.handler = handler
+
+        let key = UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        Self.registryLock.lock()
+        Self.registry[key] = Entry(queue: queue, handler: handler)
+        Self.registryLock.unlock()
 
         #if canImport(Darwin)
         let callback: CFNotificationCallback = { _, observer, _, _, _ in
             guard let observer else { return }
-            let instance = Unmanaged<DarwinNotificationObserver>.fromOpaque(observer).takeUnretainedValue()
-            instance.queue.async {
-                instance.handler()
-            }
+            let key = UnsafeRawPointer(observer)
+            DarwinNotificationObserver.registryLock.lock()
+            let entry = DarwinNotificationObserver.registry[key]
+            DarwinNotificationObserver.registryLock.unlock()
+            guard let entry else { return }
+            entry.queue.async(execute: entry.handler)
         }
 
         CFNotificationCenterAddObserver(
@@ -67,5 +83,10 @@ public final class DarwinNotificationObserver: @unchecked Sendable {
             nil
         )
         #endif
+
+        let key = UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        Self.registryLock.lock()
+        Self.registry.removeValue(forKey: key)
+        Self.registryLock.unlock()
     }
 }

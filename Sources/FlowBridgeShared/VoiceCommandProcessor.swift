@@ -56,31 +56,49 @@ public enum VoiceCommandProcessor {
     /// Fixes artifacts the substitutions leave behind: stray punctuation
     /// spacing, duplicate marks from engine+command, spaces around breaks,
     /// missing capitalization after sentence-ending marks and breaks.
+    /// Deliberately never inserts characters between two non-space characters
+    /// — "example.com", "3.5" and e-mail addresses must survive untouched.
     private static func cleanUp(_ text: String) -> String {
         var result = text
             .replacingOccurrences(of: "[ \\t]+([.,;:!?])", with: "$1", options: .regularExpression)
             .replacingOccurrences(of: "([.,;:!?])[.,]+", with: "$1", options: .regularExpression)
             .replacingOccurrences(of: "[ \\t]*\\n[ \\t]*", with: "\n", options: .regularExpression)
             .replacingOccurrences(of: "\\n{3,}", with: "\n\n", options: .regularExpression)
-            .replacingOccurrences(of: "([.,;:!?])(\\p{L})", with: "$1 $2", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         result = capitalizeSentenceStarts(result)
         return result
     }
 
+    /// Capitalizes the first letter of the text, of every line, and of every
+    /// word that follows a sentence-ending mark **plus whitespace**. The
+    /// whitespace requirement keeps URLs, e-mail addresses and decimals
+    /// ("example.com", "3.5") intact.
     private static func capitalizeSentenceStarts(_ text: String) -> String {
         var characters = Array(text)
-        var capitalizeNext = true
+        var armed = true
+        var pendingEnder = false
         for index in characters.indices {
             let character = characters[index]
-            if capitalizeNext, character.isLetter {
-                characters[index] = Character(character.uppercased())
-                capitalizeNext = false
-            } else if character == "." || character == "!" || character == "?" || character == "\n" {
-                capitalizeNext = true
+            if character == "\n" {
+                armed = true
+                pendingEnder = false
+            } else if character.isWhitespace {
+                if pendingEnder {
+                    armed = true
+                    pendingEnder = false
+                }
+            } else if character == "." || character == "!" || character == "?" {
+                pendingEnder = true
             } else if character.isLetter {
-                capitalizeNext = false
+                if armed {
+                    characters[index] = Character(character.uppercased())
+                    armed = false
+                }
+                pendingEnder = false
+            } else {
+                armed = false
+                pendingEnder = false
             }
         }
         return String(characters)
