@@ -24,7 +24,8 @@ final class FlowBridgeCoordinator: ObservableObject {
     @Published private(set) var recordingElapsed: TimeInterval?
 
     private let recorder = FlowBridgeRecorder()
-    private let transcriber: any TranscriptionEngine = EngineFactory.makeCurrent()
+    private var transcriber: any TranscriptionEngine = EngineFactory.makeCurrent()
+    private var enginePreference = EnginePreference.current
     private let activityController = DictationActivityController()
     private let polisher = TranscriptPolisher.shared
     private var transcriptStore: TranscriptStore?
@@ -37,6 +38,8 @@ final class FlowBridgeCoordinator: ObservableObject {
     private var memoryWarningObserver: NSObjectProtocol?
     private var commandObserver: DarwinNotificationObserver?
     private var liveSnapshotObserver: DarwinNotificationObserver?
+    private var lastActivityPreview = ""
+    private var lastActivityPushAt = Date.distantPast
 
     init() {
         memoryWarningObserver = NotificationCenter.default.addObserver(
@@ -130,9 +133,14 @@ final class FlowBridgeCoordinator: ObservableObject {
             await consumePendingCommand()
             await processQueuedAudioIfNeeded()
         case .background:
-            if case .recording = state {
+            switch state {
+            case .recording:
                 statusMessage = "Live bridge active"
-            } else {
+            case .warming, .transcribing:
+                // Work is in flight; unloading now would kill it. The idle
+                // TTL reclaims the model memory afterwards.
+                break
+            case .idle, .ready, .failed:
                 await transcriber.unload()
             }
         case .inactive:
@@ -185,7 +193,23 @@ final class FlowBridgeCoordinator: ObservableObject {
         statusMessage = "Model unloaded"
     }
 
+    /// An engine change in Settings takes effect at the next dictation
+    /// (never mid-session): unload the old engine and build the new one.
+    private func refreshEngineIfNeeded() async {
+        let preference = EnginePreference.current
+        guard preference != enginePreference else { return }
+        switch state {
+        case .idle, .ready, .failed:
+            await transcriber.unload()
+            transcriber = EngineFactory.makeCurrent()
+            enginePreference = preference
+        case .warming, .recording, .transcribing:
+            break
+        }
+    }
+
     private func startRecording(requestPermission: Bool = true) async {
+        await refreshEngineIfNeeded()
         do {
             if requestPermission {
                 guard await recorder.requestPermission() else {
@@ -201,6 +225,8 @@ final class FlowBridgeCoordinator: ObservableObject {
             let sessionID = UUID()
             state = .warming
             statusMessage = "Loading local engine"
+            lastActivityPreview = ""
+            lastActivityPushAt = .distantPast
             // The Live Activity goes up before the engine warms: the island
             // responds to the trigger instantly, and background starts via
             // AudioRecordingIntent require a visible activity to keep audio.
@@ -218,7 +244,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
     }
 
-    private func stopRecordingAndTranscribe() async {
+    private func stopRecordingAndTranscribe(skipPolish: Bool = false) async {
         elapsedTask?.cancel()
         maxDurationTask?.cancel()
         recordingElapsed = nil
@@ -249,8 +275,10 @@ final class FlowBridgeCoordinator: ObservableObject {
             if Self.voiceCommandsEnabled {
                 workingText = VoiceCommandProcessor.apply(to: workingText)
             }
-            let tone = toneStore?.currentTone() ?? .neutral
-            workingText = await polisher.polish(workingText, tone: tone)
+            if !skipPolish {
+                let tone = toneStore?.currentTone() ?? .neutral
+                workingText = await polishBounded(workingText, tone: tone)
+            }
             let finalRecord = workingText == record.text ? record : record.polished(workingText)
 
             try? await historyStore?.add(finalRecord)
@@ -267,6 +295,28 @@ final class FlowBridgeCoordinator: ObservableObject {
         } catch {
             activityController.finish(transcriptPreview: "", startedAt: recordingStartedAt, failed: true)
             fail(error)
+        }
+    }
+
+    /// Polish with a hard latency budget: transcripts over the length cap
+    /// skip the model entirely, and a polish slower than the deadline is
+    /// abandoned in favor of the raw text. Stop-to-ready stays bounded no
+    /// matter what the model does.
+    private func polishBounded(_ text: String, tone: ToneProfile) async -> String {
+        guard text.count <= FlowBridgeConstants.maxPolishCharacters else { return text }
+        let polisher = self.polisher
+
+        return await withTaskGroup(of: String?.self) { group in
+            group.addTask {
+                await polisher.polish(text, tone: tone)
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(FlowBridgeConstants.polishDeadlineSeconds))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first ?? text
         }
     }
 
@@ -309,6 +359,18 @@ final class FlowBridgeCoordinator: ObservableObject {
     private func pushLiveSnapshotToActivity() {
         guard case .recording(let startedAt) = state, activityController.isActive else { return }
         guard let snapshot = LiveTranscriptStore.latest(), snapshot.isRecording else { return }
+
+        // Engines can emit many snapshots per second; the island only needs
+        // changed content at a human cadence. Dropped frames are fine — the
+        // next snapshot supersedes them.
+        let now = Date()
+        guard snapshot.text != lastActivityPreview,
+              now.timeIntervalSince(lastActivityPushAt) >= FlowBridgeConstants.liveActivityMinUpdateInterval else {
+            return
+        }
+        lastActivityPreview = snapshot.text
+        lastActivityPushAt = now
+
         activityController.update(
             phase: .recording,
             transcriptPreview: snapshot.text,
@@ -384,7 +446,9 @@ final class FlowBridgeCoordinator: ObservableObject {
 
     private func handleMemoryWarning() async {
         if case .recording = state {
-            await stopRecordingAndTranscribe()
+            // Under memory pressure the last thing to do is spin up the
+            // polisher LLM: finalize with the raw transcript and free memory.
+            await stopRecordingAndTranscribe(skipPolish: true)
         }
         await transcriber.unload()
     }

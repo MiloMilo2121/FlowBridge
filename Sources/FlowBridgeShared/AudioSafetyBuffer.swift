@@ -62,12 +62,13 @@ public actor AudioSafetyBuffer {
         guard let fileHandle else { return }
         guard !samples.isEmpty else { return }
 
-        var data = Data(capacity: samples.count * Self.bytesPerSample)
+        var converted = [Int16]()
+        converted.reserveCapacity(samples.count)
         for sample in samples {
             let clamped = max(-1, min(1, sample))
-            let value = Int16((clamped * Float(Int16.max)).rounded())
-            withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
+            converted.append(Int16((clamped * Float(Int16.max)).rounded()).littleEndian)
         }
+        let data = converted.withUnsafeBufferPointer { Data(buffer: $0) }
 
         try fileHandle.seekToEnd()
         try fileHandle.write(contentsOf: data)

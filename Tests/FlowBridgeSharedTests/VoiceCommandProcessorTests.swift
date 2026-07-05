@@ -55,4 +55,19 @@ final class VoiceCommandProcessorTests: XCTestCase {
             "Ciao, come va"
         )
     }
+
+    func testURLsEmailsAndDecimalsSurviveUntouched() {
+        XCTAssertEqual(
+            VoiceCommandProcessor.apply(to: "vai su example.com punto"),
+            "Vai su example.com."
+        )
+        XCTAssertEqual(
+            VoiceCommandProcessor.apply(to: "scrivi a marco.rossi@example.com virgola grazie"),
+            "Scrivi a marco.rossi@example.com, grazie"
+        )
+        XCTAssertEqual(
+            VoiceCommandProcessor.apply(to: "sono 3.5 chilometri punto ottimo"),
+            "Sono 3.5 chilometri. Ottimo"
+        )
+    }
 }

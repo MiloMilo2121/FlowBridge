@@ -12,6 +12,11 @@ final class KeyboardViewController: UIInputViewController {
     private var lastSessionID: UUID?
     private var lastSequence = 0
     private var completedSessionID: UUID?
+    private var lastPublishedTone: ToneProfile?
+
+    deinit {
+        liveTimer?.invalidate()
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -30,6 +35,14 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         stopLiveUpdates()
+    }
+
+    override func textDidChange(_ textInput: UITextInput?) {
+        super.textDidChange(textInput)
+        // The user may have moved to a different field without the keyboard
+        // disappearing; keep the tone hint in sync (cached — no-op unless it
+        // actually changed).
+        publishToneHint()
     }
 
     private func buildInterface() {
@@ -86,10 +99,10 @@ final class KeyboardViewController: UIInputViewController {
         ])
     }
 
-    private func refresh() {
+    private func refresh(live: LiveTranscriptSnapshot? = nil) {
         let record = TranscriptStore.latest()
-        let live = LiveTranscriptStore.latest()
-        previewLabel.text = live?.previewText.isEmpty == false ? live?.previewText : record?.text
+        let liveSnapshot = live ?? LiveTranscriptStore.latest()
+        previewLabel.text = liveSnapshot?.previewText.isEmpty == false ? liveSnapshot?.previewText : record?.text
         insertButton.isEnabled = record?.text.isEmpty == false
         liveButton.tintColor = liveModeEnabled ? .systemBlue : .secondaryLabel
     }
@@ -121,6 +134,8 @@ final class KeyboardViewController: UIInputViewController {
         } else {
             profile = .neutral
         }
+        guard profile != lastPublishedTone else { return }
+        lastPublishedTone = profile
         (try? ToneContextStore())?.writeHint(ToneHint(profile: profile))
     }
 
@@ -153,7 +168,9 @@ final class KeyboardViewController: UIInputViewController {
 
         liveTimer?.invalidate()
         liveTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.applyLiveSnapshotIfNeeded()
+            MainActor.assumeIsolated {
+                self?.applyLiveSnapshotIfNeeded()
+            }
         }
     }
 
@@ -164,8 +181,9 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func applyLiveSnapshotIfNeeded() {
-        refresh()
-        guard liveModeEnabled, let snapshot = LiveTranscriptStore.latest() else { return }
+        let latest = LiveTranscriptStore.latest()
+        refresh(live: latest)
+        guard liveModeEnabled, let snapshot = latest else { return }
         guard !(snapshot.isFinal && completedSessionID == snapshot.sessionID) else { return }
 
         if snapshot.sessionID != lastSessionID {
