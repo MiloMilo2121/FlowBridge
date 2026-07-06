@@ -261,10 +261,15 @@ final class FlowBridgeCoordinator: ObservableObject {
             }
             warmupToken = nil
             state = .recording(startedAt: startedAt)
-            statusMessage = "Live bridge active"
+            // The cloud badge is not decoration: while this engine is active
+            // the audio WILL leave the device, and the user must see it.
+            statusMessage = enginePreference == .cloud
+                ? "Cloud dictation — audio leaves this iPhone"
+                : "Live bridge active"
             startElapsedTimer(from: startedAt)
             startMaxDurationTimer()
             HapticPlayer.listeningStarted()
+            UIAccessibility.post(notification: .announcement, argument: "Listening")
             Task { await polisher.prewarm() }
         } catch {
             // If the user cancelled mid-warm-up, abortWarmup already cleaned
@@ -361,6 +366,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             statusMessage = delivered.id == finalRecord.id ? "Clipboard updated" : "Appended to previous dictation"
             activityController.finish(transcriptPreview: delivered.text, startedAt: recordingStartedAt)
             HapticPlayer.transcriptReady()
+            UIAccessibility.post(notification: .announcement, argument: "Transcript ready")
         } catch {
             activityController.finish(transcriptPreview: "", startedAt: recordingStartedAt, failed: true)
             fail(error)

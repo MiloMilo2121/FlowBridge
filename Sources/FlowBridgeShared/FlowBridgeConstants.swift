@@ -77,6 +77,33 @@ public enum FlowBridgeConstants {
     /// dictation starts a fresh delivered record instead of growing the
     /// previous one (UserDefaults and the clipboard are not blob stores).
     public static let sessionAppendMaxCharacters = 8_000
+
+    /// UserDefaults (standard, app-only) key: collect MetricKit crash/hang
+    /// diagnostics locally. Off by default; reports never leave the device
+    /// unless the user shares one explicitly.
+    public static let diagnosticsEnabledKey = "diagnosticsEnabled"
+
+    // MARK: Cloud engine (opt-in, OFF by default)
+
+    /// UserDefaults (App Group) key: the user explicitly enabled the cloud
+    /// transcription engine. Off = the network ban is absolute, identical to
+    /// the original guarantee.
+    public static let cloudEngineEnabledKey = "cloudEngineEnabled"
+    /// UserDefaults key: the user saw and accepted the "this dictation will
+    /// leave your iPhone" consent.
+    public static let cloudConsentAcceptedKey = "cloudConsentAccepted"
+    /// The ONLY host the network guard will ever let through, and only in
+    /// the app process with the cloud engine enabled. ElevenLabs Scribe:
+    /// best independent Italian WER; configure EU Data Residency + Zero
+    /// Retention on the account.
+    public static let cloudProviderHost = "api.elevenlabs.io"
+    public static let cloudProviderName = "ElevenLabs Scribe"
+    public static let cloudSpeechToTextURL = "https://api.elevenlabs.io/v1/speech-to-text"
+    public static let cloudModelID = "scribe_v1"
+    public static let cloudRequestTimeoutSeconds: TimeInterval = 60
+    /// Keychain identifiers for the provider API key (never UserDefaults).
+    public static let cloudKeychainService = "com.marcomilanello.flowbridge.cloud"
+    public static let cloudKeychainAccount = "providerAPIKey"
     /// Minimum interval between Live Activity content updates while
     /// streaming; intermediate snapshots are dropped (the next one lands).
     public static let liveActivityMinUpdateInterval: TimeInterval = 0.3

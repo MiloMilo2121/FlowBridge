@@ -4,10 +4,11 @@ import Foundation
 enum WhisperModelVariant: Sendable {
     /// Whisper Small bundled with the app (V1 behavior).
     case bundled
-    /// Optional higher-accuracy model (e.g. large-v3-turbo compressed)
-    /// installed under Application Support. Never downloaded at runtime —
-    /// the offline posture stays intact; the folder is populated at build
-    /// time or sideloaded deliberately (Finder/Files app).
+    /// Optional higher-accuracy model (large-v3-turbo compressed, ~626MB —
+    /// staged by scripts/fetch-whisper-precision.sh). Never downloaded at
+    /// runtime — the offline posture stays intact. Looked up first in the
+    /// app bundle (build-time staging), then in Application Support
+    /// (deliberate sideload).
     case precision
 }
 
@@ -27,6 +28,18 @@ enum WhisperModelLocator {
     }
 
     static func precisionFolderIfInstalled() -> URL? {
+        // Build-time bundling wins (fetch-whisper-precision.sh stages into
+        // Resources/WhisperModels/PrecisionModel, which ships inside the
+        // WhisperModels folder resource)…
+        if let bundled = Bundle.main.url(
+            forResource: FlowBridgeConstants.precisionModelFolderName,
+            withExtension: nil,
+            subdirectory: FlowBridgeConstants.modelResourceSubdirectory
+        ), isValidModelFolder(bundled) {
+            return bundled
+        }
+
+        // …with deliberate sideload into Application Support as the fallback.
         guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return nil
         }

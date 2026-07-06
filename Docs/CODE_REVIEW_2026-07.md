@@ -208,3 +208,122 @@ sessione), ma va osservata nel dogfood: se disorienta, valutare il pattern
 - `swift run FlowBridgeSharedCheck`: verde.
 - Test XCTest aggiornati (nuovi casi URL/email/decimali per i comandi vocali).
 - Nessun file nuovo di codice → nessuna modifica al progetto Xcode necessaria.
+
+## Quarto giro (red-team + dead-code + fondamenta — branch `claude/v3-hardening`)
+
+Tre agenti di analisi (dead-code, red-team, best practice di settore) hanno
+prodotto i finding qui sotto; tutti quelli marcati sono stati **corretti in
+questo giro**.
+
+### Robustezza (red-team)
+
+- **H1 — `processQueuedAudioIfNeeded` senza guardia di stato** *(corretto)*:
+  poteva lanciare una trascrizione file mentre lo stream live era attivo sullo
+  stesso motore (decode CoreML concorrente). Ora ritorna se lo stato non è
+  idle/ready/failed, e viene ritentato quando lo stato torna gestibile.
+- **H2 — Stato bloccabile in `.warming`** *(corretto)*: warm-up con deadline di
+  15s (`FlowBridgeError.warmupTimedOut`), Stop/Toggle funzionano anche in
+  `.warming` (`abortWarmup()` chiude l'activity e scarica il motore), e un
+  warm-up completato dopo un abort viene riconosciuto e scartato
+  (`warmupToken`).
+- **M1 — Polish abbandonato che serializzava la dettatura successiva**
+  *(corretto)*: `polish` è ora `nonisolated` — la sessione prewarmed viene
+  presa dall'actor in un hop rapido, ma la generazione gira fuori
+  dall'actor: un job oltre la deadline di 4s non blocca più il prewarm/polish
+  della dettatura dopo.
+- **M2 — Comando pending consumato-e-perso** *(corretto)*:
+  `consumePendingCommand` non consuma più quando lo stato non è gestibile; il
+  comando resta nello store e viene ripreso al ritorno in idle/ready/failed.
+- **M3 — Session-append senza limite** *(corretto)*: cap a
+  `sessionAppendMaxCharacters` (8.000): oltre, si inizia un nuovo record
+  invece di appendere.
+- **M4 — Thread audio realtime che allocava sotto lock** *(corretto)*:
+  `SampleAccumulator` pre-riserva la capacità (dimensionata sul flush
+  interval); `drain()` prepara il buffer sostitutivo fuori dal lock e fa solo
+  uno `swap` dentro.
+- **M5 — Lettura non sincronizzata di `audioProcessor.audioSamples`**
+  *(mitigato)*: singolo snapshot con bounds ricalcolati e clampati sullo
+  snapshot stesso; resta best-effort (dipende dagli internals di WhisperKit),
+  coerente con la semantica gap-tollerante del safety buffer.
+- **L1 — Doppio append sullo stop (Whisper)** *(corretto)*: flag
+  `isFlushingSamples` + il contatore avanza solo dopo l'append; lo stop
+  attende il flush in volo.
+- **L3 — Memory warning in `.warming`** *(corretto)*: gestito da
+  `abortWarmup()`.
+- **L4 — Safety buffer segnato attivo anche se `begin()` falliva (Apple)**
+  *(corretto)*: `safetyBuffer` viene impostato solo se `begin` riesce; il tap
+  accumula solo se il buffer esiste.
+- **L5 — Eviction cronologia che scartava il take più recente con ≥200 pin**
+  *(corretto)*: l'eviction non tocca mai l'elemento appena inserito e, se
+  tutto è pinnato, evicta comunque il più vecchio. Test aggiornato.
+- **L6 — Share extension che lasciava copie temporanee** *(corretto)*: il file
+  temp viene cancellato dopo `copyIntoInbox`.
+
+### Dead code e semplificazione
+
+- `FlowBridgeRecorder` → **`MicrophonePermission`**: rimosse ~65 righe di
+  macchina di registrazione mai usata (registrano i motori); resta solo la
+  richiesta permesso e `struct RecordedAudio`.
+- `HapticPlayer.failed()` ora usato in `fail()` (prima l'aptica era
+  reimplementata inline).
+- `AppleSpeechEngine.isUsable()` ora usato da `EngineFactory.makeCurrent()`
+  come guardia con fallback a Whisper (chiude dead code *e* un buco runtime).
+- Rimosse API mai chiamate: `TranscriptStore.clear()`,
+  `LiveTranscriptStore.clear()`, `TranscriptHistoryStore.clear()`,
+  `VocabularyStore.replaceAll(_:)`.
+- **`FlowBridgeJSON`**: un solo paio encoder/decoder `.deferredToDate`
+  condiviso — eliminate 12 duplicazioni in 5 file (incluse le factory gemelle
+  `PendingCommandStore.flowBridge` / `ToneContext.iso`).
+- `LiveTranscriptStore.writeFinal/writeError`: tolto il magic
+  `sequence: Int.max` duplicato nei motori.
+- De-dup di `NetworkGuard.install()` (solo in `AppDelegate`).
+
+### Tastiera (decisione utente: live-insert resta il default)
+
+- **Guardia anti-desync**: prima di cancellare, la tastiera verifica che il
+  contesto prima del cursore termini ancora con ciò che ha inserito
+  (`fieldStillMatchesInsertedText()`, tollerante alla finestra troncata del
+  proxy). Se non combacia (utente ha scritto/spostato il cursore, host ha
+  auto-corretto), la sessione live viene abbandonata senza cancellare nulla.
+- Nessun inserimento nei campi sicuri (`isSecureTextEntry`).
+
+### Fondamenta (PR 4)
+
+- **CI GitHub Actions** (`.github/workflows/ci.yml`): job Linux (build + test
+  + `FlowBridgeSharedCheck` in container swift:6.0) e job macOS
+  (xcodegen + `xcodebuild` per simulatore senza firma).
+- **MetricKit opt-in, solo locale** (`DiagnosticsCollector`): crash/hang
+  report salvati su questo iPhone, revisione e condivisione manuali in
+  Settings, cancellazione totale. Nessun upload, coerente col posizionamento.
+- **Accessibilità (primo pass)**: label VoiceOver su bottoni app/tastiera,
+  annunci di stato ("Listening", "Transcript ready"), simboli dell'isola con
+  label e variante Reduce Motion.
+- **Review-readiness**: `NSSupportsLiveActivities(FrequentUpdates)`,
+  `NSSpeechRecognitionUsageDescription`, usage string del microfono esplicita
+  sull'on-device. I 3 stati di indisponibilità FoundationModels hanno
+  spiegazioni distinte in Settings.
+
+### Modelli (PR 5)
+
+- **Precision = large-v3-turbo** (multilingue, deciso dall'utente):
+  `WhisperModelLocator` cerca prima il bundle (`PrecisionModel` staged da
+  `scripts/fetch-whisper-precision.sh` a build time), poi Application
+  Support. Nessun download runtime.
+- **CloudEngine opt-in (ElevenLabs Scribe), OFF di default**: registra in
+  locale nel safety buffer WAV e carica solo allo stop; se l'upload fallisce
+  il WAV resta per la recovery ("il transcript non si perde mai" vale anche
+  qui). `CloudGate` apre il *solo* host del provider e *solo* nel processo
+  app con consenso esplicito + toggle attivo; le extension restano a rete
+  bloccata sempre. Chiave API in Keychain
+  (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), mai in UserDefaults.
+  Badge visibile in registrazione quando il motore è cloud.
+
+### Verifica di questo giro
+
+- `swift build` (Linux, Swift 6.0.3): zero errori; `swift test`: 37/37 verdi;
+  `swift run FlowBridgeSharedCheck`: verde.
+- pbxproj: i 5 file nuovi registrati e verificati (6 occorrenze ciascuno,
+  riferimenti coerenti). `xcodegen generate` resta comunque obbligatorio al
+  primo giro su Mac.
+- Restano aperti A1–A7 (sopra) più la decisione pre-submit sul Full Access
+  della tastiera (v. HANDOFF_NEXT_STEPS.md).

@@ -62,22 +62,27 @@ final class KeyboardViewController: UIInputViewController {
         insertButton.setTitle(" Insert", for: .normal)
         insertButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
         insertButton.addTarget(self, action: #selector(insertLatestTranscript), for: .touchUpInside)
+        insertButton.accessibilityLabel = "Insert latest transcript"
 
         let sendButton = UIButton(type: .system)
         sendButton.setImage(UIImage(systemName: "arrow.turn.down.left"), for: .normal)
         sendButton.addTarget(self, action: #selector(insertLatestTranscriptAndReturn), for: .touchUpInside)
         sendButton.widthAnchor.constraint(equalToConstant: 54).isActive = true
+        sendButton.accessibilityLabel = "Insert transcript and send"
 
         liveButton.setImage(UIImage(systemName: "waveform.circle.fill"), for: .normal)
         liveButton.addTarget(self, action: #selector(toggleLiveMode), for: .touchUpInside)
+        liveButton.accessibilityLabel = "Live insertion"
 
         let deleteButton = UIButton(type: .system)
         deleteButton.setImage(UIImage(systemName: "delete.left"), for: .normal)
         deleteButton.addTarget(self, action: #selector(deleteBackward), for: .touchUpInside)
+        deleteButton.accessibilityLabel = "Delete backward"
 
         let nextKeyboardButton = UIButton(type: .system)
         nextKeyboardButton.setImage(UIImage(systemName: "globe"), for: .normal)
         nextKeyboardButton.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
+        nextKeyboardButton.accessibilityLabel = "Next keyboard"
 
         let buttonRow = UIStackView(arrangedSubviews: [nextKeyboardButton, liveButton, insertButton, sendButton, deleteButton])
         buttonRow.axis = .horizontal

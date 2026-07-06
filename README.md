@@ -1,6 +1,8 @@
 # FlowBridge
 
-FlowBridge is a local-only iOS dictation utility. It records instantly, runs Whisper Small through CoreML with WhisperKit, writes the cleaned transcript to the system clipboard, and exposes a lightweight keyboard extension that can insert the most recent transcript.
+FlowBridge is an on-device-by-default iOS dictation utility. It records instantly, transcribes locally (WhisperKit or Apple's iOS 26 speech stack), cleans the transcript with Apple's on-device model, writes it to the system clipboard, and exposes a lightweight keyboard extension that can insert the most recent transcript.
+
+Privacy posture: everything is on-device and the network is blocked by an in-process guard. The one exception is the **optional cloud engine** — off by default, behind an explicit consent screen, whitelisting exactly one provider host, with a visible badge while it records. Extensions (keyboard/share/widgets) can never reach the network under any configuration.
 
 ## Architecture
 

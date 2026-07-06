@@ -52,8 +52,10 @@ targets:
         CFBundleDisplayName: FlowBridge
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        NSMicrophoneUsageDescription: FlowBridge records speech locally and transcribes it on this device.
+        NSMicrophoneUsageDescription: FlowBridge records your speech only when you start a dictation, transcribes it entirely on this iPhone, and never sends audio anywhere.
+        NSSpeechRecognitionUsageDescription: FlowBridge uses Apple's on-device speech recognition to turn your voice into text. Nothing leaves this iPhone.
         NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
         UIApplicationSupportsIndirectInputEvents: true
         UIBackgroundModes:
           - audio

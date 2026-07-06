@@ -54,6 +54,24 @@ actor TranscriptPolisher {
         SystemLanguageModel.default.availability == .available
     }
 
+    /// The three unavailability modes are distinct user situations and need
+    /// distinct explanations — folding them into one "AI unavailable" loses
+    /// people (device can't / user turned it off / still downloading).
+    nonisolated var availabilityExplanation: String? {
+        switch SystemLanguageModel.default.availability {
+        case .available:
+            return nil
+        case .unavailable(.deviceNotEligible):
+            return "This iPhone doesn't support Apple Intelligence, so transcripts are delivered verbatim."
+        case .unavailable(.appleIntelligenceNotEnabled):
+            return "Turn on Apple Intelligence in Settings to enable transcript cleanup."
+        case .unavailable(.modelNotReady):
+            return "The cleanup model is still downloading; transcripts are delivered verbatim until it's ready."
+        case .unavailable:
+            return "Transcript cleanup is currently unavailable; transcripts are delivered verbatim."
+        }
+    }
+
     /// Loads model weights ahead of the first request. Call when recording
     /// starts; a no-op when the model is unavailable or polishing is off.
     func prewarm() {
@@ -114,6 +132,7 @@ actor TranscriptPolisher {
     }
 #else
     nonisolated var isAvailable: Bool { false }
+    nonisolated var availabilityExplanation: String? { "Transcript cleanup requires Apple Intelligence." }
     func prewarm() {}
     nonisolated func polish(_ text: String, tone: ToneProfile = .neutral) async -> String { text }
 #endif
