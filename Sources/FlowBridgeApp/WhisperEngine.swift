@@ -141,16 +141,10 @@ actor WhisperEngine: TranscriptionEngine {
             do {
                 try await streamTranscriber.startStreamTranscription()
             } catch {
-                let message = DictationTextNormalizer.normalize(error.localizedDescription)
-                try? liveStore.write(
-                    LiveTranscriptSnapshot(
-                        sessionID: sessionID,
-                        sequence: counter.next(),
-                        text: "",
-                        previewText: message,
-                        isRecording: false,
-                        isFinal: true
-                    )
+                liveStore.writeError(
+                    sessionID: sessionID,
+                    sequence: counter.next(),
+                    message: DictationTextNormalizer.normalize(error.localizedDescription)
                 )
             }
         }
@@ -173,16 +167,7 @@ actor WhisperEngine: TranscriptionEngine {
         let latestText = liveStore.latest()?.text ?? ""
         let text = DictationTextNormalizer.normalize(latestText)
         guard !text.isEmpty else {
-            try? liveStore.write(
-                LiveTranscriptSnapshot(
-                    sessionID: sessionID,
-                    sequence: Int.max,
-                    text: "",
-                    previewText: "",
-                    isRecording: false,
-                    isFinal: true
-                )
-            )
+            liveStore.writeFinal(sessionID: sessionID, text: "")
             // Streaming produced nothing. If real audio was captured, keep the
             // safety file so the next launch can retry via file transcription;
             // sub-second recordings hold no speech and are dropped.
@@ -192,16 +177,7 @@ actor WhisperEngine: TranscriptionEngine {
             throw FlowBridgeError.emptyTranscript
         }
 
-        try liveStore.write(
-            LiveTranscriptSnapshot(
-                sessionID: sessionID,
-                sequence: Int.max,
-                text: text,
-                previewText: "",
-                isRecording: false,
-                isFinal: true
-            )
-        )
+        liveStore.writeFinal(sessionID: sessionID, text: text)
         await stopSafetyFlush(keepFileForRecovery: false)
         scheduleIdleUnload()
 

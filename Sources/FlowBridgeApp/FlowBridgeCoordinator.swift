@@ -23,9 +23,10 @@ final class FlowBridgeCoordinator: ObservableObject {
     @Published private(set) var statusMessage: String?
     @Published private(set) var recordingElapsed: TimeInterval?
 
-    private let recorder = FlowBridgeRecorder()
-    private var transcriber: any TranscriptionEngine = EngineFactory.makeCurrent()
-    private var enginePreference = EnginePreference.current
+    // Starts as the bundled default; bootstrap swaps in the configured
+    // engine (the factory is async: the Apple engine's locale check is).
+    private var transcriber: any TranscriptionEngine = WhisperEngine()
+    private var enginePreference = EnginePreference.whisper
     private let activityController = DictationActivityController()
     private let polisher = TranscriptPolisher.shared
     private var transcriptStore: TranscriptStore?
@@ -66,7 +67,6 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     func bootstrap() async {
-        NetworkGuard.install()
         transcriptStore = try? TranscriptStore()
         historyStore = try? TranscriptHistoryStore()
         statsStore = try? DictationStatsStore()
@@ -74,6 +74,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         pendingCommandStore = try? PendingCommandStore()
         lastTranscript = transcriptStore?.latest()
         registerCommandHub()
+        await refreshEngineIfNeeded(force: true)
         await recoverInterruptedDictationIfNeeded()
         // Observers come up only after recovery so a user trigger that fires
         // mid-recovery is deferred (see consumePendingCommand), not raced.
@@ -126,7 +127,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     /// not viable so the intent can fall back to opening the app.
     func startBackgroundDictation() async throws {
         if case .recording = state { return }
-        guard await recorder.hasGrantedPermission() else {
+        guard MicrophonePermission.isGranted else {
             throw FlowBridgeError.microphonePermissionDenied
         }
 
@@ -192,7 +193,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     func requestMicrophonePermission() async -> Bool {
-        await recorder.requestPermission()
+        await MicrophonePermission.request()
     }
 
     var history: TranscriptHistoryStore? { historyStore }
@@ -202,7 +203,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     func copyLastTranscript() async {
         guard let text = lastTranscript?.text else { return }
         UIPasteboard.general.string = text
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        HapticPlayer.transcriptReady()
     }
 
     func unloadModel() async {
@@ -212,13 +213,13 @@ final class FlowBridgeCoordinator: ObservableObject {
 
     /// An engine change in Settings takes effect at the next dictation
     /// (never mid-session): unload the old engine and build the new one.
-    private func refreshEngineIfNeeded() async {
+    private func refreshEngineIfNeeded(force: Bool = false) async {
         let preference = EnginePreference.current
-        guard preference != enginePreference else { return }
+        guard force || preference != enginePreference else { return }
         switch state {
         case .idle, .ready, .failed:
             await transcriber.unload()
-            transcriber = EngineFactory.makeCurrent()
+            transcriber = await EngineFactory.makeCurrent()
             enginePreference = preference
         case .warming, .recording, .transcribing:
             break
@@ -232,11 +233,11 @@ final class FlowBridgeCoordinator: ObservableObject {
         var warmupStarted = false
         do {
             if requestPermission {
-                guard await recorder.requestPermission() else {
+                guard await MicrophonePermission.request() else {
                     throw FlowBridgeError.microphonePermissionDenied
                 }
             } else {
-                guard await recorder.hasGrantedPermission() else {
+                guard MicrophonePermission.isGranted else {
                     throw FlowBridgeError.microphonePermissionDenied
                 }
             }
@@ -510,7 +511,7 @@ final class FlowBridgeCoordinator: ObservableObject {
                 UIPasteboard.general.string = record.text
                 state = .ready
                 statusMessage = "Recovered interrupted dictation"
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                HapticPlayer.transcriptReady()
             } catch {
                 state = .idle
                 statusMessage = "Interrupted dictation could not be recovered"
@@ -569,6 +570,6 @@ final class FlowBridgeCoordinator: ObservableObject {
         let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         state = .failed(message)
         statusMessage = message
-        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        HapticPlayer.failed()
     }
 }

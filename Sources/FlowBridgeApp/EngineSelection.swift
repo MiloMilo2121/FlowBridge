@@ -32,7 +32,7 @@ enum EnginePreference: String, CaseIterable {
 }
 
 enum EngineFactory {
-    static func makeCurrent() -> any TranscriptionEngine {
+    static func makeCurrent() async -> any TranscriptionEngine {
         switch EnginePreference.current {
         case .whisper:
             return WhisperEngine()
@@ -42,7 +42,12 @@ enum EngineFactory {
             }
             return WhisperEngine()
         case .appleSpeech:
-            return AppleSpeechEngine()
+            // Apple's transcriber only exists for supported locales; without
+            // this guard the selection fails at runtime mid-dictation.
+            if await AppleSpeechEngine.isUsable() {
+                return AppleSpeechEngine()
+            }
+            return WhisperEngine()
         }
     }
 }

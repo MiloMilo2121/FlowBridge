@@ -122,16 +122,10 @@ actor AppleSpeechEngine: TranscriptionEngine {
                     await self.handleLiveResult(result, liveStore: liveStore, counter: counter, sessionID: sessionID)
                 }
             } catch {
-                let message = DictationTextNormalizer.normalize(error.localizedDescription)
-                try? liveStore.write(
-                    LiveTranscriptSnapshot(
-                        sessionID: sessionID,
-                        sequence: counter.next(),
-                        text: "",
-                        previewText: message,
-                        isRecording: false,
-                        isFinal: true
-                    )
+                liveStore.writeError(
+                    sessionID: sessionID,
+                    sequence: counter.next(),
+                    message: DictationTextNormalizer.normalize(error.localizedDescription)
                 )
             }
         }
@@ -160,32 +154,14 @@ actor AppleSpeechEngine: TranscriptionEngine {
         liveVolatileText = ""
 
         guard !text.isEmpty else {
-            try? liveStore.write(
-                LiveTranscriptSnapshot(
-                    sessionID: sessionID,
-                    sequence: Int.max,
-                    text: "",
-                    previewText: "",
-                    isRecording: false,
-                    isFinal: true
-                )
-            )
+            liveStore.writeFinal(sessionID: sessionID, text: "")
             await closeSafetyBuffer(
                 keepFileForRecovery: duration >= FlowBridgeConstants.safetyBufferMinimumRecoverySeconds
             )
             throw FlowBridgeError.emptyTranscript
         }
 
-        try liveStore.write(
-            LiveTranscriptSnapshot(
-                sessionID: sessionID,
-                sequence: Int.max,
-                text: text,
-                previewText: "",
-                isRecording: false,
-                isFinal: true
-            )
-        )
+        liveStore.writeFinal(sessionID: sessionID, text: text)
         await closeSafetyBuffer(keepFileForRecovery: false)
 
         return TranscriptRecord(

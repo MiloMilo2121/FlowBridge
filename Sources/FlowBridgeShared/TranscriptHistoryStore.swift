@@ -79,14 +79,10 @@ public actor TranscriptHistoryStore {
         try save(entries)
     }
 
-    public func clear() throws {
-        try save([])
-    }
-
     private func load() -> [Entry] {
         if let cache { return cache }
         guard let data = try? Data(contentsOf: fileURL),
-              let entries = try? decoder.decode([Entry].self, from: data) else {
+              let entries = try? FlowBridgeJSON.decoder().decode([Entry].self, from: data) else {
             cache = []
             return []
         }
@@ -96,19 +92,7 @@ public actor TranscriptHistoryStore {
 
     private func save(_ entries: [Entry]) throws {
         cache = entries
-        let data = try encoder.encode(entries)
+        let data = try FlowBridgeJSON.encoder().encode(entries)
         try data.write(to: fileURL, options: .atomic)
     }
-
-    private let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .deferredToDate
-        return encoder
-    }()
-
-    private let decoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .deferredToDate
-        return decoder
-    }()
 }
