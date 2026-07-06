@@ -40,6 +40,10 @@ final class FlowBridgeCoordinator: ObservableObject {
     private var liveSnapshotObserver: DarwinNotificationObserver?
     private var lastActivityPreview = ""
     private var lastActivityPushAt = Date.distantPast
+    /// Identifies the warm-up in flight; cleared by abortWarmup so a start
+    /// that completes after the user cancelled tears itself down instead of
+    /// resurrecting the session.
+    private var warmupToken: UUID?
 
     init() {
         memoryWarningObserver = NotificationCenter.default.addObserver(
@@ -69,14 +73,18 @@ final class FlowBridgeCoordinator: ObservableObject {
         toneStore = try? ToneContextStore()
         pendingCommandStore = try? PendingCommandStore()
         lastTranscript = transcriptStore?.latest()
-        registerSystemIntegration()
+        registerCommandHub()
         await recoverInterruptedDictationIfNeeded()
+        // Observers come up only after recovery so a user trigger that fires
+        // mid-recovery is deferred (see consumePendingCommand), not raced.
+        registerObservers()
         await consumePendingCommand()
         await processQueuedAudioIfNeeded()
     }
 
-    /// Wires App Intents and cross-process wakeups to this coordinator.
-    private func registerSystemIntegration() {
+    /// Wires App Intents to this coordinator. Registered before recovery:
+    /// intents can arrive at any moment after launch.
+    private func registerCommandHub() {
         DictationCommandHub.shared.startHandler = { [weak self] in
             try await self?.startBackgroundDictation()
         }
@@ -86,7 +94,9 @@ final class FlowBridgeCoordinator: ObservableObject {
         DictationCommandHub.shared.toggleHandler = { [weak self] in
             await self?.toggleRecording()
         }
+    }
 
+    private func registerObservers() {
         // Pending commands can be written while the app is backgrounded under
         // an active audio session (e.g. from the keyboard or a fallback
         // intent path); react immediately instead of waiting for foreground.
@@ -151,6 +161,11 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     func consumePendingCommand() async {
+        // Consuming removes the command from the store. While a transcription
+        // is in flight the command would route into a no-op and be lost, so
+        // leave it stored: the next activation/observer fire retries it.
+        if case .transcribing = state { return }
+
         guard let command = pendingCommandStore?.consume()?.command else { return }
 
         switch command {
@@ -167,7 +182,9 @@ final class FlowBridgeCoordinator: ObservableObject {
         switch state {
         case .recording:
             await stopRecordingAndTranscribe()
-        case .transcribing, .warming:
+        case .warming:
+            await abortWarmup()
+        case .transcribing:
             break
         case .idle, .ready, .failed:
             await startRecording()
@@ -210,6 +227,9 @@ final class FlowBridgeCoordinator: ObservableObject {
 
     private func startRecording(requestPermission: Bool = true) async {
         await refreshEngineIfNeeded()
+        let startedAt = Date()
+        let sessionID = UUID()
+        var warmupStarted = false
         do {
             if requestPermission {
                 guard await recorder.requestPermission() else {
@@ -221,17 +241,24 @@ final class FlowBridgeCoordinator: ObservableObject {
                 }
             }
 
-            let startedAt = Date()
-            let sessionID = UUID()
             state = .warming
             statusMessage = "Loading local engine"
             lastActivityPreview = ""
             lastActivityPushAt = .distantPast
+            warmupToken = sessionID
+            warmupStarted = true
             // The Live Activity goes up before the engine warms: the island
             // responds to the trigger instantly, and background starts via
             // AudioRecordingIntent require a visible activity to keep audio.
             activityController.start(sessionID: sessionID, startedAt: startedAt)
-            try await transcriber.startLiveTranscription(sessionID: sessionID)
+            try await startLiveWithWarmupDeadline(sessionID: sessionID)
+
+            // The user may have cancelled while we were warming.
+            guard warmupToken == sessionID else {
+                await transcriber.unload()
+                return
+            }
+            warmupToken = nil
             state = .recording(startedAt: startedAt)
             statusMessage = "Live bridge active"
             startElapsedTimer(from: startedAt)
@@ -239,9 +266,50 @@ final class FlowBridgeCoordinator: ObservableObject {
             HapticPlayer.listeningStarted()
             Task { await polisher.prewarm() }
         } catch {
+            // If the user cancelled mid-warm-up, abortWarmup already cleaned
+            // up and set a friendly status; a late failure from the torn-down
+            // engine must not clobber that with an error state.
+            if warmupStarted, warmupToken != sessionID {
+                await transcriber.unload()
+                return
+            }
+            warmupToken = nil
             activityController.end(immediately: true)
             fail(error)
+            // Tear down whatever the engine half-started (audio session,
+            // stream); a hung start may only unwind at its next await point.
+            await transcriber.unload()
         }
+    }
+
+    /// Runs the engine warm-up against a hard deadline: an engine that hangs
+    /// while loading (model load, speech-asset install) must not pin the app
+    /// in `.warming` with the mic indicator and Live Activity held.
+    private func startLiveWithWarmupDeadline(sessionID: UUID) async throws {
+        let engine = transcriber
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                try await engine.startLiveTranscription(sessionID: sessionID)
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(FlowBridgeConstants.warmupTimeoutSeconds))
+                throw FlowBridgeError.warmupTimedOut
+            }
+            // First to finish wins: engine success cancels the timer; the
+            // timer firing first throws warmupTimedOut past the group.
+            try await group.next()
+            group.cancelAll()
+        }
+    }
+
+    /// User-initiated cancel while the engine is still warming up.
+    private func abortWarmup() async {
+        guard case .warming = state else { return }
+        warmupToken = nil
+        activityController.end(immediately: true)
+        state = .idle
+        statusMessage = "Dictation cancelled"
+        await transcriber.unload()
     }
 
     private func stopRecordingAndTranscribe(skipPolish: Bool = false) async {
@@ -341,7 +409,10 @@ final class FlowBridgeCoordinator: ObservableObject {
         guard window > 0,
               let last = lastTranscript,
               last.source == .microphone || last.source == .recovered,
-              record.createdAt.timeIntervalSince(last.createdAt) <= window else {
+              record.createdAt.timeIntervalSince(last.createdAt) <= window,
+              // Chains don't grow forever: UserDefaults and the clipboard
+              // are not blob stores. Past the cap, start a fresh record.
+              last.text.count + record.text.count + 1 <= FlowBridgeConstants.sessionAppendMaxCharacters else {
             return nil
         }
 
@@ -379,6 +450,17 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     private func processQueuedAudioIfNeeded() async {
+        // Never start a file transcription while the engine is busy with a
+        // live session (or another job): a concurrent CoreML decode on the
+        // same models is a crash, and it would clobber the .recording state,
+        // orphaning the Live Activity and the audio session.
+        switch state {
+        case .idle, .ready, .failed:
+            break
+        case .warming, .recording, .transcribing:
+            return
+        }
+
         guard let url = QueuedAudioStore.latestQueuedAudioURL() else { return }
         guard FileManager.default.fileExists(atPath: url.path) else {
             try? QueuedAudioStore.clear(removeFile: false)
@@ -439,16 +521,26 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     private func stopIfRecording() async {
-        if case .recording = state {
+        switch state {
+        case .recording:
             await stopRecordingAndTranscribe()
+        case .warming:
+            await abortWarmup()
+        case .idle, .ready, .failed, .transcribing:
+            break
         }
     }
 
     private func handleMemoryWarning() async {
-        if case .recording = state {
+        switch state {
+        case .recording:
             // Under memory pressure the last thing to do is spin up the
             // polisher LLM: finalize with the raw transcript and free memory.
             await stopRecordingAndTranscribe(skipPolish: true)
+        case .warming:
+            await abortWarmup()
+        case .idle, .ready, .failed, .transcribing:
+            break
         }
         await transcriber.unload()
     }

@@ -67,6 +67,16 @@ public enum FlowBridgeConstants {
     /// the raw text — stop-to-ready latency stays bounded.
     public static let maxPolishCharacters = 3_500
     public static let polishDeadlineSeconds: TimeInterval = 4
+
+    /// Engine warm-up (model load, speech-asset install) that exceeds this
+    /// deadline fails the session instead of pinning the coordinator in
+    /// `.warming` with the mic indicator and Live Activity held forever.
+    public static let warmupTimeoutSeconds: TimeInterval = 15
+
+    /// Ceiling for the session-append chain: past this many characters a new
+    /// dictation starts a fresh delivered record instead of growing the
+    /// previous one (UserDefaults and the clipboard are not blob stores).
+    public static let sessionAppendMaxCharacters = 8_000
     /// Minimum interval between Live Activity content updates while
     /// streaming; intermediate snapshots are dropped (the next one lands).
     public static let liveActivityMinUpdateInterval: TimeInterval = 0.3

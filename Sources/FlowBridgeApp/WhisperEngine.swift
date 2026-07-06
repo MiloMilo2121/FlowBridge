@@ -13,6 +13,7 @@ actor WhisperEngine: TranscriptionEngine {
     private var safetyBuffer: AudioSafetyBuffer?
     private var safetyFlushTask: Task<Void, Never>?
     private var lastFlushedSampleCount = 0
+    private var isFlushingSamples = false
 
     private let variant: WhisperModelVariant
 
@@ -251,6 +252,14 @@ actor WhisperEngine: TranscriptionEngine {
         safetyFlushTask = nil
 
         guard let buffer = safetyBuffer else { return }
+        // A loop iteration may still be mid-append (actor methods suspend at
+        // awaits); give it a few beats to finish so the final flush below
+        // doesn't overlap it and duplicate a sample range.
+        var patience = 100
+        while isFlushingSamples, patience > 0 {
+            patience -= 1
+            await Task.yield()
+        }
         if let audioProcessor = whisperKit?.audioProcessor {
             await flushSafetySamples(from: audioProcessor, into: buffer)
         }
@@ -264,8 +273,18 @@ actor WhisperEngine: TranscriptionEngine {
     }
 
     private func flushSafetySamples(from audioProcessor: any AudioProcessing, into buffer: AudioSafetyBuffer) async {
-        let samples = audioProcessor.audioSamples
-        let count = samples.count
+        // Never two flushes in flight: the counter is only advanced after a
+        // successful append, so an overlap would write the same range twice.
+        guard !isFlushingSamples else { return }
+        isFlushingSamples = true
+        defer { isFlushingSamples = false }
+
+        // Single snapshot of the (concurrently appended) sample buffer, with
+        // every index derived from that one copy and clamped. WhisperKit
+        // synchronizes its own appends; this read is best-effort by design —
+        // the safety file tolerates gaps, never corruption.
+        let snapshot = audioProcessor.audioSamples
+        let count = snapshot.count
 
         if count < lastFlushedSampleCount {
             // The stream purged already-processed samples. Skipping the purged
@@ -276,9 +295,10 @@ actor WhisperEngine: TranscriptionEngine {
         }
 
         guard count > lastFlushedSampleCount else { return }
-        let newSamples = Array(samples[lastFlushedSampleCount..<count])
-        lastFlushedSampleCount = count
+        let lower = min(lastFlushedSampleCount, count)
+        let newSamples = Array(snapshot[lower..<count])
         try? await buffer.append(newSamples)
+        lastFlushedSampleCount = count
     }
 
     /// The user's vocabulary as a Whisper prompt bias: the terms become

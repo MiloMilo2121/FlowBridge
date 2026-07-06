@@ -11,6 +11,7 @@ public enum FlowBridgeError: Error, Equatable, LocalizedError, Sendable {
     case unsupportedShareItem
     case recorderFailed(String)
     case transcriptionFailed(String)
+    case warmupTimedOut
 
     public var errorDescription: String? {
         switch self {
@@ -34,6 +35,8 @@ public enum FlowBridgeError: Error, Equatable, LocalizedError, Sendable {
             return "Recorder failed: \(message)"
         case .transcriptionFailed(let message):
             return "Transcription failed: \(message)"
+        case .warmupTimedOut:
+            return "The speech engine took too long to start."
         }
     }
 }

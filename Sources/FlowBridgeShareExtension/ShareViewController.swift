@@ -18,6 +18,9 @@ final class ShareViewController: UIViewController {
             }
 
             _ = try QueuedAudioStore.copyIntoInbox(sourceURL: sourceURL)
+            // The intermediate temp copy has served its purpose; without this
+            // the extension's temp directory grows with every share.
+            try? FileManager.default.removeItem(at: sourceURL)
             try PendingCommandStore().write(.transcribeQueuedAudio)
 
             await MainActor.run {
