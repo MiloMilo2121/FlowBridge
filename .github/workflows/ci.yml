@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Fast cross-platform gate: builds the shared framework, runs the XCTest
+  # suite and the runtime checks. Catches logic and Swift 6 strict-concurrency
+  # regressions in minutes, no Mac required.
+  shared-linux:
+    runs-on: ubuntu-24.04
+    container: swift:6.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build shared framework
+        run: swift build
+      - name: Run shared tests
+        run: swift test
+      - name: Run runtime checks
+        run: swift run FlowBridgeSharedCheck
+
+  # The real iOS validation: regenerates the Xcode project (the committed one
+  # does not contain the widgets target) and compiles every target for the
+  # simulator, unsigned. The simulator has no ANE/Apple Intelligence, so this
+  # validates code and fallbacks, not model output — device testing stays a
+  # manual gate (see Docs/HANDOFF_NEXT_STEPS.md).
+  ios-simulator:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build all iOS targets (simulator, unsigned)
+        run: |
+          xcodebuild build \
+            -project FlowBridge.xcodeproj \
+            -scheme FlowBridgeApp \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Run iOS unit tests on a simulator
+        run: |
+          SIM=$(xcrun simctl list devices available | grep -m1 -oE "iPhone [0-9]+[^(]*" | sed 's/ *$//') || true
+          if [ -n "$SIM" ]; then
+            xcodebuild test \
+              -project FlowBridge.xcodeproj \
+              -scheme FlowBridgeApp \
+              -destination "platform=iOS Simulator,name=$SIM" \
+              CODE_SIGNING_ALLOWED=NO
+          else
+            echo "No simulator available; skipping test run."
+          fi

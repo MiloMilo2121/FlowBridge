@@ -44,7 +44,7 @@ public final class ToneContextStore: @unchecked Sendable {
 
     /// Written by the keyboard from the active field's traits.
     public func writeHint(_ hint: ToneHint) {
-        guard let data = try? JSONEncoder.iso.encode(hint) else { return }
+        guard let data = try? FlowBridgeJSON.encoder().encode(hint) else { return }
         defaults.set(data, forKey: FlowBridgeConstants.toneHintKey)
     }
 
@@ -52,7 +52,7 @@ public final class ToneContextStore: @unchecked Sendable {
     /// wins, otherwise the user's configured default, otherwise neutral.
     public func currentTone(now: Date = Date()) -> ToneProfile {
         if let data = defaults.data(forKey: FlowBridgeConstants.toneHintKey),
-           let hint = try? JSONDecoder.iso.decode(ToneHint.self, from: data),
+           let hint = try? FlowBridgeJSON.decoder().decode(ToneHint.self, from: data),
            now.timeIntervalSince(hint.capturedAt) <= FlowBridgeConstants.toneHintMaxAgeSeconds {
             return hint.profile
         }
@@ -66,21 +66,5 @@ public final class ToneContextStore: @unchecked Sendable {
 
     public func setDefaultTone(_ tone: ToneProfile) {
         defaults.set(tone.rawValue, forKey: FlowBridgeConstants.defaultToneKey)
-    }
-}
-
-private extension JSONEncoder {
-    static var iso: JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .deferredToDate
-        return encoder
-    }
-}
-
-private extension JSONDecoder {
-    static var iso: JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .deferredToDate
-        return decoder
     }
 }

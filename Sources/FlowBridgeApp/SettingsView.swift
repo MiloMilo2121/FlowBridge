@@ -13,6 +13,11 @@ struct SettingsView: View {
     @State private var voiceCommandsEnabled = true
     @State private var appendWindow: TimeInterval = FlowBridgeConstants.sessionAppendWindowDefault
     @State private var stats = DictationStatsStore.Stats()
+    @State private var diagnosticsEnabled = DiagnosticsCollector.isEnabled
+    @State private var diagnosticReports: [URL] = []
+    @State private var cloudEnabled = CloudGate.isCloudEngineEnabled
+    @State private var cloudAPIKey = ""
+    @State private var showCloudConsent = false
 
     private let appendChoices: [(label: String, value: TimeInterval)] = [
         ("Off", 0), ("2 min", 120), ("5 min", 300), ("15 min", 900)
@@ -26,7 +31,9 @@ struct SettingsView: View {
                 captureSection
                 vocabularySection
                 statsSection
+                cloudSection
                 privacySection
+                diagnosticsSection
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -42,7 +49,7 @@ struct SettingsView: View {
     private var engineSection: some View {
         Section {
             Picker("Engine", selection: $engine) {
-                ForEach(EnginePreference.allCases, id: \.self) { preference in
+                ForEach(availableEngines, id: \.self) { preference in
                     Text(preference.displayName).tag(preference)
                 }
             }
@@ -56,16 +63,24 @@ struct SettingsView: View {
         }
     }
 
+    /// The cloud engine only appears once the user has explicitly enabled it
+    /// in the Cloud section below.
+    private var availableEngines: [EnginePreference] {
+        EnginePreference.allCases.filter { $0 != .cloud || cloudEnabled }
+    }
+
     private var engineFooter: String {
         switch engine {
         case .whisper:
             return "The bundled Whisper model. Everything runs on this iPhone."
         case .whisperPrecision:
             return WhisperModelLocator.precisionFolderIfInstalled() == nil
-                ? "No Precision model installed — the bundled model is used. Install one under Application Support/PrecisionModel."
-                : "Higher-accuracy Whisper model, still fully on-device."
+                ? "No Precision model installed — the bundled model is used. Stage one with scripts/fetch-whisper-precision.sh or sideload it to Application Support/PrecisionModel."
+                : "Whisper large-v3-turbo — best multilingual accuracy and Italian/English code-switching, still fully on-device."
         case .appleSpeech:
             return "Apple's on-device speech model (iOS 26). Fastest, best Italian; no custom vocabulary biasing."
+        case .cloud:
+            return "Dictations with this engine are uploaded to \(FlowBridgeConstants.cloudProviderName). Audio leaves this iPhone — a visible badge reminds you while recording."
         }
     }
 
@@ -87,7 +102,14 @@ struct SettingsView: View {
         } header: {
             Text("Cleanup")
         } footer: {
-            Text("Fillers out, punctuation fixed — by Apple's on-device model. The verbatim transcript is always kept. The keyboard adapts the tone to the field you're writing in; this is the fallback.")
+            // The three unavailability modes get their own explanation —
+            // "device can't", "user turned it off" and "still downloading"
+            // are different situations with different remedies.
+            if let explanation = TranscriptPolisher.shared.availabilityExplanation {
+                Text(explanation)
+            } else {
+                Text("Fillers out, punctuation fixed — by Apple's on-device model. The verbatim transcript is always kept. The keyboard adapts the tone to the field you're writing in; this is the fallback.")
+            }
         }
     }
 
@@ -143,14 +165,97 @@ struct SettingsView: View {
         }
     }
 
+    private var cloudSection: some View {
+        Section {
+            Toggle("Cloud engine (optional)", isOn: $cloudEnabled)
+                .onChange(of: cloudEnabled) { _, newValue in
+                    if newValue {
+                        let consented = UserDefaults.standard.bool(forKey: FlowBridgeConstants.cloudConsentAcceptedKey)
+                        if consented {
+                            CloudGate.setCloudEngineEnabled(true)
+                        } else {
+                            showCloudConsent = true
+                        }
+                    } else {
+                        CloudGate.setCloudEngineEnabled(false)
+                        if engine == .cloud {
+                            engine = .whisper
+                            EnginePreference.set(.whisper)
+                        }
+                    }
+                }
+
+            if cloudEnabled {
+                SecureField("\(FlowBridgeConstants.cloudProviderName) API key", text: $cloudAPIKey)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .onSubmit {
+                        KeychainStore.saveCloudAPIKey(cloudAPIKey)
+                    }
+            }
+        } header: {
+            Text("Cloud (off by default)")
+        } footer: {
+            Text(cloudEnabled
+                ? "While the Cloud engine is selected, dictation audio is sent to \(FlowBridgeConstants.cloudProviderName) and nothing else — the network guard allows exactly that one host. Enable EU Data Residency and Zero Retention on your provider account. The key is stored in the Keychain."
+                : "FlowBridge is fully on-device. If you enable the optional cloud engine, dictations made with it will leave this iPhone — you will be asked to confirm.")
+        }
+        .confirmationDialog(
+            "Send dictations to the cloud?",
+            isPresented: $showCloudConsent,
+            titleVisibility: .visible
+        ) {
+            Button("I understand — enable cloud", role: .destructive) {
+                UserDefaults.standard.set(true, forKey: FlowBridgeConstants.cloudConsentAcceptedKey)
+                CloudGate.setCloudEngineEnabled(true)
+            }
+            Button("Keep everything on-device", role: .cancel) {
+                cloudEnabled = false
+            }
+        } message: {
+            Text("Dictations made with the Cloud engine are recorded on this iPhone and then uploaded to \(FlowBridgeConstants.cloudProviderName) for transcription. Audio leaves your device only for those dictations; every other engine stays fully local.")
+        }
+    }
+
     private var privacySection: some View {
         Section {
-            LabeledContent("Audio & transcripts", value: "On-device only")
-            LabeledContent("Network access on the audio path", value: "None")
+            LabeledContent("Audio & transcripts", value: cloudEnabled ? "On-device by default" : "On-device only")
+            LabeledContent("Network access on the audio path", value: cloudEnabled ? "One provider host, opt-in" : "None")
         } header: {
             Text("Privacy")
         } footer: {
             Text("Not a policy — an architecture. The app installs a guard that rejects any network request, and dictation works in Airplane Mode. Try it.")
+        }
+    }
+
+    private var diagnosticsSection: some View {
+        Section {
+            Toggle("Collect crash reports on this iPhone", isOn: $diagnosticsEnabled)
+                .onChange(of: diagnosticsEnabled) { _, newValue in
+                    DiagnosticsCollector.isEnabled = newValue
+                    if newValue {
+                        DiagnosticsCollector.shared.startIfEnabled()
+                    } else {
+                        DiagnosticsCollector.shared.stop()
+                    }
+                }
+
+            if !diagnosticReports.isEmpty {
+                LabeledContent("Stored reports", value: "\(diagnosticReports.count)")
+                if let latest = diagnosticReports.first {
+                    ShareLink(item: latest) {
+                        Label("Share latest report", systemImage: "square.and.arrow.up")
+                    }
+                }
+                Button("Delete all reports", role: .destructive) {
+                    DiagnosticsCollector.deleteAllReports()
+                    diagnosticReports = []
+                }
+            }
+        } header: {
+            Text("Diagnostics")
+        } footer: {
+            Text("Crash and hang reports are produced by iOS, stored only on this iPhone, and sent nowhere. If something breaks, you can review a report here and choose to share it — or delete everything.")
         }
     }
 
@@ -163,6 +268,8 @@ struct SettingsView: View {
             ?? FlowBridgeConstants.sessionAppendWindowDefault
         defaultTone = coordinator.toneContext?.defaultTone() ?? .neutral
         stats = coordinator.stats?.stats() ?? DictationStatsStore.Stats()
+        diagnosticsEnabled = DiagnosticsCollector.isEnabled
+        diagnosticReports = DiagnosticsCollector.reports()
     }
 }
 

@@ -7,7 +7,11 @@ import FoundationNetworking
 public final class NetworkDeniedURLProtocol: URLProtocol {
     public override class func canInit(with request: URLRequest) -> Bool {
         guard let scheme = request.url?.scheme?.lowercased() else { return false }
-        return scheme == "http" || scheme == "https"
+        guard scheme == "http" || scheme == "https" else { return false }
+        // Claim (and kill) every request except the one deliberate,
+        // user-enabled exception — see CloudGate. In extension processes
+        // CloudGate never opens, so this remains an absolute block there.
+        return !CloudGate.isAllowed(request.url)
     }
 
     public override class func canonicalRequest(for request: URLRequest) -> URLRequest {

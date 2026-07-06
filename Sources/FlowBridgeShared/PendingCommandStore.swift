@@ -26,7 +26,7 @@ public final class PendingCommandStore: @unchecked Sendable {
     }
 
     public func write(_ command: FlowBridgeCommand) throws {
-        let data = try JSONEncoder.flowBridge.encode(PendingCommand(command: command))
+        let data = try FlowBridgeJSON.encoder().encode(PendingCommand(command: command))
         defaults.set(data, forKey: FlowBridgeConstants.pendingCommandKey)
         DarwinNotifier.post(FlowBridgeConstants.pendingCommandDidChangeDarwinName)
     }
@@ -36,22 +36,6 @@ public final class PendingCommandStore: @unchecked Sendable {
             return nil
         }
         defaults.removeObject(forKey: FlowBridgeConstants.pendingCommandKey)
-        return try? JSONDecoder.flowBridge.decode(PendingCommand.self, from: data)
-    }
-}
-
-private extension JSONEncoder {
-    static var flowBridge: JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .deferredToDate
-        return encoder
-    }
-}
-
-private extension JSONDecoder {
-    static var flowBridge: JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .deferredToDate
-        return decoder
+        return try? FlowBridgeJSON.decoder().decode(PendingCommand.self, from: data)
     }
 }

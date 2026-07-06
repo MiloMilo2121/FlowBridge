@@ -16,13 +16,19 @@ import FoundationModels
 ///    instructions and greedy sampling.
 /// 3. `prewarm()` is called when recording starts so the model is hot by the
 ///    time the user stops talking.
+/// 4. Generation runs OUTSIDE the actor (`polish` is nonisolated): the
+///    coordinator abandons a polish that misses its deadline, and
+///    FoundationModels does not reliably observe task cancellation — an
+///    abandoned generation must not hold the actor hostage and serialize the
+///    next dictation's prewarm/polish behind it. The actor only guards the
+///    prewarmed-session handoff.
 ///
 /// NOTE: written against the documented iOS 26 FoundationModels API surface;
 /// validate against the SDK in Xcode before shipping.
 actor TranscriptPolisher {
     static let shared = TranscriptPolisher()
 
-    var isEnabled: Bool {
+    nonisolated var isEnabled: Bool {
         let defaults = try? SharedContainer.userDefaults()
         return defaults?.object(forKey: FlowBridgeConstants.polishEnabledKey) as? Bool ?? true
     }
@@ -44,8 +50,26 @@ actor TranscriptPolisher {
     the cleaned transcript only.
     """
 
-    var isAvailable: Bool {
+    nonisolated var isAvailable: Bool {
         SystemLanguageModel.default.availability == .available
+    }
+
+    /// The three unavailability modes are distinct user situations and need
+    /// distinct explanations — folding them into one "AI unavailable" loses
+    /// people (device can't / user turned it off / still downloading).
+    nonisolated var availabilityExplanation: String? {
+        switch SystemLanguageModel.default.availability {
+        case .available:
+            return nil
+        case .unavailable(.deviceNotEligible):
+            return "This iPhone doesn't support Apple Intelligence, so transcripts are delivered verbatim."
+        case .unavailable(.appleIntelligenceNotEnabled):
+            return "Turn on Apple Intelligence in Settings to enable transcript cleanup."
+        case .unavailable(.modelNotReady):
+            return "The cleanup model is still downloading; transcripts are delivered verbatim until it's ready."
+        case .unavailable:
+            return "Transcript cleanup is currently unavailable; transcripts are delivered verbatim."
+        }
     }
 
     /// Loads model weights ahead of the first request. Call when recording
@@ -56,6 +80,13 @@ actor TranscriptPolisher {
             session = LanguageModelSession(instructions: Self.instructions)
         }
         session?.prewarm()
+    }
+
+    /// Hands the prewarmed session (if any) to the caller and forgets it —
+    /// the only piece of actor state.
+    private func takePrewarmedSession() -> LanguageModelSession? {
+        defer { session = nil }
+        return session
     }
 
     private static func toneClause(for tone: ToneProfile) -> String {
@@ -70,7 +101,8 @@ actor TranscriptPolisher {
     }
 
     /// Returns the polished text, or the input unchanged on any failure.
-    func polish(_ text: String, tone: ToneProfile = .neutral) async -> String {
+    /// Nonisolated: the generation itself never blocks the actor (rule 4).
+    nonisolated func polish(_ text: String, tone: ToneProfile = .neutral) async -> String {
         guard isEnabled, isAvailable, !text.isEmpty else { return text }
 
         // One fresh session per transcript: no history accumulation, and the
@@ -78,12 +110,11 @@ actor TranscriptPolisher {
         // The prewarmed session carries the neutral instructions; tone is
         // appended per call, so a non-neutral tone builds a fresh session.
         let session: LanguageModelSession
-        if tone == .neutral, let prewarmed = self.session {
+        if tone == .neutral, let prewarmed = await takePrewarmedSession() {
             session = prewarmed
         } else {
             session = LanguageModelSession(instructions: Self.instructions + Self.toneClause(for: tone))
         }
-        self.session = nil
 
         do {
             let response = try await session.respond(
@@ -100,8 +131,9 @@ actor TranscriptPolisher {
         }
     }
 #else
-    var isAvailable: Bool { false }
+    nonisolated var isAvailable: Bool { false }
+    nonisolated var availabilityExplanation: String? { "Transcript cleanup requires Apple Intelligence." }
     func prewarm() {}
-    func polish(_ text: String, tone: ToneProfile = .neutral) async -> String { text }
+    nonisolated func polish(_ text: String, tone: ToneProfile = .neutral) async -> String { text }
 #endif
 }

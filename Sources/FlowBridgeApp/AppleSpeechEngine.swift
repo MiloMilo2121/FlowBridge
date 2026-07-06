@@ -122,16 +122,10 @@ actor AppleSpeechEngine: TranscriptionEngine {
                     await self.handleLiveResult(result, liveStore: liveStore, counter: counter, sessionID: sessionID)
                 }
             } catch {
-                let message = DictationTextNormalizer.normalize(error.localizedDescription)
-                try? liveStore.write(
-                    LiveTranscriptSnapshot(
-                        sessionID: sessionID,
-                        sequence: counter.next(),
-                        text: "",
-                        previewText: message,
-                        isRecording: false,
-                        isFinal: true
-                    )
+                liveStore.writeError(
+                    sessionID: sessionID,
+                    sequence: counter.next(),
+                    message: DictationTextNormalizer.normalize(error.localizedDescription)
                 )
             }
         }
@@ -160,32 +154,14 @@ actor AppleSpeechEngine: TranscriptionEngine {
         liveVolatileText = ""
 
         guard !text.isEmpty else {
-            try? liveStore.write(
-                LiveTranscriptSnapshot(
-                    sessionID: sessionID,
-                    sequence: Int.max,
-                    text: "",
-                    previewText: "",
-                    isRecording: false,
-                    isFinal: true
-                )
-            )
+            liveStore.writeFinal(sessionID: sessionID, text: "")
             await closeSafetyBuffer(
                 keepFileForRecovery: duration >= FlowBridgeConstants.safetyBufferMinimumRecoverySeconds
             )
             throw FlowBridgeError.emptyTranscript
         }
 
-        try liveStore.write(
-            LiveTranscriptSnapshot(
-                sessionID: sessionID,
-                sequence: Int.max,
-                text: text,
-                previewText: "",
-                isRecording: false,
-                isFinal: true
-            )
-        )
+        liveStore.writeFinal(sessionID: sessionID, text: text)
         await closeSafetyBuffer(keepFileForRecovery: false)
 
         return TranscriptRecord(
@@ -255,22 +231,30 @@ actor AppleSpeechEngine: TranscriptionEngine {
         let format = input.outputFormat(forBus: 0)
 
         // The tap fires on a realtime audio thread, so it only appends to a
-        // lock-protected accumulator (ordered, allocation-light). A periodic
-        // task drains it into the WAV in order — the file must exist first,
-        // so `begin` is awaited before the tap starts.
-        sampleAccumulator.reset()
+        // pre-reserved, lock-protected accumulator; the lock is held briefly
+        // (drain swaps buffers in O(1)) and steady-state appends don't
+        // allocate. A periodic task drains into the WAV in order — the file
+        // must exist first, so `begin` is awaited (and must succeed) before
+        // anything accumulates.
+        sampleAccumulator.reset(expectedSamplesPerFlush: Int(format.sampleRate * FlowBridgeConstants.safetyBufferFlushInterval))
         if let directory = try? AudioSafetyBuffer.defaultDirectory() {
             let buffer = AudioSafetyBuffer(directory: directory, sampleRate: format.sampleRate)
-            try? await buffer.begin(sessionID: sessionID)
-            safetyBuffer = buffer
-            safetyFlushTask = Task { [sampleAccumulator] in
-                while !Task.isCancelled {
-                    let pending = sampleAccumulator.drain()
-                    if !pending.isEmpty {
-                        try? await buffer.append(pending)
+            do {
+                try await buffer.begin(sessionID: sessionID)
+                safetyBuffer = buffer
+                safetyFlushTask = Task { [sampleAccumulator] in
+                    while !Task.isCancelled {
+                        let pending = sampleAccumulator.drain()
+                        if !pending.isEmpty {
+                            try? await buffer.append(pending)
+                        }
+                        try? await Task.sleep(for: .seconds(FlowBridgeConstants.safetyBufferFlushInterval))
                     }
-                    try? await Task.sleep(for: .seconds(FlowBridgeConstants.safetyBufferFlushInterval))
                 }
+            } catch {
+                // No file, no crash-net this session; the tap must not fill
+                // an accumulator nobody drains.
+                safetyBuffer = nil
             }
         }
 
@@ -325,9 +309,16 @@ actor AppleSpeechEngine: TranscriptionEngine {
 
 /// Thread-safe FIFO sample accumulator. Single producer (the realtime audio
 /// tap) appends; a single consumer (the flush task) drains in order.
+///
+/// Realtime-thread discipline: capacity is pre-reserved for two flush
+/// intervals so steady-state appends don't allocate, and `drain()` swaps
+/// buffers so the lock is held O(1), never during a copy. A short lock on
+/// the render thread remains — the documented trade-off versus a lock-free
+/// ring buffer, acceptable at ~10 taps/second.
 private final class SampleAccumulator: @unchecked Sendable {
     private let lock = NSLock()
     private var samples: [Float] = []
+    private var reservedCapacity = 0
 
     func append(_ buffer: UnsafeBufferPointer<Float>) {
         lock.lock()
@@ -336,14 +327,23 @@ private final class SampleAccumulator: @unchecked Sendable {
     }
 
     func drain() -> [Float] {
+        // The replacement buffer is allocated OUTSIDE the lock; the swap
+        // hands it to the producer already reserved. `reservedCapacity` is
+        // written once in reset() before capture starts, so the unlocked
+        // read here is benign.
+        var drained: [Float] = []
+        drained.reserveCapacity(reservedCapacity)
         lock.lock()
-        defer { samples.removeAll(keepingCapacity: true); lock.unlock() }
-        return samples
+        swap(&drained, &samples)
+        lock.unlock()
+        return drained
     }
 
-    func reset() {
+    func reset(expectedSamplesPerFlush: Int) {
         lock.lock()
-        samples.removeAll(keepingCapacity: true)
+        reservedCapacity = max(expectedSamplesPerFlush * 2, 4_096)
+        samples.removeAll(keepingCapacity: false)
+        samples.reserveCapacity(reservedCapacity)
         lock.unlock()
     }
 }

@@ -43,13 +43,6 @@ public final class VocabularyStore: @unchecked Sendable {
         try save(current)
     }
 
-    public func replaceAll(_ terms: [String]) throws {
-        let cleaned = terms
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        try save(Array(cleaned.prefix(Self.maxTerms)))
-    }
-
     /// Prompt-bias text for Whisper: a natural sentence listing the terms,
     /// which nudges decoding toward them without constraining it.
     public func promptBiasText() -> String? {

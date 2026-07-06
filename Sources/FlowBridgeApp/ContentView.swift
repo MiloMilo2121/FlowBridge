@@ -23,12 +23,14 @@ struct ContentView: View {
                     } label: {
                         Image(systemName: "clock.arrow.circlepath")
                     }
+                    .accessibilityLabel("Dictation history")
 
                     Button {
                         showSettings = true
                     } label: {
                         Image(systemName: "gearshape")
                     }
+                    .accessibilityLabel("Settings")
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
@@ -37,12 +39,14 @@ struct ContentView: View {
                         Image(systemName: "doc.on.clipboard")
                     }
                     .disabled(coordinator.lastTranscript == nil)
+                    .accessibilityLabel("Copy latest transcript")
 
                     Button {
                         Task { await coordinator.unloadModel() }
                     } label: {
                         Image(systemName: "memorychip")
                     }
+                    .accessibilityLabel("Unload speech model")
                 }
             }
             .sheet(isPresented: $showHistory) {

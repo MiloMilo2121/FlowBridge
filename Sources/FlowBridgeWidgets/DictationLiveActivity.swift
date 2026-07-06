@@ -49,17 +49,24 @@ struct DictationLiveActivity: Widget {
 }
 
 private struct PhaseSymbol: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let phase: DictationActivityAttributes.ContentState.Phase
 
     var body: some View {
+        symbol
+            .accessibilityLabel(accessibilityDescription)
+    }
+
+    @ViewBuilder
+    private var symbol: some View {
         switch phase {
         case .recording:
             Image(systemName: "waveform")
-                .symbolEffect(.variableColor.iterative, options: .repeating)
+                .symbolEffect(.variableColor.iterative, options: reduceMotion ? .nonRepeating : .repeating)
                 .foregroundStyle(.red)
         case .transcribing:
             Image(systemName: "ellipsis")
-                .symbolEffect(.variableColor.iterative, options: .repeating)
+                .symbolEffect(.variableColor.iterative, options: reduceMotion ? .nonRepeating : .repeating)
                 .foregroundStyle(.purple)
         case .ready:
             Image(systemName: "checkmark.circle.fill")
@@ -67,6 +74,15 @@ private struct PhaseSymbol: View {
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
                 .foregroundStyle(.orange)
+        }
+    }
+
+    private var accessibilityDescription: String {
+        switch phase {
+        case .recording: return "Recording"
+        case .transcribing: return "Transcribing"
+        case .ready: return "Transcript ready"
+        case .failed: return "Dictation failed"
         }
     }
 }

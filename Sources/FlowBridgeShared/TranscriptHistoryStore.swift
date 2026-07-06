@@ -35,13 +35,19 @@ public actor TranscriptHistoryStore {
 
         let overflow = entries.count - FlowBridgeConstants.historyCapacity
         if overflow > 0 {
-            // Evict oldest unpinned entries first.
+            // Evict oldest unpinned entries first — but never the take that
+            // was just added (index 0), or a fully-pinned history would
+            // silently drop every new dictation.
             var removed = 0
-            for index in stride(from: entries.count - 1, through: 0, by: -1) where removed < overflow {
+            for index in stride(from: entries.count - 1, through: 1, by: -1) where removed < overflow {
                 if !entries[index].isPinned {
                     entries.remove(at: index)
                     removed += 1
                 }
+            }
+            // Everything else is pinned: evict the oldest regardless.
+            while entries.count > FlowBridgeConstants.historyCapacity, entries.count > 1 {
+                entries.removeLast()
             }
         }
         try save(entries)
@@ -73,14 +79,10 @@ public actor TranscriptHistoryStore {
         try save(entries)
     }
 
-    public func clear() throws {
-        try save([])
-    }
-
     private func load() -> [Entry] {
         if let cache { return cache }
         guard let data = try? Data(contentsOf: fileURL),
-              let entries = try? decoder.decode([Entry].self, from: data) else {
+              let entries = try? FlowBridgeJSON.decoder().decode([Entry].self, from: data) else {
             cache = []
             return []
         }
@@ -90,19 +92,7 @@ public actor TranscriptHistoryStore {
 
     private func save(_ entries: [Entry]) throws {
         cache = entries
-        let data = try encoder.encode(entries)
+        let data = try FlowBridgeJSON.encoder().encode(entries)
         try data.write(to: fileURL, options: .atomic)
     }
-
-    private let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .deferredToDate
-        return encoder
-    }()
-
-    private let decoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .deferredToDate
-        return decoder
-    }()
 }

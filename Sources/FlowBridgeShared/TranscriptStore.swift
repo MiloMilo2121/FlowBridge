@@ -4,35 +4,21 @@ import Foundation
 ///
 /// A `@unchecked Sendable` class (not an actor) to match its sibling stores
 /// (`LiveTranscriptStore`, `PendingCommandStore`): `UserDefaults` is
-/// thread-safe, and there is no mutable shared state to serialize. This also
-/// lets callers pass a test `UserDefaults` without tripping Swift 6 strict
-/// concurrency's non-Sendable-into-actor rule.
+/// thread-safe, and there is no mutable shared state to serialize.
 public final class TranscriptStore: @unchecked Sendable {
     private let defaults: UserDefaults
-    private let encoder: JSONEncoder
-    private let decoder: JSONDecoder
 
     public init(defaults: UserDefaults? = nil) throws {
         self.defaults = try defaults ?? SharedContainer.userDefaults()
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .deferredToDate
-        self.encoder = encoder
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .deferredToDate
-        self.decoder = decoder
     }
 
     public func save(_ record: TranscriptRecord) throws {
-        let data = try encoder.encode(record)
+        let data = try FlowBridgeJSON.encoder().encode(record)
         defaults.set(data, forKey: FlowBridgeConstants.latestTranscriptKey)
     }
 
     public func latest() -> TranscriptRecord? {
         Self.latest(defaults: defaults)
-    }
-
-    public func clear() {
-        defaults.removeObject(forKey: FlowBridgeConstants.latestTranscriptKey)
     }
 
     public static func latest(defaults: UserDefaults? = nil) -> TranscriptRecord? {
@@ -49,8 +35,6 @@ public final class TranscriptStore: @unchecked Sendable {
             return nil
         }
 
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .deferredToDate
-        return try? decoder.decode(TranscriptRecord.self, from: data)
+        return try? FlowBridgeJSON.decoder().decode(TranscriptRecord.self, from: data)
     }
 }

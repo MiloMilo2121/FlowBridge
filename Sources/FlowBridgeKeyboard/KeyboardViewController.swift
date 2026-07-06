@@ -13,6 +13,11 @@ final class KeyboardViewController: UIInputViewController {
     private var lastSequence = 0
     private var completedSessionID: UUID?
     private var lastPublishedTone: ToneProfile?
+    /// Set when the field no longer matches what we inserted (the user
+    /// typed, moved the caret, or the host app auto-corrected): from that
+    /// moment we stop touching the field for the rest of the session — the
+    /// finished transcript stays available via Insert and the clipboard.
+    private var liveInsertAborted = false
 
     deinit {
         liveTimer?.invalidate()
@@ -57,22 +62,27 @@ final class KeyboardViewController: UIInputViewController {
         insertButton.setTitle(" Insert", for: .normal)
         insertButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
         insertButton.addTarget(self, action: #selector(insertLatestTranscript), for: .touchUpInside)
+        insertButton.accessibilityLabel = "Insert latest transcript"
 
         let sendButton = UIButton(type: .system)
         sendButton.setImage(UIImage(systemName: "arrow.turn.down.left"), for: .normal)
         sendButton.addTarget(self, action: #selector(insertLatestTranscriptAndReturn), for: .touchUpInside)
         sendButton.widthAnchor.constraint(equalToConstant: 54).isActive = true
+        sendButton.accessibilityLabel = "Insert transcript and send"
 
         liveButton.setImage(UIImage(systemName: "waveform.circle.fill"), for: .normal)
         liveButton.addTarget(self, action: #selector(toggleLiveMode), for: .touchUpInside)
+        liveButton.accessibilityLabel = "Live insertion"
 
         let deleteButton = UIButton(type: .system)
         deleteButton.setImage(UIImage(systemName: "delete.left"), for: .normal)
         deleteButton.addTarget(self, action: #selector(deleteBackward), for: .touchUpInside)
+        deleteButton.accessibilityLabel = "Delete backward"
 
         let nextKeyboardButton = UIButton(type: .system)
         nextKeyboardButton.setImage(UIImage(systemName: "globe"), for: .normal)
         nextKeyboardButton.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
+        nextKeyboardButton.accessibilityLabel = "Next keyboard"
 
         let buttonRow = UIStackView(arrangedSubviews: [nextKeyboardButton, liveButton, insertButton, sendButton, deleteButton])
         buttonRow.axis = .horizontal
@@ -109,7 +119,8 @@ final class KeyboardViewController: UIInputViewController {
 
     @objc private func insertLatestTranscript() {
         refresh()
-        guard let text = TranscriptStore.latest()?.text, !text.isEmpty else { return }
+        guard textDocumentProxy.isSecureTextEntry != true,
+              let text = TranscriptStore.latest()?.text, !text.isEmpty else { return }
         textDocumentProxy.insertText(text)
     }
 
@@ -117,7 +128,8 @@ final class KeyboardViewController: UIInputViewController {
     /// key sends, so one tap goes from clipboard to sent message.
     @objc private func insertLatestTranscriptAndReturn() {
         refresh()
-        guard let text = TranscriptStore.latest()?.text, !text.isEmpty else { return }
+        guard textDocumentProxy.isSecureTextEntry != true,
+              let text = TranscriptStore.latest()?.text, !text.isEmpty else { return }
         textDocumentProxy.insertText(text)
         textDocumentProxy.insertText("\n")
     }
@@ -184,13 +196,23 @@ final class KeyboardViewController: UIInputViewController {
         let latest = LiveTranscriptStore.latest()
         refresh(live: latest)
         guard liveModeEnabled, let snapshot = latest else { return }
+        // Never dictate into password/secure fields.
+        guard textDocumentProxy.isSecureTextEntry != true else { return }
         guard !(snapshot.isFinal && completedSessionID == snapshot.sessionID) else { return }
 
         if snapshot.sessionID != lastSessionID {
             lastInsertedText = ""
             lastSequence = 0
             completedSessionID = nil
+            liveInsertAborted = false
             lastSessionID = snapshot.sessionID
+        }
+
+        guard !liveInsertAborted else {
+            if snapshot.isFinal {
+                completedSessionID = snapshot.sessionID
+            }
+            return
         }
 
         guard snapshot.sequence > lastSequence else { return }
@@ -204,12 +226,38 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
 
+        // Desync guard: only delete when the text before the caret still
+        // ends with what we inserted. If it doesn't, deleting would eat the
+        // user's own characters — stop live insertion for this session.
+        guard fieldStillMatchesInsertedText() else {
+            liveInsertAborted = true
+            if snapshot.isFinal {
+                completedSessionID = snapshot.sessionID
+            }
+            return
+        }
+
         applyIncrementalDiff(from: lastInsertedText, to: nextText)
         lastInsertedText = nextText
 
         if snapshot.isFinal {
             completedSessionID = snapshot.sessionID
         }
+    }
+
+    /// True when the host field's context before the caret is consistent
+    /// with `lastInsertedText`. The proxy context window is truncated (a few
+    /// hundred chars), so when it's shorter we verify the visible tail;
+    /// conservative failures abort live insertion rather than risk deleting
+    /// user text.
+    private func fieldStillMatchesInsertedText() -> Bool {
+        guard !lastInsertedText.isEmpty else { return true }
+        let context = textDocumentProxy.documentContextBeforeInput ?? ""
+        guard !context.isEmpty else { return false }
+        if context.count >= lastInsertedText.count {
+            return context.hasSuffix(lastInsertedText)
+        }
+        return lastInsertedText.hasSuffix(context)
     }
 
     /// Replaces only the unstable tail instead of delete-all/reinsert: the

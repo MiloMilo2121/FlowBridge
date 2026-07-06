@@ -1,29 +1,37 @@
 # FlowBridge — Handoff per il prossimo agent
 
-> Aggiornato: 2 luglio 2026 · Da leggere insieme a [ROADMAP_V2.md](ROADMAP_V2.md), [KILLER_FEATURES_V2.md](KILLER_FEATURES_V2.md) e [ARCHITECTURE.md](ARCHITECTURE.md).
+> Aggiornato: 6 luglio 2026 · Da leggere insieme a [ROADMAP_V2.md](ROADMAP_V2.md), [KILLER_FEATURES_V2.md](KILLER_FEATURES_V2.md), [ARCHITECTURE.md](ARCHITECTURE.md) e [CODE_REVIEW_2026-07.md](CODE_REVIEW_2026-07.md) (quattro giri di review, findings chiusi/aperti).
 
 ## Stato del repository
 
 | Cosa | Dove |
 |---|---|
-| V1 (dettatura base funzionante) | `main` |
-| Roadmap V2 + Fasi 0–1 implementate | branch `claude/flobridge-v2-roadmap-2172rk` → **PR #1** (base: main) |
-| Fasi 2–3 implementate | branch `claude/flowbridge-v2-phase2-3` → **PR #2** (base: PR #1, stacked) |
-
-**Ordine di merge: prima la #1, poi la #2** (GitHub ripunta la #2 su main da solo).
+| V1 (dettatura base funzionante) → V2 completa (Fasi 0–3) + 4 giri di review | `main` (PR #1–#5 mergiate) |
+| Quarto giro: red-team, dead-code, guardia tastiera, CI, MetricKit, a11y, Precision turbo, CloudEngine opt-in | branch `claude/v3-hardening` → **PR #6** (base: main) |
 
 Cosa è stato verificato e cosa no:
-- ✅ Il framework condiviso (`FlowBridgeShared`) compila con Swift 6.0.3 su Linux, i test-check a runtime (`swift run FlowBridgeSharedCheck`) passano, e ci sono unit test XCTest per WER, safety buffer, vocabolario, statistiche, tono, cronologia, comandi vocali.
+- ✅ Il framework condiviso (`FlowBridgeShared`) compila con Swift 6.0.3 su Linux, i test-check a runtime (`swift run FlowBridgeSharedCheck`) passano, e ci sono unit test XCTest (37) per WER, safety buffer, vocabolario, statistiche, tono, cronologia, comandi vocali.
+- ✅ C'è una **CI GitHub Actions** (`.github/workflows/ci.yml`): job Linux (container swift:6.0 — build, test, SharedCheck) e job macOS (xcodegen + xcodebuild simulatore senza firma). Il job macOS è il primo posto dove vedere gli errori attesi dell'SDK iOS.
 - ⚠️ I target iOS (app, tastiera, share, widgets) **non sono mai stati compilati**: questo ambiente non ha l'SDK iOS. Aspettarsi errori da sistemare al primo build in Xcode.
 - ⚠️ Nulla è mai girato su un device reale.
 
 ## Vincoli non negoziabili (non violarli mai)
 
-1. **Zero rete sul percorso audio/testo.** `NetworkGuard` resta installato ovunque; nessun download di modelli a runtime; nessuna telemetria remota. È il posizionamento del prodotto ("privato per architettura"), non un dettaglio.
+1. **On-device di default; la rete è vietata salvo l'unica eccezione deliberata.** `NetworkGuard` resta installato ovunque e blocca tutto; l'unico varco è il **CloudEngine opt-in** (OFF di default, consenso esplicito, whitelist del solo host provider via `CloudGate`, badge visibile in registrazione). **Le extension non possono MAI raggiungere la rete** (`CloudGate.enableForAppProcess()` è chiamato solo dall'app). Nessun download di modelli a runtime; nessuna telemetria remota (MetricKit è locale e opt-in, condivisione solo manuale).
 2. **La keyboard extension non registra audio e non carica modelli** (vietato dalla piattaforma: niente mic per entitlement, ~60–70MB di tetto memoria). L'app registra, la tastiera inserisce.
 3. **Avvio in background = Live Activity obbligatoria** per tutta la durata della registrazione (`AudioRecordingIntent`): se l'activity muore, iOS uccide l'audio.
 4. **Il transcript grezzo non si perde mai**: ogni percorso di errore del polisher/comandi ritorna il verbatim; `rawText` resta sul record.
 5. **Codice V1 preservato**: le modifiche sono additive; Whisper resta il motore di default finché il benchmark non decide diversamente.
+
+## ⚠️ Decisione pre-submit obbligatoria: Full Access della tastiera
+
+Apple rigetta le tastiere il cui *core* non funziona senza Full Access (è
+successo a WhisperPad). La nostra tastiera oggi ha un'unica funzione — leggere
+il transcript dall'App Group — e quella richiede Full Access. **Prima di
+inviare in review** va deciso: aggiungere una funzione base che funzioni senza
+Full Access, oppure riposizionare la tastiera come componente opzionale. Non è
+un problema di codice ma di posizionamento: deciderlo con calma, non davanti al
+rigetto.
 
 ## TODO in ordine di priorità
 
@@ -33,12 +41,13 @@ Cosa è stato verificato e cosa no:
 ### 1. Primo build in Xcode (bloccante per tutto il resto)
 - [ ] `./scripts/preflight.sh` verde (v. sopra). In alternativa, manualmente:
 - [ ] `brew install xcodegen && xcodegen generate` — **obbligatorio**: il target `FlowBridgeWidgets` esiste solo in `project.yml`; il `.xcodeproj` committato **non** lo contiene (verificato). Aprire il `.xcodeproj` senza rigenerare fa mancare Live Activity/Dynamic Island.
-- [ ] `./scripts/fetch-whisper-small.sh` per il modello (serve a runtime, non per compilare).
+- [ ] `./scripts/fetch-whisper-small.sh` per il modello (serve a runtime, non per compilare). Facoltativo: `./scripts/fetch-whisper-precision.sh` per il modello Precision (large-v3-turbo, ~626MB) — senza, il motore Precision ricade sul bundled.
 - [ ] Team di firma su tutti i target + App Group `group.com.marcomilanello.flowbridge` su app, keyboard, share **e widgets**.
 - [ ] Compilare e sistemare gli errori attesi, concentrati in due file scritti contro la superficie API documentata di iOS 26 ma mai validati con l'SDK:
   - `Sources/FlowBridgeApp/AppleSpeechEngine.swift` (SpeechAnalyzer/SpeechTranscriber/AssetInventory/AnalyzerInput: verificare firme di `start(inputSequence:)`, `analyzeSequence(from:)`, `finalizeAndFinish…`, preset, option sets)
   - `Sources/FlowBridgeApp/TranscriptPolisher.swift` (FoundationModels: `@Generable`/`@Guide`, `LanguageModelSession.respond(to:generating:options:)`, `prewarm()`, `GenerationOptions(sampling: .greedy)`)
   - Possibili aggiustamenti minori anche in: `DictationIntents.swift` (`AudioRecordingIntent`/`ForegroundContinuableIntent` + `requestToContinueInForeground()`), `DictationLiveActivity.swift` (`supplementalActivityFamilies`), `WhisperEngine.swift` (`DecodingOptions.promptTokens`, `tokenizer.encode(text:)`, `specialTokens.specialTokenBegin`, protocollo `AudioProcessing`/`audioSamples`).
+  - Dal quarto giro, anche i file nuovi mai compilati contro l'SDK: `CloudEngine.swift` (AVAudioEngine + URLSession multipart), `DiagnosticsCollector.swift` (MetricKit), `KeychainStore.swift` (Security).
 - [ ] Far girare i test XCTest (`FlowBridgeSharedTests`) su simulatore.
 
 ### 2. Spike su device reale (i "gate" della roadmap)
@@ -47,6 +56,8 @@ Cosa è stato verificato e cosa no:
 - [ ] **Recovery**: uccidere l'app mentre registra → al riavvio la dettatura viene recuperata dal safety buffer? Verificare che il WAV sia leggibile e che il gap-on-purge di WhisperKit (documentato in ARCHITECTURE.md) non degradi troppo.
 - [ ] **Tastiera**: Darwin notifications arrivano nell'extension? Il diff incrementale non sfarfalla? Full Access + App Group ok?
 - [ ] **Spike Whisper Mode** (killer feature #5, non ancora implementata): misurare WER parlando a bassissimo volume; decidere gain/VAD.
+- [ ] **CloudEngine** (opt-in): con una chiave ElevenLabs vera — consenso mostrato una volta sola? badge visibile? upload allo stop ok? upload fallito (modalità aereo a metà) → WAV recuperato al riavvio? disattivando il toggle il motore torna a Whisper?
+- [ ] **MetricKit**: i report arrivano (iOS li consegna ~1 volta/giorno)? ShareLink funziona?
 
 ### 3. Benchmark (decide il motore di default)
 - [ ] Registrare il set italiano in `Resources/Benchmark` (voce normale, sussurro, rumore strada, vocabolario tecnico — formato: `nome.wav` + `nome.txt`, v. README della cartella).
@@ -81,8 +92,9 @@ swift build && swift run FlowBridgeSharedCheck
 # Rigenerare il progetto Xcode (SEMPRE dopo aver aggiunto/rinominato file o toccato project.yml)
 xcodegen generate
 
-# Modello Whisper
+# Modello Whisper (bundled) e Precision (large-v3-turbo, opzionale)
 ./scripts/fetch-whisper-small.sh
+./scripts/fetch-whisper-precision.sh
 ```
 
 ## Trappole note (imparate a caro prezzo)

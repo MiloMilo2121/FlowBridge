@@ -10,12 +10,16 @@ enum EnginePreference: String, CaseIterable {
     case whisperPrecision
     /// iOS 26 SpeechAnalyzer/SpeechTranscriber (system model, opt-in).
     case appleSpeech
+    /// Opt-in cloud provider (OFF by default; audio leaves the device only
+    /// while this is both enabled and selected).
+    case cloud
 
     var displayName: String {
         switch self {
         case .whisper: return "Whisper (bundled)"
         case .whisperPrecision: return "Whisper Precision"
         case .appleSpeech: return "Apple Speech"
+        case .cloud: return "Cloud (\(FlowBridgeConstants.cloudProviderName))"
         }
     }
 
@@ -32,7 +36,7 @@ enum EnginePreference: String, CaseIterable {
 }
 
 enum EngineFactory {
-    static func makeCurrent() -> any TranscriptionEngine {
+    static func makeCurrent() async -> any TranscriptionEngine {
         switch EnginePreference.current {
         case .whisper:
             return WhisperEngine()
@@ -42,7 +46,19 @@ enum EngineFactory {
             }
             return WhisperEngine()
         case .appleSpeech:
-            return AppleSpeechEngine()
+            // Apple's transcriber only exists for supported locales; without
+            // this guard the selection fails at runtime mid-dictation.
+            if await AppleSpeechEngine.isUsable() {
+                return AppleSpeechEngine()
+            }
+            return WhisperEngine()
+        case .cloud:
+            // The cloud engine only exists while explicitly enabled AND
+            // configured; anything less falls back to fully local.
+            if CloudGate.isCloudEngineEnabled, KeychainStore.loadCloudAPIKey() != nil {
+                return CloudEngine()
+            }
+            return WhisperEngine()
         }
     }
 }

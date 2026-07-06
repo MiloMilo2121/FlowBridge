@@ -38,6 +38,22 @@ final class TranscriptHistoryStoreTests: XCTestCase {
         XCTAssertEqual(all.first?.record.text, "da tenere")
     }
 
+    func testAllPinnedStillKeepsNewestTake() async throws {
+        let store = try makeStore()
+        for index in 1...FlowBridgeConstants.historyCapacity {
+            let pinned = record(text: "pinned-\(index)")
+            try await store.add(pinned)
+            try await store.setPinned(true, id: pinned.id)
+        }
+
+        try await store.add(record(text: "newest-take"))
+
+        let all = await store.all()
+        XCTAssertEqual(all.count, FlowBridgeConstants.historyCapacity)
+        XCTAssertEqual(all.first?.record.text, "newest-take")
+        XCTAssertFalse(all.contains { $0.record.text == "pinned-1" })
+    }
+
     func testCapacityEvictsOldestUnpinned() async throws {
         let store = try makeStore()
         let pinned = record(text: "pinned-0")
