@@ -7,17 +7,38 @@ import Foundation
 /// `AudioRecordingIntent` — if no Live Activity is visible, the system stops
 /// the audio), updated locally as the transcript streams, ended shortly
 /// after the transcript is delivered.
+///
+/// Every ActivityKit call is chained on the previous one: `update`/`end`
+/// are async and unordered across detached Tasks, so without the chain a
+/// stale waveform frame could land after a newer one — or after the final
+/// content.
 @MainActor
 final class DictationActivityController {
     private var activity: Activity<DictationActivityAttributes>?
+    private var pipeline: Task<Void, Never>?
 
     var isActive: Bool {
         activity != nil
     }
 
+    /// Ends every activity of this type — including orphans left behind by
+    /// a crashed process, which this controller instance no longer tracks
+    /// and which would otherwise sit in the island for hours. Called at app
+    /// bootstrap and before each new session.
+    func endAllActivities() {
+        activity = nil
+        let all = Activity<DictationActivityAttributes>.activities
+        guard !all.isEmpty else { return }
+        enqueue {
+            for orphan in all {
+                await orphan.end(nil, dismissalPolicy: .immediate)
+            }
+        }
+    }
+
     func start(sessionID: UUID, startedAt: Date) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        end(immediately: true)
+        endAllActivities()
 
         let state = DictationActivityAttributes.ContentState(
             phase: .recording,
@@ -34,7 +55,7 @@ final class DictationActivityController {
     func update(_ state: DictationActivityAttributes.ContentState) {
         guard let activity else { return }
         let content = content(for: state)
-        Task {
+        enqueue {
             await activity.update(content)
         }
     }
@@ -58,7 +79,7 @@ final class DictationActivityController {
             wordCount: wordCount,
             recordedSeconds: recordedSeconds
         )
-        Task {
+        enqueue {
             await activity.end(
                 ActivityContent(state: state, staleDate: nil),
                 dismissalPolicy: .after(.now + FlowBridgeConstants.liveActivityIdleDismissSeconds)
@@ -75,8 +96,17 @@ final class DictationActivityController {
     func end(immediately: Bool) {
         guard let activity else { return }
         self.activity = nil
-        Task {
+        enqueue {
             await activity.end(nil, dismissalPolicy: immediately ? .immediate : .default)
+        }
+    }
+
+    /// Serializes ActivityKit work. The closure inherits the main actor, so
+    /// captured activities need no Sendable gymnastics.
+    private func enqueue(_ operation: @escaping @MainActor () async -> Void) {
+        pipeline = Task { [previous = pipeline] in
+            await previous?.value
+            await operation()
         }
     }
 

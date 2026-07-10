@@ -16,8 +16,8 @@ import Foundation
 /// system always executes the intents in the app process, where
 /// `DictationCommandHub` has handlers registered.
 struct StartDictationIntent: AudioRecordingIntent, ForegroundContinuableIntent {
-    static var title: LocalizedStringResource = "Start Dictation"
-    static var description = IntentDescription("Start FlowBridge dictation in the background, with live progress in the Dynamic Island.")
+    static let title: LocalizedStringResource = "Start Dictation"
+    static let description = IntentDescription("Start FlowBridge dictation in the background, with live progress in the Dynamic Island.")
 
     @MainActor
     func perform() async throws -> some IntentResult {
@@ -39,9 +39,9 @@ struct StartDictationIntent: AudioRecordingIntent, ForegroundContinuableIntent {
 /// exposed to Shortcuts. Runs in the app process (`LiveActivityIntent`),
 /// where the recorder and the audio session live.
 struct StopDictationIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "Stop Dictation"
-    static var description = IntentDescription("Stop the active FlowBridge dictation and deliver the transcript.")
-    static var openAppWhenRun = false
+    static let title: LocalizedStringResource = "Stop Dictation"
+    static let description = IntentDescription("Stop the active FlowBridge dictation and deliver the transcript.")
+    static let openAppWhenRun = false
 
     @MainActor
     func perform() async throws -> some IntentResult {

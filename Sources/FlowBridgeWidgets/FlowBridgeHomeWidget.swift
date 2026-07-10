@@ -50,6 +50,7 @@ private struct HomeWidgetView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
+            .tint(FlowBridgeTheme.flowViolet)
 
             if family == .systemMedium {
                 Text(entry.transcript ?? "No dictations yet.")

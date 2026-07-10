@@ -207,24 +207,33 @@ private struct ExpandedBottom: View {
     var body: some View {
         switch state.phase {
         case .recording:
-            HStack(spacing: 12) {
-                WaveformBarsView(
-                    levels: state.levels,
-                    barCount: 24,
-                    barWidth: 3,
-                    spacing: 2.5,
-                    maxHeight: 26,
-                    tint: PhaseStyle.waveTint(for: .recording)
-                )
-                .frame(maxWidth: .infinity)
-                .opacity(isStale ? 0.35 : 1)
+            if isStale {
+                // The app process is gone: a Stop button would lie. Tapping
+                // the island opens the app, where safety-buffer recovery
+                // picks the dictation up.
+                Label("Open FlowBridge to recover", systemImage: "arrow.up.forward.app")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            } else {
+                HStack(spacing: 12) {
+                    WaveformBarsView(
+                        levels: state.levels,
+                        barCount: 24,
+                        barWidth: 3,
+                        spacing: 2.5,
+                        maxHeight: 26,
+                        tint: PhaseStyle.waveTint(for: .recording)
+                    )
+                    .frame(maxWidth: .infinity)
 
-                Button(intent: StopDictationIntent()) {
-                    Label("Stop", systemImage: "stop.fill")
-                        .font(.headline)
+                    Button(intent: StopDictationIntent()) {
+                        Label("Stop", systemImage: "stop.fill")
+                            .font(.headline)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
             }
         case .transcribing:
             // The wave freezes at its last real levels and turns violet:
@@ -437,3 +446,95 @@ private struct WatchView: View {
         .padding(10)
     }
 }
+
+// MARK: - Previews (Xcode canvas harness for every phase)
+
+#if DEBUG
+private extension DictationActivityAttributes.ContentState {
+    static let quietLevels: [UInt8] = [
+        4, 5, 6, 5, 7, 9, 8, 6, 5, 4, 6, 8,
+        10, 9, 7, 5, 4, 5, 6, 7, 6, 5, 4, 4,
+    ]
+    static let loudLevels: [UInt8] = [
+        12, 28, 55, 70, 62, 48, 80, 95, 88, 60, 42, 66,
+        91, 77, 54, 38, 72, 99, 85, 58, 44, 63, 86, 70,
+    ]
+
+    static let previewQuiet = DictationActivityAttributes.ContentState(
+        phase: .recording,
+        transcriptPreview: "",
+        startedAt: Date(),
+        levels: quietLevels
+    )
+    static let previewSpeaking = DictationActivityAttributes.ContentState(
+        phase: .recording,
+        transcriptPreview: "questa è la dettatura che scorre in tempo reale dentro l'isola mentre parlo",
+        startedAt: Date(timeIntervalSinceNow: -42),
+        levels: loudLevels
+    )
+    static let previewCapWarning = DictationActivityAttributes.ContentState(
+        phase: .recording,
+        transcriptPreview: "ultimo minuto disponibile prima del limite di registrazione",
+        startedAt: Date(timeIntervalSinceNow: -550),
+        levels: loudLevels,
+        capWarning: true
+    )
+    static let previewTranscribing = DictationActivityAttributes.ContentState(
+        phase: .transcribing,
+        transcriptPreview: "il testo appena dettato in attesa del polish on-device",
+        startedAt: Date(timeIntervalSinceNow: -31),
+        levels: quietLevels,
+        recordedSeconds: 31
+    )
+    static let previewReady = DictationActivityAttributes.ContentState(
+        phase: .ready,
+        transcriptPreview: "Ecco il testo pulito, già copiato negli appunti.",
+        startedAt: Date(timeIntervalSinceNow: -33),
+        levels: DictationActivityAttributes.ContentState.restingLevels,
+        wordCount: 42,
+        recordedSeconds: 31
+    )
+    static let previewFailed = DictationActivityAttributes.ContentState(
+        phase: .failed,
+        transcriptPreview: "Nothing heard — the microphone stayed silent.",
+        startedAt: Date(),
+        levels: DictationActivityAttributes.ContentState.restingLevels
+    )
+}
+
+#Preview("Island expanded", as: .dynamicIsland(.expanded), using: DictationActivityAttributes(sessionID: UUID())) {
+    DictationLiveActivity()
+} contentStates: {
+    DictationActivityAttributes.ContentState.previewQuiet
+    DictationActivityAttributes.ContentState.previewSpeaking
+    DictationActivityAttributes.ContentState.previewCapWarning
+    DictationActivityAttributes.ContentState.previewTranscribing
+    DictationActivityAttributes.ContentState.previewReady
+    DictationActivityAttributes.ContentState.previewFailed
+}
+
+#Preview("Island compact", as: .dynamicIsland(.compact), using: DictationActivityAttributes(sessionID: UUID())) {
+    DictationLiveActivity()
+} contentStates: {
+    DictationActivityAttributes.ContentState.previewQuiet
+    DictationActivityAttributes.ContentState.previewSpeaking
+    DictationActivityAttributes.ContentState.previewCapWarning
+    DictationActivityAttributes.ContentState.previewReady
+}
+
+#Preview("Island minimal", as: .dynamicIsland(.minimal), using: DictationActivityAttributes(sessionID: UUID())) {
+    DictationLiveActivity()
+} contentStates: {
+    DictationActivityAttributes.ContentState.previewSpeaking
+    DictationActivityAttributes.ContentState.previewTranscribing
+}
+
+#Preview("Lock Screen", as: .content, using: DictationActivityAttributes(sessionID: UUID())) {
+    DictationLiveActivity()
+} contentStates: {
+    DictationActivityAttributes.ContentState.previewSpeaking
+    DictationActivityAttributes.ContentState.previewTranscribing
+    DictationActivityAttributes.ContentState.previewReady
+    DictationActivityAttributes.ContentState.previewFailed
+}
+#endif

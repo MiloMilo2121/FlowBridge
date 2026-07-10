@@ -67,6 +67,10 @@ final class FlowBridgeCoordinator: ObservableObject {
     private var maxDurationTask: Task<Void, Never>?
     private var islandTask: Task<Void, Never>?
     private var lastSentIslandState: DictationActivityAttributes.ContentState?
+    /// Guards snapshot readers: after a crash the App Group can still hold a
+    /// `isRecording` snapshot from the dead session, which must never leak
+    /// into a new session's island or live view.
+    private var currentSessionID: UUID?
     private var memoryWarningObserver: NSObjectProtocol?
     private var commandObserver: DarwinNotificationObserver?
     private var liveSnapshotObserver: DarwinNotificationObserver?
@@ -102,6 +106,10 @@ final class FlowBridgeCoordinator: ObservableObject {
         lastTranscript = await transcriptStore?.latest()
         refreshStatsSummary()
         registerSystemIntegration()
+        // A crash mid-recording leaves an orphaned Live Activity that this
+        // process no longer tracks; kill it before recovery narrates its own
+        // story.
+        activityController.endAllActivities()
         await recoverInterruptedDictationIfNeeded()
         await consumePendingCommand()
         await processQueuedAudioIfNeeded()
@@ -150,7 +158,9 @@ final class FlowBridgeCoordinator: ObservableObject {
 
     private func handleLiveSnapshot() {
         guard case .recording = state else { return }
-        guard let snapshot = LiveTranscriptStore.latest(), snapshot.isRecording else { return }
+        guard let snapshot = LiveTranscriptStore.latest(),
+              snapshot.isRecording,
+              snapshot.sessionID == currentSessionID else { return }
         liveTranscript = snapshot
         recordingFeedback.noteSnapshot(snapshot)
     }
@@ -252,6 +262,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             statusMessage = "Loading local engine"
             polishReveal = nil
             liveTranscript = nil
+            currentSessionID = sessionID
             AudioLevelMeter.shared.reset()
             HapticPlayer.prepare()
             // The Live Activity goes up before the engine warms: the island
@@ -268,6 +279,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             HapticPlayer.listeningStarted()
             Task { await polisher.prewarm() }
         } catch {
+            currentSessionID = nil
             // Narrate the failure in the island instead of vanishing it.
             activityController.markFailed(message: Self.errorMessage(for: error), startedAt: Date())
             fail(error)
@@ -302,9 +314,10 @@ final class FlowBridgeCoordinator: ObservableObject {
         guard case .recording = state, activityController.isActive else { return }
         let remaining = FlowBridgeConstants.maxRecordingSeconds - Date().timeIntervalSince(startedAt)
         let snapshot = LiveTranscriptStore.latest()
+        let isCurrentSession = snapshot?.isRecording == true && snapshot?.sessionID == currentSessionID
         let contentState = DictationActivityAttributes.ContentState(
             phase: .recording,
-            transcriptPreview: (snapshot?.isRecording == true) ? (snapshot?.text ?? "") : "",
+            transcriptPreview: isCurrentSession ? (snapshot?.text ?? "") : "",
             startedAt: startedAt,
             levels: AudioLevelMeter.shared.barSnapshot(),
             capWarning: remaining <= 60
@@ -364,16 +377,20 @@ final class FlowBridgeCoordinator: ObservableObject {
             try await transcriptStore?.save(delivered)
             lastTranscript = delivered
             liveTranscript = nil
+            currentSessionID = nil
             // The reveal narrates this take (pre-append): a merged record
             // has no rawText of its own.
             polishReveal = PolishReveal(record: finalRecord)
             UIPasteboard.general.string = delivered.text
             state = .ready
             statusMessage = delivered.id == finalRecord.id ? "Clipboard updated" : "Appended to previous dictation"
+            // The island summary describes the take just recorded — with
+            // session append, the merged word count would contradict the
+            // recorded seconds.
             activityController.finish(
                 transcriptPreview: delivered.text,
                 startedAt: recordingStartedAt,
-                wordCount: delivered.text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count,
+                wordCount: finalRecord.text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count,
                 recordedSeconds: Int(duration.rounded())
             )
             if let outcome {
@@ -384,6 +401,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             HapticPlayer.transcriptReady()
         } catch {
             liveTranscript = nil
+            currentSessionID = nil
             activityController.finish(
                 transcriptPreview: Self.errorMessage(for: error),
                 startedAt: recordingStartedAt,

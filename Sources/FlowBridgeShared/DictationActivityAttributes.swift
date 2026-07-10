@@ -8,8 +8,8 @@ import ActivityKit
 /// Shared Live Activity contract between the app (which starts and updates
 /// the activity) and the widget extension (which renders it in the Dynamic
 /// Island and on the Lock Screen).
-public struct DictationActivityAttributes: ActivityAttributes {
-    public struct ContentState: Codable, Hashable {
+public struct DictationActivityAttributes: ActivityAttributes, Sendable {
+    public struct ContentState: Codable, Hashable, Sendable {
         public enum Phase: String, Codable, Hashable {
             case recording
             case transcribing

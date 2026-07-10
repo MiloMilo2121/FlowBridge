@@ -25,7 +25,7 @@ public enum FlowBridgeError: Error, Equatable, LocalizedError, Sendable {
         case .modelMissing(let path):
             return "Whisper model assets are missing at \(path)."
         case .emptyTranscript:
-            return "The transcription result was empty."
+            return "Nothing heard — the microphone stayed silent."
         case .queuedAudioMissing:
             return "No queued audio file was found."
         case .unsupportedShareItem:
