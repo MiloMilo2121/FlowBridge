@@ -61,15 +61,16 @@ struct SettingsView: View {
     }
 
     private var engineFooter: String {
+        let note = " Takes effect the next time the app launches."
         switch engine {
         case .whisper:
-            return "The bundled Whisper model. Everything runs on this iPhone."
+            return "The bundled Whisper model. Everything runs on this iPhone." + note
         case .whisperPrecision:
-            return WhisperModelLocator.precisionFolderIfInstalled() == nil
+            return (WhisperModelLocator.precisionFolderIfInstalled() == nil
                 ? "No Precision model installed — the bundled model is used. Install one under Application Support/PrecisionModel."
-                : "Higher-accuracy Whisper model, still fully on-device."
+                : "Higher-accuracy Whisper model, still fully on-device.") + note
         case .appleSpeech:
-            return "Apple's on-device speech model (iOS 26). Fastest, best Italian; no custom vocabulary biasing."
+            return "Apple's on-device speech model (iOS 26). Fastest, best Italian; no custom vocabulary biasing." + note
         }
     }
 

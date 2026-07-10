@@ -3,7 +3,7 @@ import Foundation
 import XCTest
 
 final class TranscriptStoreTests: XCTestCase {
-    func savesAndLoadsLatestTranscript() async throws {
+    func testSavesAndLoadsLatestTranscript() async throws {
         let defaults = try makeDefaults()
         let store = try TranscriptStore(defaults: defaults)
         let record = TranscriptRecord(

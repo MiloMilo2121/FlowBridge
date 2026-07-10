@@ -1,92 +1,91 @@
 # FlowBridge — Handoff per il prossimo agent
 
-> Aggiornato: 2 luglio 2026 · Da leggere insieme a [ROADMAP_V2.md](ROADMAP_V2.md), [KILLER_FEATURES_V2.md](KILLER_FEATURES_V2.md) e [ARCHITECTURE.md](ARCHITECTURE.md).
+> Aggiornato: 3 luglio 2026 · Da leggere insieme a [ROADMAP_V2.md](ROADMAP_V2.md), [KILLER_FEATURES_V2.md](KILLER_FEATURES_V2.md), [ARCHITECTURE.md](ARCHITECTURE.md) e [DEVICE_VALIDATION.md](DEVICE_VALIDATION.md).
 
 ## Stato del repository
 
 | Cosa | Dove |
 |---|---|
-| V1 (dettatura base funzionante) | `main` |
-| Roadmap V2 + Fasi 0–1 implementate | branch `claude/flobridge-v2-roadmap-2172rk` → **PR #1** (base: main) |
-| Fasi 2–3 implementate | branch `claude/flowbridge-v2-phase2-3` → **PR #2** (base: PR #1, stacked) |
+| V1 + V2 Fasi 0–3 (PR #1 e #2 merged) | `main` |
+| **Layer premium + readiness install + hardening produzione isola** | branch `iphone-premium-app-install` (commit `e7fd03d` + `ebbf8c6`) |
 
-**Ordine di merge: prima la #1, poi la #2** (GitHub ripunta la #2 su main da solo).
+Il branch attuale contiene, oltre alle Fasi 0–3:
+- **Dynamic Island con waveform reale** (livelli mic quantizzati nel ContentState, tick 4→2Hz change-gated, narrativa di fase completa, staleness, orfani uccisi al bootstrap, update serializzati) — v. `DictationLiveActivity.swift`, `DictationActivityController.swift`, `AudioLevelMeter.swift`.
+- **Layer premium in-app**: Orb reattiva alla voce, testo vivo, reveal raw→polished, CoreHaptics, stats giornaliere + streak + ticker + recap, History/Onboarding/Privacy Cockpit rifiniti.
+- **Repo pronto all'install**: App Group in tutti gli entitlements (via `project.yml properties`), modello Whisper Small in `Resources/WhisperModels/WhisperSmall/` (472MB, git-ignored, folder reference), `Assets.xcassets` con icona generata (script `scripts/generate-app-icon.py`), scheme headless, chiavi Live Activity frequent updates.
 
-Cosa è stato verificato e cosa no:
-- ✅ Il framework condiviso (`FlowBridgeShared`) compila con Swift 6.0.3 su Linux, i test-check a runtime (`swift run FlowBridgeSharedCheck`) passano, e ci sono unit test XCTest per WER, safety buffer, vocabolario, statistiche, tono, cronologia, comandi vocali.
-- ⚠️ I target iOS (app, tastiera, share, widgets) **non sono mai stati compilati**: questo ambiente non ha l'SDK iOS. Aspettarsi errori da sistemare al primo build in Xcode.
-- ⚠️ Nulla è mai girato su un device reale.
+Cosa è verificato e cosa no:
+- ✅ `FlowBridgeShared` compila (SwiftPM, macOS + Linux), `swift run FlowBridgeSharedCheck` passa, tutti i sorgenti passano `swiftc -parse`.
+- ✅ Test condivisi: nuovo `DictationDailyStatsTests` + fix del bug storico dei metodi senza prefisso `test` (ora girano tutti). `swift test` richiede Xcode (XCTest non è nei CLT).
+- ⚠️ I target iOS **non sono mai stati compilati**: sul Mac manca Xcode (in arrivo, account Apple gratuito da creare al sign-in).
+- ⚠️ Nulla è mai girato su device reale.
 
 ## Vincoli non negoziabili (non violarli mai)
 
-1. **Zero rete sul percorso audio/testo.** `NetworkGuard` resta installato ovunque; nessun download di modelli a runtime; nessuna telemetria remota. È il posizionamento del prodotto ("privato per architettura"), non un dettaglio.
-2. **La keyboard extension non registra audio e non carica modelli** (vietato dalla piattaforma: niente mic per entitlement, ~60–70MB di tetto memoria). L'app registra, la tastiera inserisce.
-3. **Avvio in background = Live Activity obbligatoria** per tutta la durata della registrazione (`AudioRecordingIntent`): se l'activity muore, iOS uccide l'audio.
-4. **Il transcript grezzo non si perde mai**: ogni percorso di errore del polisher/comandi ritorna il verbatim; `rawText` resta sul record.
-5. **Codice V1 preservato**: le modifiche sono additive; Whisper resta il motore di default finché il benchmark non decide diversamente.
+1. **Zero rete sul percorso audio/testo.** `NetworkGuard` resta installato ovunque; nessun download di modelli a runtime; nessuna telemetria remota.
+2. **La keyboard extension non registra audio e non carica modelli.** L'app registra, la tastiera inserisce.
+3. **Avvio in background = Live Activity obbligatoria** per tutta la registrazione (`AudioRecordingIntent`): se l'activity muore, iOS uccide l'audio.
+4. **Il transcript grezzo non si perde mai**: ogni percorso d'errore ritorna il verbatim; `rawText` resta sul record.
+5. **Whisper resta il motore di default** finché il benchmark non decide diversamente. Nota: il motore scelto nelle Settings si applica **al riavvio dell'app** (il coordinator lo crea all'init — footer UI già onesto al riguardo).
 
 ## TODO in ordine di priorità
 
-### 1. Primo build in Xcode (bloccante per tutto il resto)
-- [ ] `git checkout claude/flowbridge-v2-phase2-3` su un Mac con Xcode 26.
-- [ ] `brew install xcodegen && xcodegen generate` — **obbligatorio**: il target `FlowBridgeWidgets` esiste solo in `project.yml`; il `.xcodeproj` committato contiene già i file di app/shared/tests ma non il target widgets.
-- [ ] `./scripts/fetch-whisper-small.sh` per il modello.
-- [ ] Team di firma su tutti i target + App Group `group.com.marcomilanello.flowbridge` su app, keyboard, share **e widgets**.
-- [ ] Compilare e sistemare gli errori attesi, concentrati in due file scritti contro la superficie API documentata di iOS 26 ma mai validati con l'SDK:
-  - `Sources/FlowBridgeApp/AppleSpeechEngine.swift` (SpeechAnalyzer/SpeechTranscriber/AssetInventory/AnalyzerInput: verificare firme di `start(inputSequence:)`, `analyzeSequence(from:)`, `finalizeAndFinish…`, preset, option sets)
-  - `Sources/FlowBridgeApp/TranscriptPolisher.swift` (FoundationModels: `@Generable`/`@Guide`, `LanguageModelSession.respond(to:generating:options:)`, `prewarm()`, `GenerationOptions(sampling: .greedy)`)
-  - Possibili aggiustamenti minori anche in: `DictationIntents.swift` (`AudioRecordingIntent`/`ForegroundContinuableIntent` + `requestToContinueInForeground()`), `DictationLiveActivity.swift` (`supplementalActivityFamilies`), `WhisperEngine.swift` (`DecodingOptions.promptTokens`, `tokenizer.encode(text:)`, `specialTokens.specialTokenBegin`, protocollo `AudioProcessing`/`audioSamples`).
-- [ ] Far girare i test XCTest (`FlowBridgeSharedTests`) su simulatore.
+### 0. [MARCO] Xcode 26
+Spazio liberato in corso (32GB liberi, target ~40). App Store → Xcode, poi:
+```sh
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -license accept && sudo xcodebuild -runFirstLaunch
+```
+Xcode → Settings → Accounts → Apple ID → Manage Certificates → “+” Apple Development.
 
-### 2. Spike su device reale (i "gate" della roadmap)
-- [ ] **Spike `AudioRecordingIntent`** (il più importante): Action Button → registrazione parte in background senza aprire l'app? Testare: primo avvio senza permesso (deve cadere nel fallback foreground), device bloccato, app killata, durante altra app in audio. Se inaffidabile → fallback `openAppWhenRun = true` (già pronto: `ToggleDictationIntent`).
-- [ ] **Dynamic Island**: verificare timer, anteprima streaming (frequenza update locali accettabile?), bottone Stop (esegue nel processo app?), comportamento a schermo bloccato.
-- [ ] **Recovery**: uccidere l'app mentre registra → al riavvio la dettatura viene recuperata dal safety buffer? Verificare che il WAV sia leggibile e che il gap-on-purge di WhisperKit (documentato in ARCHITECTURE.md) non degradi troppo.
-- [ ] **Tastiera**: Darwin notifications arrivano nell'extension? Il diff incrementale non sfarfalla? Full Access + App Group ok?
-- [ ] **Spike Whisper Mode** (killer feature #5, non ancora implementata): misurare WER parlando a bassissimo volume; decidere gain/VAD.
+### 1. Loop di compilazione (Claude, appena Xcode c'è)
+- [ ] Team ID dal certificato (`security find-certificate -c "Apple Development" -p | openssl x509 -noout -subject`, campo OU) → `DEVELOPMENT_TEAM` in `project.yml settings.base` → `xcodegen generate`.
+- [ ] `xcodebuild -resolvePackageDependencies -project FlowBridge.xcodeproj -scheme FlowBridgeApp`
+- [ ] Loop: `xcodebuild build -scheme FlowBridgeApp -destination 'generic/platform=iOS' -derivedDataPath .derived CODE_SIGNING_ALLOWED=NO -quiet`
+- [ ] Errori attesi (in ordine di probabilità): `AppleSpeechEngine.swift` (superficie SpeechAnalyzer/SpeechTranscriber), `TranscriptPolisher.swift` (FoundationModels), `WhisperEngine.swift` (drift WhisperKit 1.0 — leggere il sorgente in `.derived/SourcePackages/checkouts/`, incl. verifica `AudioProcessing.audioSamples` usato dal metering), `DictationLiveActivity.swift` (`keylineTint`, `activityFamily`, preview macro), residui strict-concurrency Swift 6. Gli intent hanno già `static let`.
+- [ ] `swift test` (ora include daily stats + i test V1 riparati).
+- [ ] Verifica bundle: 3 `.appex` in `PlugIns/`, `WhisperModels/WhisperSmall/` nel `.app`.
 
-### 3. Benchmark (decide il motore di default)
-- [ ] Registrare il set italiano in `Resources/Benchmark` (voce normale, sussurro, rumore strada, vocabolario tecnico — formato: `nome.wav` + `nome.txt`, v. README della cartella).
-- [ ] Eseguire `BenchmarkHarness` su WhisperEngine vs AppleSpeechEngine; se Apple vince su WER italiano + latenza, promuoverlo a default (`EnginePreference`).
+### 2. Firma + install (Claude + [MARCO] su iPhone)
+- [ ] Build con `-allowProvisioningUpdates -allowProvisioningDeviceRegistration` (crea 4 App ID + App Group sul personal team; se il flusso headless si blocca, un Cmd-R da Xcode GUI sblocca).
+- [ ] iPhone: cavo + Trust, Developer Mode ON, trust del certificato dopo l'install.
+- [ ] Setup on-device: tastiera + Full Access, Action Button → controllo "FlowBridge Dictation", Live Activities ON.
+- [ ] Limiti free team: profili 7 giorni (reinstall settimanale), max 3 app, max 10 App ID/7gg (non churnare i bundle id).
 
-### 4. Dogfood (2 settimane minimo prima di procedere)
-- [ ] Usare FlowBridge come dettatura quotidiana. Criteri della Definition of Done V2.0 (roadmap §7): press→prima parola < 1,5s; stop→testo pulito < 2s; **zero dettature perse**; dettatura completa senza mai vedere l'app.
-- [ ] Annotare frizioni reali → diventano il backlog di rifinitura.
+### 3. Validazione su device
+Seguire **[DEVICE_VALIDATION.md](DEVICE_VALIDATION.md)** (gate AudioRecordingIntent, gate premium dell'isola, recovery, a11y, energia). È la checklist di firma "produzione".
 
-### 5. Lavori rimasti dalle Fasi 2–3 (non ancora implementati)
-- [ ] **Localizzazione IT/EN** con String Catalog (le stringhe UI oggi sono in inglese hardcoded).
-- [ ] **Paywall + IAP una tantum** (~€29,99, hard paywall dopo trial — v. roadmap §9): creare prodotto in App Store Connect, StoreKit 2, schermata "Perché niente abbonamento".
-- [ ] **"Ritrascrivi con Precision"**: richiede una retention audio configurabile (default 24h poi auto-delete) — progettare prima la retention, poi il bottone in cronologia.
-- [ ] **`contextualStrings` su DictationTranscriber**: il vocabolario oggi fa bias solo su Whisper; aggiungere il modulo DictationTranscriber come fallback con vocabolario nella famiglia Apple.
-- [ ] Icona app, screenshot con Dynamic Island, video demo in modalità aereo, testo App Store (bozza IT già in ROADMAP_V2.md §4.2 — fare versione EN).
+### 4. Benchmark (decide il motore di default)
+- [ ] Registrare il set italiano in `Resources/Benchmark`; `BenchmarkHarness` Whisper vs AppleSpeech; promuovere il vincitore.
 
-### 6. Backlog post-lancio (in ordine di valore, dalle killer feature)
-- Learn-from-Edit (#9): diff locale sulle correzioni → proposta di aggiunta al vocabolario (TipKit).
-- Interactive snippet iOS 26 (#14): risultato dettatura sopra qualsiasi schermata senza aprire l'app.
-- Azioni dal parlato (#16): estrazione promemoria/eventi con guided generation → EventKit/Reminders (opt-in, mai scritture automatiche).
-- Ricerca semantica nella cronologia (#17): NLEmbedding on-device.
-- Tap-to-listen (#18): `audioTimeRange` per-parola + retention audio.
-- Orb in Metal + coreografia matchedGeometryEffect (UX spec §2.1/2.5) — oggi la UI è funzionale, non ancora "premium".
-- Parakeet v3 / app macOS / modalità comando: solo dopo che la base è impeccabile.
+### 5. Dogfood (2 settimane minimo)
+- [ ] Definition of Done V2.0: press→prima parola <1,5s; stop→testo pulito <2s; zero dettature perse; dettatura completa senza aprire l'app.
+
+### 6. Lavori rimasti verso il lancio
+- [ ] Localizzazione IT/EN (String Catalog) — le stringhe nuove del layer premium sono in inglese come il resto.
+- [ ] Paywall + IAP una tantum (~€29,99) — richiede account Apple **a pagamento**.
+- [ ] Retention audio + "Ritrascrivi con Precision"; `contextualStrings` su DictationTranscriber; screenshot/video/copy App Store.
+
+### 7. Backlog post-lancio
+Learn-from-Edit (TipKit) · interactive snippet iOS 26 · azioni dal parlato (EventKit) · ricerca semantica (NLEmbedding) · tap-to-listen · pausa nell'isola · Orb in Metal + matchedGeometryEffect · engine switch a caldo · Parakeet v3 / macOS.
 
 ## Comandi utili
 
 ```sh
-# Verifica cross-platform (funziona anche su Linux con toolchain Swift 6)
-swift build && swift run FlowBridgeSharedCheck
-
-# Rigenerare il progetto Xcode (SEMPRE dopo aver aggiunto/rinominato file o toccato project.yml)
-xcodegen generate
-
-# Modello Whisper
-./scripts/fetch-whisper-small.sh
+swift build && swift run FlowBridgeSharedCheck   # verifica cross-platform
+swift test                                        # richiede Xcode attivo
+xcodegen generate                                 # SEMPRE dopo file nuovi/rinominati o project.yml
+./scripts/fetch-whisper-small.sh                  # modello (già staged)
+.build/iconenv/bin/python scripts/generate-app-icon.py  # rigenerare l'icona
 ```
 
 ## Trappole note (imparate a caro prezzo)
 
-- Il `.xcodeproj` è generato ma committato: i sorgenti sono folder-based, quindi **ogni file nuovo richiede `xcodegen generate`** (oppure la registrazione manuale nel pbxproj, come fatto finora da questo ambiente senza Mac).
-- Le tastiere **non possono** leggere il bundle id dell'app host (API pubblica) — il tono per-app usa i trait del campo di testo, non cambiarlo in un lookup del bundle id.
-- `SharedContainer` e `NetworkGuard` hanno guard `#if canImport` per il build Linux: mantenerli quando si tocca quel codice.
-- Il flush del safety buffer salta i campioni purgati dallo stream (gap, non duplicazione) — è una scelta deliberata, documentata in ARCHITECTURE.md.
-- I test XCTest esistenti di V1 (`TranscriptStoreTests` ecc.) hanno metodi senza prefisso `test` e quindi non girano: bug preesistente, da sistemare quando si tocca quel file.
-- Le tre note vocali di contesto: l'utente (Marco) usa un iPhone Air (A19 Pro, 12GB, Action Button, Dynamic Island), parla italiano e inglese, e il target di qualità dichiarato è "feeling migliore di Wispr Flow".
+- Il `.xcodeproj` è generato: **ogni file nuovo richiede `xcodegen generate`**. Entitlements e Info.plist si toccano SOLO via `project.yml` (`entitlements.properties` / `info.properties`) — xcodegen riscrive i file generati.
+- `Resources/WhisperModels` e `Resources/Benchmark` devono restare `type: folder` in `project.yml`, o il modello (git-ignored, fetchato dopo il generate) non finisce nel bundle.
+- ActivityKit esiste su macOS ma i tipi sono iOS-only: le guardie condivise sono `#if canImport(ActivityKit) && os(iOS)` — non rimuovere `&& os(iOS)` o il check SwiftPM su Mac esplode.
+- Ogni chiamata ActivityKit del controller passa dalla catena `enqueue` (ordering garantito): non aggiungere `Task { activity.update(...) }` sciolti.
+- Gli snapshot live vanno sempre filtrati per `sessionID` (dopo un crash lo store può contenere uno snapshot `isRecording` della sessione morta).
+- Le tastiere non possono leggere il bundle id dell'app host: il tono per-app usa i trait del campo di testo.
+- Il flush del safety buffer salta i campioni purgati (gap, non duplicazione) — deliberato, v. ARCHITECTURE.md.
+- Marco usa un iPhone Air (A19 Pro, Action Button, Dynamic Island), parla italiano e inglese; target di qualità dichiarato: "feeling migliore di Wispr Flow".

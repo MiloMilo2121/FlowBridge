@@ -3,7 +3,7 @@ import Foundation
 import XCTest
 
 final class PendingCommandStoreTests: XCTestCase {
-    func consumesCommandOnce() throws {
+    func testConsumesCommandOnce() throws {
         let defaults = try makeDefaults()
         let store = try PendingCommandStore(defaults: defaults)
 
