@@ -43,6 +43,7 @@
 		6DA5842AAD949471242CFE7D /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75585582B711A04DA59F231A /* OnboardingView.swift */; };
 		71BDE4A6933C0A7B6D22EE02 /* PendingCommandStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CD98E41DD5DE1B773A30C7B /* PendingCommandStoreTests.swift */; };
 		746430C46F885BB1099C6AA8 /* DictationLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDC8F35F4BEF7779523B7323 /* DictationLiveActivity.swift */; };
+		75D6BB2C2467815993B835AF /* DiagnosticsLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDEF7A44AA8ADA27232838B5 /* DiagnosticsLog.swift */; };
 		7AE15868C09DEC446AA8F018 /* LiveTranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A92346DD44793FF6133012EB /* LiveTranscriptStore.swift */; };
 		7B56073779F0ABDD0765080E /* DictationCommandHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA7CF10ABEEB3E9B75ACA0CF /* DictationCommandHub.swift */; };
 		7BD984A8937758C635E0C8D9 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9101AD4F00FA60371792FE4 /* HistoryView.swift */; };
@@ -255,6 +256,7 @@
 		CA149C0EF32FD199CF8FE8DD /* FlowBridgeConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeConstants.swift; sourceTree = "<group>"; };
 		CA28D67D7AAD8D180672A391 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CBD6075A9DD9A8E21AD88055 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		CDEF7A44AA8ADA27232838B5 /* DiagnosticsLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsLog.swift; sourceTree = "<group>"; };
 		D1D06F4ADAED4A199D9BA818 /* FlowTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowTheme.swift; sourceTree = "<group>"; };
 		D2DF086A59984159DC095240 /* NetworkGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkGuard.swift; sourceTree = "<group>"; };
 		D412B4D4FD9766E9DF8D3D32 /* FlowBridgeShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = FlowBridgeShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -492,6 +494,7 @@
 				3DF684D4FD515B6CC5219504 /* AudioLevelMeter.swift */,
 				9F56E15E64B23E97B7E6C2AB /* BenchmarkHarness.swift */,
 				399A0AEAA06EC3C5FC0410F2 /* ContentView.swift */,
+				CDEF7A44AA8ADA27232838B5 /* DiagnosticsLog.swift */,
 				253FCE496170F7FC75566588 /* DictationActivityController.swift */,
 				2F2D2BB6F55A00469EE92836 /* EngineSelection.swift */,
 				1D3BEA99E7DB4AE0BE1A7340 /* FlowBridgeApp.swift */,
@@ -775,6 +778,7 @@
 				F9C2FD8E06BB127E1FCF6DCB /* AudioLevelMeter.swift in Sources */,
 				CCF4E472E4936758B80327BC /* BenchmarkHarness.swift in Sources */,
 				43EB0A4CFD7AF3BF23EF18C0 /* ContentView.swift in Sources */,
+				75D6BB2C2467815993B835AF /* DiagnosticsLog.swift in Sources */,
 				AFBFD21CFF2D7FA6C103754C /* DictationActivityController.swift in Sources */,
 				CAA70CD3D9D85281B59B58D9 /* DictationIntents.swift in Sources */,
 				D6A654878740388373DFBA59 /* EngineSelection.swift in Sources */,

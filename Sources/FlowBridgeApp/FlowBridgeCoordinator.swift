@@ -93,6 +93,8 @@ final class FlowBridgeCoordinator: ObservableObject {
     // non-Sendable observer under Swift 6 strict concurrency.
 
     func bootstrap() async {
+        FBLog.rotateIfNeeded()
+        FBLog.log("bootstrap: engine=\(type(of: transcriber))")
         NetworkGuard.install()
         transcriptStore = try? TranscriptStore()
         historyStore = try? TranscriptHistoryStore()
@@ -155,10 +157,35 @@ final class FlowBridgeCoordinator: ObservableObject {
     private func handleLiveSnapshot() {
         guard case .recording = state else { return }
         guard let snapshot = LiveTranscriptStore.latest(),
-              snapshot.isRecording,
               snapshot.sessionID == currentSessionID else { return }
-        liveTranscript = snapshot
-        recordingFeedback.noteSnapshot(snapshot)
+        FBLog.log("snapshot seq=\(snapshot.sequence) rec=\(snapshot.isRecording) final=\(snapshot.isFinal) text=\(snapshot.text.count)ch preview=\(snapshot.previewText.prefix(60))")
+
+        if snapshot.isRecording {
+            liveTranscript = snapshot
+            recordingFeedback.noteSnapshot(snapshot)
+        } else if snapshot.isFinal {
+            // The engine's stream died mid-session: it writes a final
+            // snapshot carrying the error in previewText. Without this
+            // branch the app stays in a zombie "Listening" state.
+            let message = snapshot.previewText
+            Task { await self.handleEngineStreamDeath(message: message) }
+        }
+    }
+
+    private func handleEngineStreamDeath(message: String) async {
+        guard case .recording = state else { return }
+        FBLog.log("engine stream died: \(message)")
+        elapsedTask?.cancel()
+        maxDurationTask?.cancel()
+        stopIslandTick()
+        recordingFeedback.stop()
+        recordingElapsed = nil
+        currentSessionID = nil
+        liveTranscript = nil
+        await transcriber.unload()
+        let text = message.isEmpty ? "The engine stopped unexpectedly." : message
+        activityController.finish(transcriptPreview: text, startedAt: Date(), failed: true)
+        fail(FlowBridgeError.transcriptionFailed(text))
     }
 
     /// Start requested by `StartDictationIntent` while the app may be
@@ -180,14 +207,19 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     func handleScenePhase(_ phase: ScenePhase) async {
+        FBLog.log("scenePhase=\(phase) state=\(state)")
         switch phase {
         case .active:
             await consumePendingCommand()
             await processQueuedAudioIfNeeded()
         case .background:
-            if case .recording = state {
+            switch state {
+            case .recording, .warming, .transcribing:
+                // The session owns the engine: unloading here would kill the
+                // live stream (the actor interleaves the unload right after
+                // start).
                 statusMessage = "Live bridge active"
-            } else {
+            case .idle, .ready, .failed:
                 await transcriber.unload()
             }
         case .inactive:
@@ -199,6 +231,7 @@ final class FlowBridgeCoordinator: ObservableObject {
 
     func consumePendingCommand() async {
         guard let command = pendingCommandStore?.consume()?.command else { return }
+        FBLog.log("pending command consumed: \(command)")
 
         switch command {
         case .toggleRecording:
@@ -267,7 +300,9 @@ final class FlowBridgeCoordinator: ObservableObject {
             // responds to the trigger instantly, and background starts via
             // AudioRecordingIntent require a visible activity to keep audio.
             activityController.start(sessionID: sessionID, startedAt: startedAt)
+            FBLog.log("start: warming, engine=\(type(of: transcriber)) session=\(sessionID.uuidString.prefix(8))")
             try await transcriber.startLiveTranscription(sessionID: sessionID)
+            FBLog.log("start: recording")
             state = .recording(startedAt: startedAt)
             statusMessage = "Live bridge active"
             startElapsedTimer(from: startedAt)
@@ -275,8 +310,14 @@ final class FlowBridgeCoordinator: ObservableObject {
             startIslandTick(startedAt: startedAt)
             recordingFeedback.start()
             HapticPlayer.listeningStarted()
-            Task { await polisher.prewarm() }
+            // Prewarm off the session-start memory peak: the polisher LLM
+            // and the just-loaded Whisper model shouldn't spike together.
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                await polisher.prewarm()
+            }
         } catch {
+            FBLog.log("start FAILED: \(error)")
             currentSessionID = nil
             // Narrate the failure in the island instead of vanishing it.
             activityController.markFailed(message: Self.errorMessage(for: error), startedAt: Date())
@@ -342,6 +383,7 @@ final class FlowBridgeCoordinator: ObservableObject {
 
         do {
             let duration = Date().timeIntervalSince(recordingStartedAt)
+            FBLog.log("stop: transcribing after \(Int(duration))s")
             state = .transcribing
             // Freeze the wave at its last real levels while the widget
             // narrates the polish phase.
@@ -356,6 +398,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             )
 
             let record = try await transcriber.stopLiveTranscription(duration: duration)
+            FBLog.log("stop: engine returned \(record.text.count)ch")
 
             // Deterministic spoken commands first ("punto", "a capo", …),
             // then the on-device polish with the current tone target. The
@@ -509,10 +552,17 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     private func handleMemoryWarning() async {
-        if case .recording = state {
-            await stopRecordingAndTranscribe()
+        FBLog.log("memory warning, state=\(state)")
+        switch state {
+        case .idle, .ready, .failed:
+            await transcriber.unload()
+        case .warming, .recording, .transcribing:
+            // Loading the model spikes memory exactly here, so iOS often
+            // warns mid-start. Unloading now would kill the session we just
+            // opened (the V1 bug): keep it — the OS reclaims by force if it
+            // truly must.
+            break
         }
-        await transcriber.unload()
     }
 
     private func startElapsedTimer(from startDate: Date) {
@@ -536,6 +586,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     private func fail(_ error: Error) {
+        FBLog.log("fail: \(error)")
         // A stop that raced an already-ended session is a shrug, not a
         // failure: reset quietly instead of alarming the user.
         if case FlowBridgeError.notRecording = error {

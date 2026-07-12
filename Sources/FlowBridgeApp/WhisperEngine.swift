@@ -19,6 +19,7 @@ actor WhisperEngine: TranscriptionEngine {
     private var lastFlushedSampleCount = 0
     private var meteringTask: Task<Void, Never>?
     private var lastMeteredSampleCount = 0
+    private var meterLogTick = 0
 
     private let variant: WhisperModelVariant
 
@@ -113,6 +114,7 @@ actor WhisperEngine: TranscriptionEngine {
 
         let callback: AudioStreamTranscriberCallback = { _, state in
             let liveText = Self.liveText(from: state)
+            FBLog.log("whisper cb: rec=\(state.isRecording) conf=\(state.confirmedSegments.count) unconf=\(state.unconfirmedSegments.count) text=\(liveText.committed.count)ch")
             try? liveStore.write(
                 LiveTranscriptSnapshot(
                     sessionID: sessionID,
@@ -144,8 +146,11 @@ actor WhisperEngine: TranscriptionEngine {
         liveSessionID = sessionID
         streamTask = Task {
             do {
+                FBLog.log("whisper: stream starting")
                 try await streamTranscriber.startStreamTranscription()
+                FBLog.log("whisper: stream ended cleanly")
             } catch {
+                FBLog.log("whisper STREAM ERROR: \(error)")
                 let message = DictationTextNormalizer.normalize(error.localizedDescription)
                 try? liveStore.write(
                     LiveTranscriptSnapshot(
@@ -221,6 +226,7 @@ actor WhisperEngine: TranscriptionEngine {
     }
 
     func unload() async {
+        FBLog.log("whisper: unload (live=\(liveSessionID != nil))")
         unloadTask?.cancel()
         unloadTask = nil
         stopMetering()
@@ -312,6 +318,11 @@ actor WhisperEngine: TranscriptionEngine {
         let samples = audioProcessor.audioSamples
         let count = samples.count
 
+        meterLogTick += 1
+        if meterLogTick % 20 == 1 {
+            FBLog.log("meter: \(count) mic samples buffered")
+        }
+
         if count < lastMeteredSampleCount {
             // The stream purged processed samples; realign on fresh audio.
             lastMeteredSampleCount = count
@@ -363,7 +374,9 @@ actor WhisperEngine: TranscriptionEngine {
             useBackgroundDownloadSession: false
         )
 
+        let loadStart = Date()
         let kit = try await WhisperKit(config)
+        FBLog.log("whisper: model loaded in \(Int(Date().timeIntervalSince(loadStart)))s")
         whisperKit = kit
         scheduleIdleUnload()
         return kit
