@@ -22,6 +22,10 @@ public enum FlowBridgeConstants {
     /// UserDefaults (App Group) key for the preferred transcription engine.
     /// Values: "whisper" (default, V1 behavior) or "appleSpeech".
     public static let preferredEngineKey = "preferredEngine"
+    /// UserDefaults (App Group) key for the dictation language hint.
+    /// Values: "auto", "it", "en". Pinning the language avoids per-chunk
+    /// auto-detection — the main accuracy killer on short streaming windows.
+    public static let dictationLanguageKey = "dictationLanguage"
     /// UserDefaults key: run transcripts through the on-device polisher.
     public static let polishEnabledKey = "polishTranscripts"
     /// UserDefaults key: onboarding was completed.

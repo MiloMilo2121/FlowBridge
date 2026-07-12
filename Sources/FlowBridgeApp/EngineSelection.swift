@@ -31,6 +31,51 @@ enum EnginePreference: String, CaseIterable {
     }
 }
 
+/// The dictation language hint. Pinning it (instead of per-chunk
+/// auto-detect) is the single cheapest accuracy win on streaming Whisper;
+/// the Apple engine uses it as its transcriber locale.
+enum DictationLanguage: String, CaseIterable {
+    case auto
+    case italian = "it"
+    case english = "en"
+
+    var displayName: String {
+        switch self {
+        case .auto: return "Auto-detect"
+        case .italian: return "Italiano"
+        case .english: return "English"
+        }
+    }
+
+    /// Whisper decoding language code; nil lets the model detect.
+    var whisperCode: String? {
+        self == .auto ? nil : rawValue
+    }
+
+    /// Locale for the Apple Speech transcriber; nil falls back to system.
+    var speechLocale: Locale? {
+        switch self {
+        case .auto: return nil
+        case .italian: return Locale(identifier: "it-IT")
+        case .english: return Locale(identifier: "en-US")
+        }
+    }
+
+    static var current: DictationLanguage {
+        let defaults = try? SharedContainer.userDefaults()
+        let raw = defaults?.string(forKey: FlowBridgeConstants.dictationLanguageKey)
+        // Italian-first product: the default hint is Italian, not the phone
+        // locale (an English-localized phone dictating Italian is the
+        // primary user).
+        return raw.flatMap(DictationLanguage.init(rawValue:)) ?? .italian
+    }
+
+    static func set(_ language: DictationLanguage) {
+        let defaults = try? SharedContainer.userDefaults()
+        defaults?.set(language.rawValue, forKey: FlowBridgeConstants.dictationLanguageKey)
+    }
+}
+
 enum EngineFactory {
     static func makeCurrent() -> any TranscriptionEngine {
         switch EnginePreference.current {
@@ -42,7 +87,7 @@ enum EngineFactory {
             }
             return WhisperEngine()
         case .appleSpeech:
-            return AppleSpeechEngine()
+            return AppleSpeechEngine(locale: DictationLanguage.current.speechLocale ?? .current)
         }
     }
 }

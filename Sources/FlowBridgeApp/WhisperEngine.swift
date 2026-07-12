@@ -32,7 +32,7 @@ actor WhisperEngine: TranscriptionEngine {
         let options = DecodingOptions(
             verbose: false,
             task: .transcribe,
-            language: nil,
+            language: DictationLanguage.current.whisperCode,
             temperature: 0,
             temperatureFallbackCount: 2,
             sampleLength: 224,
@@ -99,7 +99,7 @@ actor WhisperEngine: TranscriptionEngine {
         let options = DecodingOptions(
             verbose: false,
             task: .transcribe,
-            language: nil,
+            language: DictationLanguage.current.whisperCode,
             temperature: 0,
             temperatureFallbackCount: 2,
             sampleLength: 224,

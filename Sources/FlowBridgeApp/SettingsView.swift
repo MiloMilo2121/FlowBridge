@@ -8,6 +8,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var engine = EnginePreference.current
+    @State private var language = DictationLanguage.current
     @State private var polishEnabled = true
     @State private var defaultTone: ToneProfile = .neutral
     @State private var voiceCommandsEnabled = true
@@ -53,10 +54,18 @@ struct SettingsView: View {
             .onChange(of: engine) { _, newValue in
                 EnginePreference.set(newValue)
             }
+            Picker("Language", selection: $language) {
+                ForEach(DictationLanguage.allCases, id: \.self) { choice in
+                    Text(choice.displayName).tag(choice)
+                }
+            }
+            .onChange(of: language) { _, newValue in
+                DictationLanguage.set(newValue)
+            }
         } header: {
             Text("Transcription")
         } footer: {
-            Text(engineFooter)
+            Text(engineFooter + " Pinning the language noticeably improves accuracy; auto-detect struggles on short phrases. Engine changes apply from the next app launch, language from the next dictation.")
         }
     }
 
@@ -198,6 +207,7 @@ struct SettingsView: View {
 
     private func load() {
         engine = EnginePreference.current
+        language = DictationLanguage.current
         let defaults = try? SharedContainer.userDefaults()
         polishEnabled = defaults?.object(forKey: FlowBridgeConstants.polishEnabledKey) as? Bool ?? true
         voiceCommandsEnabled = defaults?.object(forKey: FlowBridgeConstants.voiceCommandsEnabledKey) as? Bool ?? true
