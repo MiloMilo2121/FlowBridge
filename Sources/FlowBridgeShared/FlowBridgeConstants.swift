@@ -28,6 +28,13 @@ public enum FlowBridgeConstants {
     public static let dictationLanguageKey = "dictationLanguage"
     /// UserDefaults key: run transcripts through the on-device polisher.
     public static let polishEnabledKey = "polishTranscripts"
+    /// UserDefaults key: after stop, re-transcribe the full session audio in
+    /// one pass (streaming quality is bounded by chunked decoding; the
+    /// full-context pass is what offline WER benchmarks measure).
+    public static let finalPassEnabledKey = "finalPrecisionPass"
+    /// Sessions longer than this skip the final pass to keep stop latency
+    /// bounded.
+    public static let finalPassMaxSeconds: TimeInterval = 180
     /// UserDefaults key: onboarding was completed.
     public static let onboardingCompletedKey = "onboardingCompleted"
 

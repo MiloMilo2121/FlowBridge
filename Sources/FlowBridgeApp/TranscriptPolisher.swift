@@ -30,7 +30,7 @@ actor TranscriptPolisher {
 #if canImport(FoundationModels)
     @Generable
     struct PolishedTranscript {
-        @Guide(description: "The transcript with filler words removed, punctuation and capitalization corrected, and nothing else changed. Keep the speaker's own words and language.")
+        @Guide(description: "The transcript with filler words removed, punctuation and capitalization corrected, and nothing else changed. MUST be in the exact same language as the input transcript — never translated.")
         var cleanedText: String
     }
 
@@ -40,9 +40,25 @@ actor TranscriptPolisher {
     You clean up dictation transcripts. Remove filler words (uh, um, ehm, cioè \
     used as filler), fix punctuation, capitalization and obvious \
     transcription spacing artifacts. Do not summarize, do not add content, do \
-    not translate, do not change the speaker's wording or language. Return \
-    the cleaned transcript only.
+    not change the speaker's wording. CRITICAL: the output stays in the exact \
+    language the transcript was spoken in — translating it is a failure, even \
+    if the rest of the conversation is in another language. Return the \
+    cleaned transcript only.
     """
+
+    /// A per-request language pin: the ~3B model happily "helps" by
+    /// translating into the system language unless told, in the prompt
+    /// itself, that the transcript language is the output language.
+    private static func languageClause() -> String {
+        switch DictationLanguage.current {
+        case .auto:
+            return "Reply in the same language as the transcript below."
+        case .italian:
+            return "The transcript below is Italian. The cleaned text must be Italian."
+        case .english:
+            return "The transcript below is English. The cleaned text must be English."
+        }
+    }
 
     var isAvailable: Bool {
         SystemLanguageModel.default.availability == .available
@@ -87,7 +103,7 @@ actor TranscriptPolisher {
 
         do {
             let response = try await session.respond(
-                to: text,
+                to: Self.languageClause() + "\n\n" + text,
                 generating: PolishedTranscript.self,
                 options: GenerationOptions(sampling: .greedy)
             )

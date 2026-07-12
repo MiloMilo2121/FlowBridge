@@ -9,6 +9,7 @@ struct SettingsView: View {
 
     @State private var engine = EnginePreference.current
     @State private var language = DictationLanguage.current
+    @State private var finalPassEnabled = true
     @State private var polishEnabled = true
     @State private var defaultTone: ToneProfile = .neutral
     @State private var voiceCommandsEnabled = true
@@ -62,10 +63,15 @@ struct SettingsView: View {
             .onChange(of: language) { _, newValue in
                 DictationLanguage.set(newValue)
             }
+            Toggle("Final precision pass", isOn: $finalPassEnabled)
+                .onChange(of: finalPassEnabled) { _, newValue in
+                    let defaults = try? SharedContainer.userDefaults()
+                    defaults?.set(newValue, forKey: FlowBridgeConstants.finalPassEnabledKey)
+                }
         } header: {
             Text("Transcription")
         } footer: {
-            Text(engineFooter + " Pinning the language noticeably improves accuracy; auto-detect struggles on short phrases. Engine changes apply from the next app launch, language from the next dictation.")
+            Text(engineFooter + " Pinning the language noticeably improves accuracy; auto-detect struggles on short phrases. The precision pass re-transcribes the whole recording once you stop — a moment slower, distinctly more accurate. Engine changes apply from the next app launch.")
         }
     }
 
@@ -208,6 +214,8 @@ struct SettingsView: View {
     private func load() {
         engine = EnginePreference.current
         language = DictationLanguage.current
+        let sharedDefaults = try? SharedContainer.userDefaults()
+        finalPassEnabled = sharedDefaults?.object(forKey: FlowBridgeConstants.finalPassEnabledKey) as? Bool ?? true
         let defaults = try? SharedContainer.userDefaults()
         polishEnabled = defaults?.object(forKey: FlowBridgeConstants.polishEnabledKey) as? Bool ?? true
         voiceCommandsEnabled = defaults?.object(forKey: FlowBridgeConstants.voiceCommandsEnabledKey) as? Bool ?? true
