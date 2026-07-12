@@ -1,4 +1,4 @@
-import ActivityKit
+@preconcurrency import ActivityKit
 import FlowBridgeShared
 import Foundation
 
@@ -101,10 +101,11 @@ final class DictationActivityController {
         }
     }
 
-    /// Serializes ActivityKit work. The closure inherits the main actor, so
-    /// captured activities need no Sendable gymnastics.
+    /// Serializes ActivityKit work. The task is pinned to the main actor so
+    /// the captured (non-Sendable) `Activity` never crosses an isolation
+    /// boundary, while still chaining after the previous operation.
     private func enqueue(_ operation: @escaping @MainActor () async -> Void) {
-        pipeline = Task { [previous = pipeline] in
+        pipeline = Task { @MainActor [previous = pipeline] in
             await previous?.value
             await operation()
         }

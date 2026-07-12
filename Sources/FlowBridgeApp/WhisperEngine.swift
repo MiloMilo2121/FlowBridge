@@ -2,7 +2,11 @@ import AVFoundation
 import CoreML
 import FlowBridgeShared
 import Foundation
-import WhisperKit
+// WhisperKit's streaming components (AudioEncoding, AudioProcessing, the
+// tokenizer, …) predate Swift 6 Sendable annotations; @preconcurrency
+// downgrades the resulting cross-actor "sending" diagnostics to warnings so
+// our own code stays in strict-concurrency mode.
+@preconcurrency import WhisperKit
 
 actor WhisperEngine: TranscriptionEngine {
     private var whisperKit: WhisperKit?
@@ -165,7 +169,7 @@ actor WhisperEngine: TranscriptionEngine {
             throw FlowBridgeError.notRecording
         }
 
-        streamTranscriber?.stopStreamTranscription()
+        await streamTranscriber?.stopStreamTranscription()
         streamTask?.cancel()
         streamTask = nil
         streamTranscriber = nil
@@ -223,7 +227,7 @@ actor WhisperEngine: TranscriptionEngine {
         // An unload during a live session is an interruption (memory pressure,
         // teardown): keep the safety file so the dictation can be recovered.
         await stopSafetyFlush(keepFileForRecovery: liveSessionID != nil)
-        streamTranscriber?.stopStreamTranscription()
+        await streamTranscriber?.stopStreamTranscription()
         streamTask?.cancel()
         streamTask = nil
         streamTranscriber = nil

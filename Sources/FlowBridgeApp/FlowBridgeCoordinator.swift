@@ -87,14 +87,10 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
     }
 
-    deinit {
-        elapsedTask?.cancel()
-        maxDurationTask?.cancel()
-        islandTask?.cancel()
-        if let memoryWarningObserver {
-            NotificationCenter.default.removeObserver(memoryWarningObserver)
-        }
-    }
+    // No deinit: this is a process-lifetime singleton (`shared`) that is
+    // never deallocated, so the memory-warning observer and timers live as
+    // long as the app. A nonisolated deinit also can't touch the
+    // non-Sendable observer under Swift 6 strict concurrency.
 
     func bootstrap() async {
         NetworkGuard.install()

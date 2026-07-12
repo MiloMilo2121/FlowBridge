@@ -15,7 +15,12 @@ import Foundation
 /// This file is compiled into both the app and the widget extension; the
 /// system always executes the intents in the app process, where
 /// `DictationCommandHub` has handlers registered.
-struct StartDictationIntent: AudioRecordingIntent, ForegroundContinuableIntent {
+///
+/// `ForegroundContinuableIntent` is unavailable in app extensions, so the
+/// widget build (which only needs the type to exist for its buttons) gets
+/// the conformance and its foreground fallback conditioned out. The intent
+/// always runs in the app process regardless.
+struct StartDictationIntent: AudioRecordingIntent {
     static let title: LocalizedStringResource = "Start Dictation"
     static let description = IntentDescription("Start FlowBridge dictation in the background, with live progress in the Dynamic Island.")
 
@@ -25,15 +30,26 @@ struct StartDictationIntent: AudioRecordingIntent, ForegroundContinuableIntent {
             try await DictationCommandHub.shared.requestStart()
             return .result()
         } catch {
+            #if FLOWBRIDGE_EXTENSION
+            // Unreachable at runtime (the app process runs this intent), but
+            // the extension build cannot see requestToContinueInForeground.
+            throw error
+            #else
             // Background start is not possible right now (first run, missing
             // permission, audio-session failure): open the app and let the
             // foreground pipeline take over.
             try await requestToContinueInForeground()
             await DictationCommandHub.shared.requestToggle()
             return .result()
+            #endif
         }
     }
 }
+
+// The foreground-continuation path exists only in the app, not the extension.
+#if !FLOWBRIDGE_EXTENSION
+extension StartDictationIntent: ForegroundContinuableIntent {}
+#endif
 
 /// Stops the active dictation. Wired to the Live Activity's stop button and
 /// exposed to Shortcuts. Runs in the app process (`LiveActivityIntent`),

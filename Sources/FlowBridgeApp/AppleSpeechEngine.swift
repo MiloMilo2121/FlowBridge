@@ -33,7 +33,7 @@ actor AppleSpeechEngine: TranscriptionEngine {
     }
 
     func transcribe(recording: RecordedAudio, source: TranscriptRecord.Source) async throws -> TranscriptRecord {
-        let transcriber = SpeechTranscriber(locale: locale, preset: .offlineTranscription)
+        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
         try await ensureAssets(for: transcriber)
         let analyzer = SpeechAnalyzer(modules: [transcriber])
 

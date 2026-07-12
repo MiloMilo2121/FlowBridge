@@ -10,7 +10,7 @@ import ActivityKit
 /// Island and on the Lock Screen).
 public struct DictationActivityAttributes: ActivityAttributes, Sendable {
     public struct ContentState: Codable, Hashable, Sendable {
-        public enum Phase: String, Codable, Hashable {
+        public enum Phase: String, Codable, Hashable, Sendable {
             case recording
             case transcribing
             case ready

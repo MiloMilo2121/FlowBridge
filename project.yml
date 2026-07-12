@@ -27,13 +27,18 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.marcomilanello.flowbridge.shared
         APPLICATION_EXTENSION_API_ONLY: "YES"
+        GENERATE_INFOPLIST_FILE: "YES"
   FlowBridgeApp:
     type: application
     platform: iOS
     sources:
       - path: Sources/FlowBridgeApp
       - path: Sources/FlowBridgeAppIntents
-    resources:
+      # Resources live under `sources` — XcodeGen has no target-level
+      # `resources` key and silently ignores it (that mistake kept both the
+      # asset catalog and the Whisper model out of the bundle). XcodeGen
+      # sorts each entry into the right build phase automatically.
+      - path: Resources/Assets.xcassets
       # Folder references: contents are copied verbatim at build time, so the
       # Whisper model fetched after `xcodegen generate` still lands in the bundle.
       - path: Resources/WhisperModels
@@ -42,7 +47,6 @@ targets:
       - path: Resources/Benchmark
         type: folder
         optional: true
-      - path: Resources/Assets.xcassets
     dependencies:
       - target: FlowBridgeShared
       - package: ArgmaxOSSSwift
@@ -158,6 +162,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.marcomilanello.flowbridge.widgets
+        # Marks the shared AppIntents sources as compiling inside an app
+        # extension, where ForegroundContinuableIntent is unavailable.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) FLOWBRIDGE_EXTENSION
   FlowBridgeSharedTests:
     type: bundle.unit-test
     platform: iOS

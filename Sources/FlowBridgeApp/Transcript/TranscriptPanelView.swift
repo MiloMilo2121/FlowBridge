@@ -34,7 +34,7 @@ struct TranscriptPanelView: View {
                     .textSelection(.enabled)
                     .foregroundStyle(record == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                     .id(showRaw)
-                    .transition(reduceMotion ? .opacity : .blurReplace)
+                    .revealTransition(reduceMotion: reduceMotion)
             }
             .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
 
@@ -97,6 +97,20 @@ struct TranscriptPanelView: View {
                 showRaw = false
                 captionVisible = true
             }
+        }
+    }
+}
+
+private extension View {
+    /// `.blurReplace` is a `Transition`, not an `AnyTransition`, so it can't
+    /// share a ternary with `.opacity`. A @ViewBuilder branch keeps the blur
+    /// for the reveal while honoring Reduce Motion with a plain cross-fade.
+    @ViewBuilder
+    func revealTransition(reduceMotion: Bool) -> some View {
+        if reduceMotion {
+            transition(.opacity)
+        } else {
+            transition(.blurReplace)
         }
     }
 }
