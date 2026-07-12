@@ -69,6 +69,9 @@ targets:
         NSMicrophoneUsageDescription: FlowBridge records speech locally and transcribes it on this device.
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
+        # Without this key iOS treats the app as legacy and renders it
+        # scaled/letterboxed instead of native resolution.
+        UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
         UIBackgroundModes:
           - audio

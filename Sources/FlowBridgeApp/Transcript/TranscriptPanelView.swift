@@ -36,7 +36,7 @@ struct TranscriptPanelView: View {
                     .id(showRaw)
                     .revealTransition(reduceMotion: reduceMotion)
             }
-            .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 110, alignment: .topLeading)
 
             if let reveal, captionVisible {
                 Button {

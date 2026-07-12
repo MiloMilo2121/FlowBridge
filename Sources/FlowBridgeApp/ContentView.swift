@@ -21,6 +21,7 @@ struct ContentView: View {
 
                 OrbView(
                     state: coordinator.state,
+                    diameter: 190,
                     readyPulse: readyPulse,
                     failPulse: failPulse
                 ) {

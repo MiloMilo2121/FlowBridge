@@ -255,7 +255,9 @@ final class FlowBridgeCoordinator: ObservableObject {
             let startedAt = Date()
             let sessionID = UUID()
             state = .warming
-            statusMessage = "Loading local engine"
+            // The very first load compiles the model for the Neural Engine
+            // and can take up to a minute; afterwards it's near-instant.
+            statusMessage = "Preparing engine — first run can take a minute"
             polishReveal = nil
             liveTranscript = nil
             currentSessionID = sessionID
@@ -534,6 +536,13 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     private func fail(_ error: Error) {
+        // A stop that raced an already-ended session is a shrug, not a
+        // failure: reset quietly instead of alarming the user.
+        if case FlowBridgeError.notRecording = error {
+            state = .idle
+            statusMessage = nil
+            return
+        }
         let message = Self.errorMessage(for: error)
         state = .failed(message)
         statusMessage = message
