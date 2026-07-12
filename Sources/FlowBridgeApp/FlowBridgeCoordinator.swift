@@ -71,6 +71,9 @@ final class FlowBridgeCoordinator: ObservableObject {
     /// `isRecording` snapshot from the dead session, which must never leak
     /// into a new session's island or live view.
     private var currentSessionID: UUID?
+    /// Darwin notifications coalesce poorly: the same snapshot can arrive
+    /// several times back-to-back. Sequences at or below this are ignored.
+    private var lastSeenSnapshotSequence = 0
     private var memoryWarningObserver: NSObjectProtocol?
     private var commandObserver: DarwinNotificationObserver?
     private var liveSnapshotObserver: DarwinNotificationObserver?
@@ -157,7 +160,9 @@ final class FlowBridgeCoordinator: ObservableObject {
     private func handleLiveSnapshot() {
         guard case .recording = state else { return }
         guard let snapshot = LiveTranscriptStore.latest(),
-              snapshot.sessionID == currentSessionID else { return }
+              snapshot.sessionID == currentSessionID,
+              snapshot.sequence > lastSeenSnapshotSequence else { return }
+        lastSeenSnapshotSequence = snapshot.sequence
         FBLog.log("snapshot seq=\(snapshot.sequence) rec=\(snapshot.isRecording) final=\(snapshot.isFinal) text=\(snapshot.text.count)ch preview=\(snapshot.previewText.prefix(60))")
 
         if snapshot.isRecording {
@@ -173,7 +178,8 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     private func handleEngineStreamDeath(message: String) async {
-        guard case .recording = state else { return }
+        guard case .recording = state, currentSessionID != nil else { return }
+        currentSessionID = nil
         FBLog.log("engine stream died: \(message)")
         elapsedTask?.cancel()
         maxDurationTask?.cancel()
@@ -294,6 +300,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             polishReveal = nil
             liveTranscript = nil
             currentSessionID = sessionID
+            lastSeenSnapshotSequence = 0
             AudioLevelMeter.shared.reset()
             HapticPlayer.prepare()
             // The Live Activity goes up before the engine warms: the island

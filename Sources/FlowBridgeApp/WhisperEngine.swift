@@ -385,9 +385,28 @@ actor WhisperEngine: TranscriptionEngine {
     private func scheduleIdleUnload() {
         unloadTask?.cancel()
         unloadTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(FlowBridgeConstants.modelIdleTTLSeconds))
-            await self?.unload()
+            do {
+                try await Task.sleep(for: .seconds(FlowBridgeConstants.modelIdleTTLSeconds))
+            } catch {
+                // Cancelled: do NOT unload. A `try?` here would swallow the
+                // CancellationError and fall through to the unload — turning
+                // "cancel the idle timer" into "unload right now", which is
+                // exactly what killed every live session at start.
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await self?.idleUnload()
         }
+    }
+
+    /// Unload requested by the idle timer: refuses while a live session is
+    /// running, whatever the timing.
+    private func idleUnload() async {
+        guard liveSessionID == nil else {
+            FBLog.log("whisper: idle unload skipped (live session)")
+            return
+        }
+        await unload()
     }
 
     private static func liveText(from state: AudioStreamTranscriber.State) -> (committed: String, preview: String) {
