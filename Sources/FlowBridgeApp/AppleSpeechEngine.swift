@@ -32,10 +32,20 @@ actor AppleSpeechEngine: TranscriptionEngine {
         return supported.contains { $0.identifier(.bcp47) == locale.identifier(.bcp47) }
     }
 
+    /// The personal vocabulary as recognition context — the Speech stack's
+    /// counterpart to Whisper's prompt bias.
+    private func applyVocabulary(to analyzer: SpeechAnalyzer) async {
+        let terms = (try? VocabularyStore())?.terms() ?? []
+        guard !terms.isEmpty else { return }
+        let context = await analyzer.context
+        context.contextualStrings[.general] = terms
+    }
+
     func transcribe(recording: RecordedAudio, source: TranscriptRecord.Source) async throws -> TranscriptRecord {
         let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
         try await ensureAssets(for: transcriber)
         let analyzer = SpeechAnalyzer(modules: [transcriber])
+        await applyVocabulary(to: analyzer)
 
         let collector = Task {
             var pieces: [String] = []
@@ -107,6 +117,7 @@ actor AppleSpeechEngine: TranscriptionEngine {
         )
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
+        await applyVocabulary(to: analyzer)
         self.analyzer = analyzer
 
         let (inputStream, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self)
@@ -182,7 +193,9 @@ actor AppleSpeechEngine: TranscriptionEngine {
                 isFinal: true
             )
         )
-        await closeSafetyBuffer(keepFileForRecovery: false)
+        // Keep the WAV: the coordinator's final pass consumes it and owns
+        // the cleanup (FinalPassService).
+        await closeSafetyBuffer(keepFileForRecovery: true)
 
         return TranscriptRecord(
             text: text,

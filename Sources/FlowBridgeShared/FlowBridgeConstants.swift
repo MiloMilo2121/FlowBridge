@@ -31,7 +31,14 @@ public enum FlowBridgeConstants {
     /// UserDefaults key: after stop, re-transcribe the full session audio in
     /// one pass (streaming quality is bounded by chunked decoding; the
     /// full-context pass is what offline WER benchmarks measure).
+    /// Legacy bool key, superseded by `finalPassModeKey` (migration only).
     public static let finalPassEnabledKey = "finalPrecisionPass"
+    /// UserDefaults key: final-pass provider — "off" | "localPrecision" |
+    /// "cloudScribe".
+    public static let finalPassModeKey = "finalPassMode"
+    /// UserDefaults key: words the user dismissed from vocabulary
+    /// suggestions (JSON array of lowercased strings).
+    public static let vocabularyDismissedKey = "vocabularyDismissedSuggestions"
     /// Sessions longer than this skip the final pass to keep stop latency
     /// bounded.
     public static let finalPassMaxSeconds: TimeInterval = 180

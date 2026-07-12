@@ -181,19 +181,13 @@ actor WhisperEngine: TranscriptionEngine {
         liveSessionID = nil
         stopMetering()
 
-        // Close the safety WAV keeping the file: it feeds the precision pass
-        // below, and survives for next-launch recovery if we die in between.
+        // Close the safety WAV keeping the file: the coordinator's final
+        // pass consumes it (and it survives for next-launch recovery if the
+        // process dies before then). FinalPassService owns the cleanup.
         await stopSafetyFlush(keepFileForRecovery: true)
 
         let liveStore = try LiveTranscriptStore()
-        let streamedText = DictationTextNormalizer.normalize(liveStore.latest()?.text ?? "")
-
-        // Streaming quality is bounded by chunked greedy decoding. One
-        // full-context pass over the complete audio is what offline WER
-        // benchmarks measure — use it as the delivered text whenever it
-        // succeeds; the streamed text stays as fallback.
-        let preciseText = await precisionPassText(sessionID: sessionID, duration: duration)
-        let text = (preciseText?.isEmpty == false) ? preciseText! : streamedText
+        let text = DictationTextNormalizer.normalize(liveStore.latest()?.text ?? "")
 
         guard !text.isEmpty else {
             try? liveStore.write(
@@ -206,11 +200,6 @@ actor WhisperEngine: TranscriptionEngine {
                     isFinal: true
                 )
             )
-            // Nothing usable. Keep the audio only if long enough for a
-            // next-launch recovery attempt; sub-second files hold no speech.
-            if duration < FlowBridgeConstants.safetyBufferMinimumRecoverySeconds {
-                removeSafetyFile(sessionID: sessionID)
-            }
             throw FlowBridgeError.emptyTranscript
         }
 
@@ -224,7 +213,6 @@ actor WhisperEngine: TranscriptionEngine {
                 isFinal: true
             )
         )
-        removeSafetyFile(sessionID: sessionID)
         scheduleIdleUnload()
 
         return TranscriptRecord(
@@ -233,45 +221,6 @@ actor WhisperEngine: TranscriptionEngine {
             audioDuration: duration,
             source: .microphone
         )
-    }
-
-    private static var finalPassEnabled: Bool {
-        let defaults = try? SharedContainer.userDefaults()
-        return defaults?.object(forKey: FlowBridgeConstants.finalPassEnabledKey) as? Bool ?? true
-    }
-
-    /// Re-transcribes the whole session audio in one pass. Reuses
-    /// `transcribe(recording:source:)`, so the vocabulary bias and language
-    /// hint apply; any failure falls back to the streamed text.
-    private func precisionPassText(sessionID: UUID, duration: TimeInterval) async -> String? {
-        guard Self.finalPassEnabled,
-              duration >= FlowBridgeConstants.safetyBufferMinimumRecoverySeconds,
-              duration <= FlowBridgeConstants.finalPassMaxSeconds,
-              let url = safetyFileURL(sessionID: sessionID),
-              FileManager.default.fileExists(atPath: url.path) else {
-            return nil
-        }
-
-        FBLog.log("whisper: precision pass on \(Int(duration))s audio")
-        let started = Date()
-        let record = try? await transcribe(
-            recording: RecordedAudio(url: url, duration: duration),
-            source: .microphone
-        )
-        FBLog.log("whisper: precision pass \(record == nil ? "failed" : "ok \(record!.text.count)ch") in \(Int(Date().timeIntervalSince(started)))s")
-        return record?.text
-    }
-
-    private func safetyFileURL(sessionID: UUID) -> URL? {
-        guard let directory = try? AudioSafetyBuffer.defaultDirectory() else { return nil }
-        return directory
-            .appendingPathComponent(sessionID.uuidString)
-            .appendingPathExtension("wav")
-    }
-
-    private func removeSafetyFile(sessionID: UUID) {
-        guard let url = safetyFileURL(sessionID: sessionID) else { return }
-        try? FileManager.default.removeItem(at: url)
     }
 
     func unload() async {

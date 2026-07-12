@@ -9,7 +9,9 @@ struct SettingsView: View {
 
     @State private var engine = EnginePreference.current
     @State private var language = DictationLanguage.current
-    @State private var finalPassEnabled = true
+    @State private var finalPassMode = FinalPassMode.current
+    @State private var hasCloudKey = CloudCredentialsStore.hasKey
+    @State private var cloudKeyInput = ""
     @State private var polishEnabled = true
     @State private var defaultTone: ToneProfile = .neutral
     @State private var voiceCommandsEnabled = true
@@ -27,6 +29,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 engineSection
+                cloudSection
                 polishSection
                 captureSection
                 hapticsSection
@@ -63,20 +66,58 @@ struct SettingsView: View {
             .onChange(of: language) { _, newValue in
                 DictationLanguage.set(newValue)
             }
-            Toggle("Final precision pass", isOn: $finalPassEnabled)
-                .onChange(of: finalPassEnabled) { _, newValue in
-                    let defaults = try? SharedContainer.userDefaults()
-                    defaults?.set(newValue, forKey: FlowBridgeConstants.finalPassEnabledKey)
+            Picker("Final pass", selection: $finalPassMode) {
+                ForEach(availableFinalPassModes, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
                 }
+            }
+            .onChange(of: finalPassMode) { _, newValue in
+                FinalPassMode.set(newValue)
+            }
         } header: {
             Text("Transcription")
         } footer: {
-            Text(engineFooter + " Pinning the language noticeably improves accuracy; auto-detect struggles on short phrases. The precision pass re-transcribes the whole recording once you stop — a moment slower, distinctly more accurate. Engine changes apply from the next app launch.")
+            Text(engineFooter + " Pinning the language noticeably improves accuracy; auto-detect struggles on short phrases. The final pass re-transcribes the whole recording once you stop — a moment slower, distinctly more accurate. Engine changes apply from the next app launch.")
+        }
+    }
+
+    private var availableFinalPassModes: [FinalPassMode] {
+        FinalPassMode.allCases.filter { $0 != .cloudScribe || hasCloudKey }
+    }
+
+    private var cloudSection: some View {
+        Section {
+            if hasCloudKey {
+                LabeledContent("API key", value: "Saved ✓")
+                Button("Remove key", role: .destructive) {
+                    CloudCredentialsStore.delete()
+                    hasCloudKey = false
+                    if finalPassMode == .cloudScribe {
+                        finalPassMode = .localPrecision
+                        FinalPassMode.set(.localPrecision)
+                    }
+                }
+            } else {
+                SecureField("ElevenLabs API key", text: $cloudKeyInput)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                Button("Save key") {
+                    if CloudCredentialsStore.save(cloudKeyInput) {
+                        cloudKeyInput = ""
+                        hasCloudKey = true
+                    }
+                }
+                .disabled(cloudKeyInput.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        } header: {
+            Text("Cloud transcription (ElevenLabs)")
+        } footer: {
+            Text("Optional. When a cloud option is active, the audio of your dictation is sent to ElevenLabs for transcription — nothing else, never in the background. The key lives in this device's Keychain. The Privacy Cockpit shows every cloud request.")
         }
     }
 
     private var engineFooter: String {
-        let note = " Takes effect the next time the app launches."
+        let note = " Takes effect from the next dictation."
         switch engine {
         case .whisper:
             return "The bundled Whisper model. Everything runs on this iPhone." + note
@@ -85,7 +126,9 @@ struct SettingsView: View {
                 ? "No Precision model installed — the bundled model is used. Install one under Application Support/PrecisionModel."
                 : "Higher-accuracy Whisper model, still fully on-device.") + note
         case .appleSpeech:
-            return "Apple's on-device speech model (iOS 26). Fastest, best Italian; no custom vocabulary biasing." + note
+            return "Apple's on-device speech model (iOS 26). Fastest, and your vocabulary biases it too." + note
+        case .cloudRealtime:
+            return "ElevenLabs Scribe v2 live over the network (~150ms): audio leaves this device while you dictate. Falls back to on-device when unreachable." + note
         }
     }
 
@@ -214,8 +257,8 @@ struct SettingsView: View {
     private func load() {
         engine = EnginePreference.current
         language = DictationLanguage.current
-        let sharedDefaults = try? SharedContainer.userDefaults()
-        finalPassEnabled = sharedDefaults?.object(forKey: FlowBridgeConstants.finalPassEnabledKey) as? Bool ?? true
+        finalPassMode = FinalPassMode.current
+        hasCloudKey = CloudCredentialsStore.hasKey
         let defaults = try? SharedContainer.userDefaults()
         polishEnabled = defaults?.object(forKey: FlowBridgeConstants.polishEnabledKey) as? Bool ?? true
         voiceCommandsEnabled = defaults?.object(forKey: FlowBridgeConstants.voiceCommandsEnabledKey) as? Bool ?? true

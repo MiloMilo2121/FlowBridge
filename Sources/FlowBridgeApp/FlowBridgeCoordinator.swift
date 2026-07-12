@@ -45,6 +45,8 @@ final class FlowBridgeCoordinator: ObservableObject {
     @Published private(set) var liveTranscript: LiveTranscriptSnapshot?
     /// Set when a finished take was visibly improved by the polisher.
     @Published private(set) var polishReveal: PolishReveal?
+    /// Unusual words from the last take, offered as one-tap vocabulary chips.
+    @Published private(set) var vocabularySuggestions: [String] = []
     /// "Time given back" total, refreshed after every session (the ticker
     /// under the Orb counts up to it).
     @Published private(set) var timeSavedMinutes: Double = 0
@@ -54,10 +56,17 @@ final class FlowBridgeCoordinator: ObservableObject {
     @Published private(set) var isNewStreakDay: Bool = false
 
     private let recorder = FlowBridgeRecorder()
-    private let transcriber: any TranscriptionEngine = EngineFactory.makeCurrent()
+    /// Engines are cached per preference and resolved at session start, so
+    /// the Settings picker applies from the next dictation — no app relaunch.
+    private var engineCache: [EnginePreference: any TranscriptionEngine] = [:]
+    private var activeEnginePreference = EnginePreference.current
+    private var transcriber: any TranscriptionEngine {
+        cachedEngine(for: activeEnginePreference)
+    }
     private let activityController = DictationActivityController()
     private let polisher = TranscriptPolisher.shared
     private let recordingFeedback = RecordingFeedbackDriver()
+    private let finalPass = FinalPassService()
     private var transcriptStore: TranscriptStore?
     private var historyStore: TranscriptHistoryStore?
     private var statsStore: DictationStatsStore?
@@ -120,6 +129,32 @@ final class FlowBridgeCoordinator: ObservableObject {
         guard let statsStore else { return }
         timeSavedMinutes = statsStore.stats().timeSavedMinutes
         streakDays = statsStore.currentStreak()
+    }
+
+    // MARK: - Engine resolution (hot switch)
+
+    private func cachedEngine(for preference: EnginePreference) -> any TranscriptionEngine {
+        if let cached = engineCache[preference] {
+            return cached
+        }
+        let engine = EngineFactory.make(preference)
+        engineCache[preference] = engine
+        return engine
+    }
+
+    /// Reads the Settings preference at session start; a change unloads the
+    /// previous engine's memory and takes effect immediately.
+    @discardableResult
+    private func resolveEngine() async -> any TranscriptionEngine {
+        let preference = EnginePreference.current
+        if preference != activeEnginePreference {
+            FBLog.log("engine switch: \(activeEnginePreference.rawValue) → \(preference.rawValue)")
+            if let previous = engineCache[activeEnginePreference] {
+                await previous.unload()
+            }
+            activeEnginePreference = preference
+        }
+        return cachedEngine(for: preference)
     }
 
     /// Wires App Intents and cross-process wakeups to this coordinator.
@@ -299,6 +334,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             statusMessage = "Preparing engine — first run can take a minute"
             polishReveal = nil
             liveTranscript = nil
+            vocabularySuggestions = []
             currentSessionID = sessionID
             lastSeenSnapshotSequence = 0
             AudioLevelMeter.shared.reset()
@@ -307,11 +343,23 @@ final class FlowBridgeCoordinator: ObservableObject {
             // responds to the trigger instantly, and background starts via
             // AudioRecordingIntent require a visible activity to keep audio.
             activityController.start(sessionID: sessionID, startedAt: startedAt)
-            FBLog.log("start: warming, engine=\(type(of: transcriber)) session=\(sessionID.uuidString.prefix(8))")
-            try await transcriber.startLiveTranscription(sessionID: sessionID)
+            let engine = await resolveEngine()
+            FBLog.log("start: warming, engine=\(type(of: engine)) session=\(sessionID.uuidString.prefix(8))")
+            var usedLocalFallback = false
+            do {
+                try await engine.startLiveTranscription(sessionID: sessionID)
+            } catch where activeEnginePreference == .cloudRealtime {
+                // Cloud unreachable (no network, bad key, server down): the
+                // dictation must still happen. Local fallback for THIS
+                // session; next start re-reads the preference and retries.
+                FBLog.log("start: cloud realtime unavailable (\(error)) — local fallback")
+                activeEnginePreference = .whisper
+                try await cachedEngine(for: .whisper).startLiveTranscription(sessionID: sessionID)
+                usedLocalFallback = true
+            }
             FBLog.log("start: recording")
             state = .recording(startedAt: startedAt)
-            statusMessage = "Live bridge active"
+            statusMessage = usedLocalFallback ? "Cloud unreachable — dictating on-device" : "Live bridge active"
             startElapsedTimer(from: startedAt)
             startMaxDurationTimer()
             startIslandTick(startedAt: startedAt)
@@ -387,6 +435,9 @@ final class FlowBridgeCoordinator: ObservableObject {
         } else {
             recordingStartedAt = Date()
         }
+        // Captured before delivery clears it: the final pass needs it to
+        // find the session's safety WAV.
+        let sessionID = currentSessionID
 
         do {
             let duration = Date().timeIntervalSince(recordingStartedAt)
@@ -404,50 +455,45 @@ final class FlowBridgeCoordinator: ObservableObject {
                 )
             )
 
-            let record = try await transcriber.stopLiveTranscription(duration: duration)
+            var record = try await transcriber.stopLiveTranscription(duration: duration)
             FBLog.log("stop: engine returned \(record.text.count)ch")
 
-            // Deterministic spoken commands first ("punto", "a capo", …),
-            // then the on-device polish with the current tone target. The
-            // engine's verbatim text always survives in rawText.
-            var workingText = record.text
-            if Self.voiceCommandsEnabled {
-                workingText = VoiceCommandProcessor.apply(to: workingText)
+            if let sessionID {
+                statusMessage = FinalPassMode.current == .cloudScribe ? "Refining in cloud…" : "Refining…"
+                let refined = await finalPass.refine(sessionID: sessionID, duration: duration, fallback: record.text)
+                if refined != record.text {
+                    record = TranscriptRecord(
+                        text: refined,
+                        language: record.language,
+                        audioDuration: record.audioDuration,
+                        source: record.source
+                    )
+                }
             }
-            let tone = toneStore?.currentTone() ?? .neutral
-            workingText = await polisher.polish(workingText, tone: tone)
-            let finalRecord = workingText == record.text ? record : record.polished(workingText)
 
-            try? await historyStore?.add(finalRecord)
-            let outcome = statsStore?.record(text: finalRecord.text, audioDuration: duration)
-
-            let delivered = sessionAppendedRecord(for: finalRecord) ?? finalRecord
-            try await transcriptStore?.save(delivered)
-            lastTranscript = delivered
-            liveTranscript = nil
-            currentSessionID = nil
-            // The reveal narrates this take (pre-append): a merged record
-            // has no rawText of its own.
-            polishReveal = PolishReveal(record: finalRecord)
-            UIPasteboard.general.string = delivered.text
-            state = .ready
-            statusMessage = delivered.id == finalRecord.id ? "Clipboard updated" : "Appended to previous dictation"
-            // The island summary describes the take just recorded — with
-            // session append, the merged word count would contradict the
-            // recorded seconds.
-            activityController.finish(
-                transcriptPreview: delivered.text,
-                startedAt: recordingStartedAt,
-                wordCount: finalRecord.text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count,
-                recordedSeconds: Int(duration.rounded())
-            )
-            if let outcome {
-                streakDays = outcome.streakDays
-                isNewStreakDay = outcome.isNewStreakDay
-            }
-            timeSavedMinutes = statsStore?.stats().timeSavedMinutes ?? timeSavedMinutes
-            HapticPlayer.transcriptReady()
+            try await deliver(record, duration: duration, startedAt: recordingStartedAt)
         } catch {
+            let duration = Date().timeIntervalSince(recordingStartedAt)
+
+            // The stream heard nothing usable — but the full session audio
+            // may still be rescued by the final pass (precision or cloud).
+            if case FlowBridgeError.emptyTranscript = error, let sessionID {
+                statusMessage = "Recovering audio…"
+                let rescued = await finalPass.refine(sessionID: sessionID, duration: duration, fallback: "")
+                if !rescued.isEmpty {
+                    FBLog.log("stop: rescued \(rescued.count)ch via final pass")
+                    let record = TranscriptRecord(
+                        text: rescued,
+                        language: DictationLanguage.current.whisperCode ?? "und",
+                        audioDuration: duration,
+                        source: .microphone
+                    )
+                    if (try? await deliver(record, duration: duration, startedAt: recordingStartedAt)) != nil {
+                        return
+                    }
+                }
+            }
+
             liveTranscript = nil
             currentSessionID = nil
             activityController.finish(
@@ -457,6 +503,66 @@ final class FlowBridgeCoordinator: ObservableObject {
             )
             fail(error)
         }
+    }
+
+    /// Everything between "we have the take's text" and "the user has it":
+    /// spoken commands, polish, history, stats, session append, clipboard,
+    /// reveal, island summary, haptics.
+    private func deliver(_ record: TranscriptRecord, duration: TimeInterval, startedAt recordingStartedAt: Date) async throws {
+        // Deterministic spoken commands first ("punto", "a capo", …),
+        // then the on-device polish with the current tone target. The
+        // engine's verbatim text always survives in rawText.
+        var workingText = record.text
+        if Self.voiceCommandsEnabled {
+            workingText = VoiceCommandProcessor.apply(to: workingText)
+        }
+        let tone = toneStore?.currentTone() ?? .neutral
+        workingText = await polisher.polish(workingText, tone: tone)
+        let finalRecord = workingText == record.text ? record : record.polished(workingText)
+
+        try? await historyStore?.add(finalRecord)
+        let outcome = statsStore?.record(text: finalRecord.text, audioDuration: duration)
+
+        let delivered = sessionAppendedRecord(for: finalRecord) ?? finalRecord
+        try await transcriptStore?.save(delivered)
+        lastTranscript = delivered
+        liveTranscript = nil
+        currentSessionID = nil
+        // The reveal narrates this take (pre-append): a merged record
+        // has no rawText of its own.
+        polishReveal = PolishReveal(record: finalRecord)
+        UIPasteboard.general.string = delivered.text
+        state = .ready
+        statusMessage = delivered.id == finalRecord.id ? "Clipboard updated" : "Appended to previous dictation"
+        // The island summary describes the take just recorded — with
+        // session append, the merged word count would contradict the
+        // recorded seconds.
+        activityController.finish(
+            transcriptPreview: delivered.text,
+            startedAt: recordingStartedAt,
+            wordCount: finalRecord.text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count,
+            recordedSeconds: Int(duration.rounded())
+        )
+        if let outcome {
+            streakDays = outcome.streakDays
+            isNewStreakDay = outcome.isNewStreakDay
+        }
+        timeSavedMinutes = statsStore?.stats().timeSavedMinutes ?? timeSavedMinutes
+        vocabularySuggestions = VocabularySuggester.suggestions(from: finalRecord.rawText ?? finalRecord.text)
+        HapticPlayer.transcriptReady()
+    }
+
+    func addVocabularySuggestion(_ term: String) {
+        if let store = try? VocabularyStore() {
+            try? store.add(term)
+        }
+        vocabularySuggestions.removeAll { $0.caseInsensitiveCompare(term) == .orderedSame }
+        HapticPlayer.transcriptReady()
+    }
+
+    func dismissVocabularySuggestion(_ term: String) {
+        VocabularySuggester.dismiss(term)
+        vocabularySuggestions.removeAll { $0.caseInsensitiveCompare(term) == .orderedSame }
     }
 
     private static var voiceCommandsEnabled: Bool {
@@ -506,7 +612,8 @@ final class FlowBridgeCoordinator: ObservableObject {
         do {
             let duration = AudioFileDurationReader.duration(of: url) ?? 0
             let recording = RecordedAudio(url: url, duration: duration)
-            let record = try await transcriber.transcribe(recording: recording, source: .sharedAudio)
+            let engine = await resolveEngine()
+            let record = try await engine.transcribe(recording: recording, source: .sharedAudio)
             try await transcriptStore?.save(record)
             try? QueuedAudioStore.clear(removeFile: true)
             lastTranscript = record
@@ -536,7 +643,8 @@ final class FlowBridgeCoordinator: ObservableObject {
 
             do {
                 let audio = RecordedAudio(url: recording.url, duration: recording.duration)
-                let record = try await transcriber.transcribe(recording: audio, source: .recovered)
+                let engine = await resolveEngine()
+                let record = try await engine.transcribe(recording: audio, source: .recovered)
                 try await transcriptStore?.save(record)
                 lastTranscript = record
                 UIPasteboard.general.string = record.text

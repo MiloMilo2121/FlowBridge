@@ -194,7 +194,10 @@ struct ContentView: View {
             } else {
                 TranscriptPanelView(
                     record: coordinator.lastTranscript,
-                    reveal: coordinator.polishReveal
+                    reveal: coordinator.polishReveal,
+                    vocabularySuggestions: coordinator.vocabularySuggestions,
+                    onAddSuggestion: { coordinator.addVocabularySuggestion($0) },
+                    onDismissSuggestion: { coordinator.dismissVocabularySuggestion($0) }
                 )
             }
         }

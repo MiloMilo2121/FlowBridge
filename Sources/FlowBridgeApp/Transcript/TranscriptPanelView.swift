@@ -8,6 +8,9 @@ import SwiftUI
 struct TranscriptPanelView: View {
     let record: TranscriptRecord?
     let reveal: FlowBridgeCoordinator.PolishReveal?
+    var vocabularySuggestions: [String] = []
+    var onAddSuggestion: (String) -> Void = { _ in }
+    var onDismissSuggestion: (String) -> Void = { _ in }
 
     @State private var showRaw = false
     @State private var captionVisible = false
@@ -55,12 +58,52 @@ struct TranscriptPanelView: View {
                 .buttonStyle(FlowPressButtonStyle())
                 .transition(.opacity.combined(with: .offset(y: 6)))
             }
+
+            if !vocabularySuggestions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: FlowTheme.space8) {
+                        ForEach(vocabularySuggestions, id: \.self) { word in
+                            suggestionChip(word)
+                        }
+                    }
+                }
+                .transition(.opacity.combined(with: .offset(y: 6)))
+            }
         }
         .padding(FlowTheme.space16)
         .flowCard()
+        .animation(FlowMotion.state, value: vocabularySuggestions)
         .onChange(of: reveal) { _, newReveal in
             runReveal(newReveal)
         }
+    }
+
+    /// One tap teaches the app a word it stumbled on — no menu digging.
+    private func suggestionChip(_ word: String) -> some View {
+        HStack(spacing: FlowTheme.space4) {
+            Button {
+                onAddSuggestion(word)
+            } label: {
+                Label(word, systemImage: "plus")
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+            }
+            .buttonStyle(FlowPressButtonStyle())
+
+            Button {
+                onDismissSuggestion(word)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss \(word)")
+        }
+        .padding(.horizontal, FlowTheme.space8)
+        .padding(.vertical, FlowTheme.space4)
+        .background(.thinMaterial, in: Capsule(style: .continuous))
+        .foregroundStyle(FlowTheme.accent)
     }
 
     private var displayText: String {

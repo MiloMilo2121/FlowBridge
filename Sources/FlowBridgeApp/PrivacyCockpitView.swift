@@ -25,6 +25,12 @@ struct PrivacyCockpitView: View {
 struct PrivacyCockpitContent: View {
     @StateObject private var network = NetworkStatusModel()
 
+    /// True when the user has opted a cloud path in — the cockpit then
+    /// switches from the green "sealed" story to the amber "gated" story.
+    private var cloudActive: Bool {
+        FinalPassMode.current == .cloudScribe || EnginePreference.current == .cloudRealtime
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: FlowTheme.space16) {
@@ -36,7 +42,9 @@ struct PrivacyCockpitContent: View {
 
                 airplaneCard
 
-                Text("Not a policy — an architecture. The app installs a guard that rejects every network request, the dictation engines run on the Neural Engine, and nothing you say ever has a route off this iPhone.")
+                Text(cloudActive
+                    ? "Cloud transcription is your explicit choice: dictation audio goes to ElevenLabs through one gated session, is counted above, and can be turned off anytime. Everything else stays sealed by the network guard."
+                    : "Not a policy — an architecture. The app installs a guard that rejects every network request, the dictation engines run on the Neural Engine, and nothing you say ever has a route off this iPhone.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -46,13 +54,15 @@ struct PrivacyCockpitContent: View {
 
     private var hero: some View {
         HStack(spacing: FlowTheme.space12) {
-            Image(systemName: "shield.lefthalf.filled")
+            Image(systemName: cloudActive ? "cloud.fill" : "shield.lefthalf.filled")
                 .font(.system(size: 40))
-                .foregroundStyle(FlowTheme.accentGradient)
+                .foregroundStyle(cloudActive ? AnyShapeStyle(Color.orange.gradient) : AnyShapeStyle(FlowTheme.accentGradient))
             VStack(alignment: .leading, spacing: 2) {
-                Text("Private by architecture")
+                Text(cloudActive ? "Local-first, cloud by choice" : "Private by architecture")
                     .font(.title3.weight(.semibold))
-                Text("Your voice never leaves this iPhone.")
+                Text(cloudActive
+                    ? "Dictation audio is sent to ElevenLabs while cloud mode is on."
+                    : "Your voice never leaves this iPhone.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -60,16 +70,36 @@ struct PrivacyCockpitContent: View {
     }
 
     private var countersCard: some View {
-        // A slow periodic refresh keeps the blocked counter honest without
+        // A slow periodic refresh keeps the counters honest without
         // polling aggressively.
         TimelineView(.periodic(from: .now, by: 2)) { _ in
             VStack(spacing: FlowTheme.space12) {
-                LabeledContent {
-                    Text("0 — always")
-                        .font(FlowTheme.numeric(17))
-                        .foregroundStyle(.green)
-                } label: {
-                    Label("Requests allowed", systemImage: "checkmark.seal")
+                if cloudActive {
+                    LabeledContent {
+                        Text("\(CloudGate.requestCount)")
+                            .font(FlowTheme.numeric(17))
+                            .foregroundStyle(.orange)
+                            .contentTransition(.numericText())
+                    } label: {
+                        Label("Cloud requests this session", systemImage: "cloud")
+                    }
+                    if let host = CloudGate.lastHost {
+                        LabeledContent {
+                            Text(host)
+                                .font(.footnote.monospaced())
+                                .foregroundStyle(.secondary)
+                        } label: {
+                            Label("Destination", systemImage: "arrow.up.right")
+                        }
+                    }
+                } else {
+                    LabeledContent {
+                        Text("0 — always")
+                            .font(FlowTheme.numeric(17))
+                            .foregroundStyle(.green)
+                    } label: {
+                        Label("Requests allowed", systemImage: "checkmark.seal")
+                    }
                 }
                 Divider()
                 LabeledContent {
@@ -88,11 +118,11 @@ struct PrivacyCockpitContent: View {
     private var badges: some View {
         Grid(horizontalSpacing: FlowTheme.space8, verticalSpacing: FlowTheme.space8) {
             GridRow {
-                badge("iphone", "On-device only")
+                badge(cloudActive ? "icloud" : "iphone", cloudActive ? "Local-first · cloud opt-in" : "On-device only")
                 badge("person.crop.circle.badge.xmark", "No account")
             }
             GridRow {
-                badge("airplane", "Airplane Mode ready")
+                badge("airplane", cloudActive ? "Falls back to local offline" : "Airplane Mode ready")
                 badge("cpu", "Neural Engine")
             }
         }

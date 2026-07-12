@@ -10,12 +10,15 @@ enum EnginePreference: String, CaseIterable {
     case whisperPrecision
     /// iOS 26 SpeechAnalyzer/SpeechTranscriber (system model, opt-in).
     case appleSpeech
+    /// ElevenLabs Scribe v2 Realtime over websocket — explicit cloud opt-in.
+    case cloudRealtime
 
     var displayName: String {
         switch self {
         case .whisper: return "Whisper (bundled)"
         case .whisperPrecision: return "Whisper Precision"
         case .appleSpeech: return "Apple Speech"
+        case .cloudRealtime: return "ElevenLabs Realtime (cloud)"
         }
     }
 
@@ -78,7 +81,11 @@ enum DictationLanguage: String, CaseIterable {
 
 enum EngineFactory {
     static func makeCurrent() -> any TranscriptionEngine {
-        switch EnginePreference.current {
+        make(EnginePreference.current)
+    }
+
+    static func make(_ preference: EnginePreference) -> any TranscriptionEngine {
+        switch preference {
         case .whisper:
             return WhisperEngine()
         case .whisperPrecision:
@@ -88,6 +95,8 @@ enum EngineFactory {
             return WhisperEngine()
         case .appleSpeech:
             return AppleSpeechEngine(locale: DictationLanguage.current.speechLocale ?? .current)
+        case .cloudRealtime:
+            return CloudScribeRealtimeEngine()
         }
     }
 }
