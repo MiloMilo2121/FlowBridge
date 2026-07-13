@@ -15,12 +15,15 @@ public enum ToneProfile: String, Codable, CaseIterable, Sendable {
     case casual
     /// Email/documents: complete sentences and standard punctuation.
     case formal
+    /// Tighter: compress phrasing, drop redundancies, keep meaning.
+    case concise
 
     public var displayName: String {
         switch self {
         case .neutral: return "Neutral"
         case .casual: return "Casual"
         case .formal: return "Formal"
+        case .concise: return "Tighter"
         }
     }
 }

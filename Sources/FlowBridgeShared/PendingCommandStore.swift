@@ -4,6 +4,8 @@ public enum FlowBridgeCommand: String, Codable, Sendable {
     case toggleRecording
     case stopRecording
     case transcribeQueuedAudio
+    case pauseRecording
+    case resumeRecording
 }
 
 public struct PendingCommand: Codable, Equatable, Sendable {

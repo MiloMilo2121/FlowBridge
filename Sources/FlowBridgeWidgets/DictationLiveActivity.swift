@@ -122,6 +122,51 @@ private enum PhaseStyle {
     }
 }
 
+private struct EngineBadgeGlyph: View {
+    let badge: DictationActivityAttributes.ContentState.EngineBadge?
+
+    var body: some View {
+        if let badge {
+            Image(systemName: badge == .cloud ? "cloud.fill" : "iphone")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// The ready-window: one tap re-polishes the delivered text with a tone and
+/// refreshes the clipboard — a better version for the message you're about
+/// to paste, without opening the app.
+private struct VariantsRow: View {
+    let state: DictationActivityAttributes.ContentState
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let note = state.toneNote {
+                Text(note)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.green)
+                    .lineLimit(1)
+            } else {
+                SummaryLine(state: state)
+            }
+            Spacer(minLength: 4)
+            variantButton("Formal", raw: "formal")
+            variantButton("Casual", raw: "casual")
+            variantButton("Tighter", raw: "concise")
+        }
+    }
+
+    private func variantButton(_ label: String, raw: String) -> some View {
+        Button(intent: ApplyToneIntent(tone: raw)) {
+            Text(label)
+                .font(.caption2.weight(.medium))
+        }
+        .buttonStyle(.bordered)
+        .tint(FlowBridgeTheme.flowViolet)
+    }
+}
+
 // MARK: - Compact & minimal
 
 private struct CompactLeading: View {
@@ -130,6 +175,10 @@ private struct CompactLeading: View {
 
     var body: some View {
         switch state.phase {
+        case .recording where state.pausedAt != nil:
+            Image(systemName: "pause.fill")
+                .font(.caption)
+                .foregroundStyle(FlowBridgeTheme.flowViolet)
         case .recording:
             // A live mini-ribbon — optically matched to the trailing side.
             LiveWave(
@@ -249,9 +298,12 @@ private struct ExpandedTrailing: View {
                 TimerText(state: state)
                     .font(.title3.monospacedDigit())
             }
-            Text(microLabel)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 3) {
+                EngineBadgeGlyph(badge: state.engineBadge)
+                Text(microLabel)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
             if state.phase == .recording, let words = state.wordCount {
                 Text("\(words) words")
                     .font(.caption2)
@@ -263,8 +315,9 @@ private struct ExpandedTrailing: View {
 
     private var microLabel: String {
         switch state.phase {
+        case .recording where state.pausedAt != nil: return "PAUSED"
         case .recording: return state.capWarning ? "ENDING SOON" : "REC"
-        case .transcribing: return "POLISHING"
+        case .transcribing: return state.refining ? "REFINING" : "TRANSCRIBING"
         case .ready: return "DONE"
         case .failed: return "FAILED"
         }
@@ -287,7 +340,7 @@ private struct ExpandedBottom: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
             } else {
-                HStack(spacing: 12) {
+                HStack(spacing: 8) {
                     LiveWave(
                         levels: state.levels,
                         controlPoints: 24,
@@ -295,7 +348,25 @@ private struct ExpandedBottom: View {
                         tint: PhaseStyle.waveTint(for: .recording)
                     )
                     .frame(maxWidth: .infinity)
+                    .opacity(state.pausedAt != nil ? 0.45 : 1)
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
+
+                    if state.pausedAt != nil {
+                        Button(intent: ResumeDictationIntent()) {
+                            Image(systemName: "play.fill")
+                                .font(.headline)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.green)
+                    } else if state.engineBadge == .local {
+                        // Cloud realtime can't pause cleanly — button hidden.
+                        Button(intent: PauseDictationIntent()) {
+                            Image(systemName: "pause.fill")
+                                .font(.headline)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(FlowBridgeTheme.flowViolet)
+                    }
 
                     Button(intent: StopDictationIntent()) {
                         Label("Stop", systemImage: "stop.fill")
@@ -317,7 +388,11 @@ private struct ExpandedBottom: View {
             )
             .frame(maxWidth: .infinity)
         case .ready:
-            SummaryLine(state: state)
+            if state.variantsAvailable {
+                VariantsRow(state: state)
+            } else {
+                SummaryLine(state: state)
+            }
         case .failed:
             EmptyView()
         }
@@ -345,6 +420,7 @@ private struct TimerText: View {
             // before the cap it flips into an amber countdown.
             Text(
                 timerInterval: state.startedAt...state.startedAt.addingTimeInterval(FlowBridgeConstants.maxRecordingSeconds),
+                pauseTime: state.pausedAt,
                 countsDown: state.capWarning
             )
             .foregroundStyle(state.capWarning ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.primary))
@@ -476,16 +552,39 @@ private struct FullLockView: View {
             TranscriptHero(state: state, isStale: isStale, lineLimit: 3)
 
             if state.phase == .recording && !isStale {
-                Button(intent: StopDictationIntent()) {
-                    Label("Stop", systemImage: "stop.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
+                HStack(spacing: 8) {
+                    if state.pausedAt != nil {
+                        Button(intent: ResumeDictationIntent()) {
+                            Label("Resume", systemImage: "play.fill")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.green)
+                    } else if state.engineBadge == .local {
+                        Button(intent: PauseDictationIntent()) {
+                            Label("Pause", systemImage: "pause.fill")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(FlowBridgeTheme.flowViolet)
+                    }
+                    Button(intent: StopDictationIntent()) {
+                        Label("Stop", systemImage: "stop.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
             }
             if state.phase == .ready {
-                SummaryLine(state: state)
+                if state.variantsAvailable {
+                    VariantsRow(state: state)
+                } else {
+                    SummaryLine(state: state)
+                }
             }
         }
         .padding(16)
@@ -566,6 +665,32 @@ private extension DictationActivityAttributes.ContentState {
         wordCount: 42,
         recordedSeconds: 31
     )
+    static let previewRefining = DictationActivityAttributes.ContentState(
+        phase: .transcribing,
+        transcriptPreview: "il testo appena dettato mentre il final pass lavora",
+        startedAt: Date(timeIntervalSinceNow: -31),
+        levels: quietLevels,
+        recordedSeconds: 31,
+        engineBadge: .cloud,
+        refining: true
+    )
+    static let previewPaused = DictationActivityAttributes.ContentState(
+        phase: .recording,
+        transcriptPreview: "dettatura in pausa, timer congelato",
+        startedAt: Date(timeIntervalSinceNow: -42),
+        levels: DictationActivityAttributes.ContentState.restingLevels,
+        engineBadge: .local,
+        pausedAt: Date(timeIntervalSinceNow: -5)
+    )
+    static let previewVariants = DictationActivityAttributes.ContentState(
+        phase: .ready,
+        transcriptPreview: "Ecco il testo pulito, già copiato negli appunti.",
+        startedAt: Date(timeIntervalSinceNow: -33),
+        levels: DictationActivityAttributes.ContentState.restingLevels,
+        wordCount: 42,
+        recordedSeconds: 31,
+        variantsAvailable: true
+    )
     static let previewFailed = DictationActivityAttributes.ContentState(
         phase: .failed,
         transcriptPreview: "Nothing heard — the microphone stayed silent.",
@@ -581,6 +706,9 @@ private extension DictationActivityAttributes.ContentState {
     DictationActivityAttributes.ContentState.previewSpeaking
     DictationActivityAttributes.ContentState.previewCapWarning
     DictationActivityAttributes.ContentState.previewTranscribing
+    DictationActivityAttributes.ContentState.previewRefining
+    DictationActivityAttributes.ContentState.previewPaused
+    DictationActivityAttributes.ContentState.previewVariants
     DictationActivityAttributes.ContentState.previewReady
     DictationActivityAttributes.ContentState.previewFailed
 }

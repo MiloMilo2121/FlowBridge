@@ -38,6 +38,9 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     @Published private(set) var state: State = .idle
+    /// Set while the live session is paused (engine mic gated, timers
+    /// frozen). Recording state is preserved underneath.
+    @Published private(set) var pausedAt: Date?
     @Published private(set) var lastTranscript: TranscriptRecord?
     @Published private(set) var statusMessage: String?
     @Published private(set) var recordingElapsed: TimeInterval?
@@ -168,6 +171,15 @@ final class FlowBridgeCoordinator: ObservableObject {
         DictationCommandHub.shared.toggleHandler = { [weak self] in
             await self?.toggleRecording()
         }
+        DictationCommandHub.shared.pauseHandler = { [weak self] in
+            await self?.pauseDictation()
+        }
+        DictationCommandHub.shared.resumeHandler = { [weak self] in
+            await self?.resumeDictation()
+        }
+        DictationCommandHub.shared.applyToneHandler = { [weak self] raw in
+            await self?.applyToneVariant(raw)
+        }
 
         // Pending commands can be written while the app is backgrounded under
         // an active audio session (e.g. from the keyboard or a fallback
@@ -281,6 +293,10 @@ final class FlowBridgeCoordinator: ObservableObject {
             await stopIfRecording()
         case .transcribeQueuedAudio:
             await processQueuedAudioIfNeeded()
+        case .pauseRecording:
+            await pauseDictation()
+        case .resumeRecording:
+            await resumeDictation()
         }
     }
 
@@ -420,7 +436,8 @@ final class FlowBridgeCoordinator: ObservableObject {
             // ready, numericText rolls from this to the polished count: you
             // watch the polish trim the fillers.
             wordCount: liveText.isEmpty ? nil : liveText.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count,
-            capWarning: remaining <= 60
+            capWarning: remaining <= 60,
+            engineBadge: currentEngineBadge
         )
         guard contentState != lastSentIslandState else { return }
         lastSentIslandState = contentState
@@ -434,6 +451,18 @@ final class FlowBridgeCoordinator: ObservableObject {
         recordingFeedback.stop()
         recordingElapsed = nil
         HapticPlayer.listeningStopped()
+
+        // A stop while paused: fold the pause out of the timeline so
+        // duration == recorded audio (stats, final-pass cap, island summary).
+        if let pausedSince = pausedAt, case .recording(let pausedStart) = state {
+            let recorded = pausedSince.timeIntervalSince(pausedStart)
+            state = .recording(startedAt: Date().addingTimeInterval(-recorded))
+            pausedAt = nil
+            pauseKeepaliveTask?.cancel()
+            pauseKeepaliveTask = nil
+            pauseAutoStopTask?.cancel()
+            pauseAutoStopTask = nil
+        }
 
         let recordingStartedAt: Date
         if case .recording(let startedAt) = state {
@@ -457,7 +486,8 @@ final class FlowBridgeCoordinator: ObservableObject {
                     transcriptPreview: LiveTranscriptStore.latest()?.text ?? "",
                     startedAt: recordingStartedAt,
                     levels: AudioLevelMeter.shared.barSnapshot(),
-                    recordedSeconds: Int(duration.rounded())
+                    recordedSeconds: Int(duration.rounded()),
+                    engineBadge: currentEngineBadge
                 )
             )
 
@@ -466,6 +496,18 @@ final class FlowBridgeCoordinator: ObservableObject {
 
             if let sessionID {
                 statusMessage = FinalPassMode.current == .cloudScribe ? "Refining in cloud…" : "Refining…"
+                // The island narrates the second micro-stage: REFINING (+☁).
+                activityController.update(
+                    DictationActivityAttributes.ContentState(
+                        phase: .transcribing,
+                        transcriptPreview: record.text,
+                        startedAt: recordingStartedAt,
+                        levels: AudioLevelMeter.shared.barSnapshot(),
+                        recordedSeconds: Int(duration.rounded()),
+                        engineBadge: finalPassBadge,
+                        refining: true
+                    )
+                )
                 let refined = await finalPass.refine(sessionID: sessionID, duration: duration, fallback: record.text)
                 if refined != record.text {
                     record = TranscriptRecord(
@@ -543,7 +585,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         // The island summary describes the take just recorded — with
         // session append, the merged word count would contradict the
         // recorded seconds.
-        activityController.finish(
+        activityController.deliverInteractive(
             transcriptPreview: delivered.text,
             startedAt: recordingStartedAt,
             wordCount: finalRecord.text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count,
@@ -672,6 +714,136 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
     }
 
+    // MARK: - Pause / resume
+
+    private var pauseKeepaliveTask: Task<Void, Never>?
+    private var pauseAutoStopTask: Task<Void, Never>?
+
+    private var currentEngineBadge: DictationActivityAttributes.ContentState.EngineBadge {
+        activeEnginePreference == .cloudRealtime ? .cloud : .local
+    }
+
+    private var finalPassBadge: DictationActivityAttributes.ContentState.EngineBadge? {
+        switch FinalPassMode.current {
+        case .off: return nil
+        case .localPrecision: return .local
+        case .cloudScribe: return CloudCredentialsStore.hasKey ? .cloud : .local
+        }
+    }
+
+    func pauseDictation() async {
+        guard case .recording(let startedAt) = state, pausedAt == nil else { return }
+        // Cloud realtime can't pause cleanly (socket idle/billing): the
+        // island hides the button; this guard covers every other path.
+        guard currentEngineBadge == .local else { return }
+
+        FBLog.log("pause: engaging")
+        await transcriber.pauseLive()
+        pausedAt = Date()
+        // Risk #1/#2 fixes: both timers stop; resume restarts them with the
+        // REMAINING budget, so the cap can never fire mid-pause.
+        elapsedTask?.cancel()
+        maxDurationTask?.cancel()
+        stopIslandTick()
+        recordingFeedback.stop()
+        statusMessage = "Paused"
+        pushPausedIslandState(startedAt: startedAt)
+        startPauseKeepalive(startedAt: startedAt)
+        startPauseAutoStop()
+    }
+
+    func resumeDictation() async {
+        guard case .recording(let oldStartedAt) = state, let pausedSince = pausedAt else { return }
+        FBLog.log("pause: resuming")
+        pauseKeepaliveTask?.cancel()
+        pauseKeepaliveTask = nil
+        pauseAutoStopTask?.cancel()
+        pauseAutoStopTask = nil
+
+        do {
+            try await transcriber.resumeLive()
+        } catch {
+            FBLog.log("pause: resume failed (\(error)) — stopping instead")
+            pausedAt = nil
+            await stopRecordingAndTranscribe()
+            return
+        }
+
+        // Shift the session origin by the pause: elapsed == recorded audio,
+        // and the in-widget cap math (startedAt + max) stays truthful.
+        let pauseDuration = Date().timeIntervalSince(pausedSince)
+        let newStartedAt = oldStartedAt.addingTimeInterval(pauseDuration)
+        let recordedSoFar = pausedSince.timeIntervalSince(oldStartedAt)
+        pausedAt = nil
+        state = .recording(startedAt: newStartedAt)
+        statusMessage = "Live bridge active"
+        startElapsedTimer(from: newStartedAt)
+        startMaxDurationTimer(remaining: max(5, FlowBridgeConstants.maxRecordingSeconds - recordedSoFar))
+        startIslandTick(startedAt: newStartedAt)
+        recordingFeedback.start()
+    }
+
+    private func pushPausedIslandState(startedAt: Date) {
+        let contentState = DictationActivityAttributes.ContentState(
+            phase: .recording,
+            transcriptPreview: liveTranscript?.text ?? "",
+            startedAt: startedAt,
+            levels: DictationActivityAttributes.ContentState.restingLevels,
+            engineBadge: currentEngineBadge,
+            pausedAt: pausedAt
+        )
+        lastSentIslandState = contentState
+        activityController.update(contentState)
+    }
+
+    /// Paused = no state changes = no updates: without a keepalive the
+    /// island would go stale and show the recovery copy while legitimately
+    /// paused. Bounded, user-initiated cost: ~2 updates/min.
+    private func startPauseKeepalive(startedAt: Date) {
+        pauseKeepaliveTask?.cancel()
+        pauseKeepaliveTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(30))
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                self?.pushPausedIslandState(startedAt: startedAt)
+            }
+        }
+    }
+
+    /// A backgrounded app with a gated mic can be suspended: cap the pause
+    /// so a forgotten session still delivers its words.
+    private func startPauseAutoStop() {
+        pauseAutoStopTask?.cancel()
+        pauseAutoStopTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(300))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            FBLog.log("pause: 5min cap reached — auto-stopping")
+            await self?.stopIfRecording()
+        }
+    }
+
+    // MARK: - Tone variants (island ready-window)
+
+    func applyToneVariant(_ rawTone: String) async {
+        guard let tone = ToneProfile(rawValue: rawTone),
+              let base = lastTranscript?.text,
+              !base.isEmpty else { return }
+        FBLog.log("variant: \(rawTone)")
+        let variant = await polisher.polish(base, tone: tone)
+        UIPasteboard.general.string = variant
+        statusMessage = "\(tone.displayName) copied"
+        HapticPlayer.transcriptReady()
+        activityController.noteVariantApplied("\(tone.displayName) copied ✓", preview: variant)
+    }
+
     private func handleMemoryWarning() async {
         FBLog.log("memory warning, state=\(state)")
         switch state {
@@ -698,10 +870,15 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
     }
 
-    private func startMaxDurationTimer() {
+    private func startMaxDurationTimer(remaining: TimeInterval = FlowBridgeConstants.maxRecordingSeconds) {
         maxDurationTask?.cancel()
         maxDurationTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(FlowBridgeConstants.maxRecordingSeconds))
+            do {
+                try await Task.sleep(for: .seconds(remaining))
+            } catch {
+                return // cancelled (pause, stop): never fall through
+            }
+            guard !Task.isCancelled else { return }
             await self?.stopIfRecording()
         }
     }

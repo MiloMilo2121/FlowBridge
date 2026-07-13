@@ -16,6 +16,11 @@ public final class DictationCommandHub {
     public var startHandler: (() async throws -> Void)?
     public var stopHandler: (() async -> Void)?
     public var toggleHandler: (() async -> Void)?
+    public var pauseHandler: (() async -> Void)?
+    public var resumeHandler: (() async -> Void)?
+    /// Re-polishes the delivered transcript with a tone (raw ToneProfile
+    /// value) and refreshes clipboard + island.
+    public var applyToneHandler: ((String) async -> Void)?
 
     private init() {}
 
@@ -41,5 +46,27 @@ public final class DictationCommandHub {
             return
         }
         await toggleHandler()
+    }
+
+    public func requestPause() async {
+        guard let pauseHandler else {
+            try? PendingCommandStore().write(.pauseRecording)
+            return
+        }
+        await pauseHandler()
+    }
+
+    public func requestResume() async {
+        guard let resumeHandler else {
+            try? PendingCommandStore().write(.resumeRecording)
+            return
+        }
+        await resumeHandler()
+    }
+
+    public func requestApplyTone(_ rawTone: String) async {
+        // No pending-store fallback: the variants window only exists while
+        // the app process is alive to serve it.
+        await applyToneHandler?(rawTone)
     }
 }

@@ -21,6 +21,13 @@ public struct DictationActivityAttributes: ActivityAttributes, Sendable {
         /// Flat baseline so the island never renders an empty waveform.
         public static let restingLevels = [UInt8](repeating: 4, count: maxLevelBars)
 
+        /// Where the words are being made — privacy honesty rendered where
+        /// the user is looking.
+        public enum EngineBadge: String, Codable, Hashable, Sendable {
+            case local
+            case cloud
+        }
+
         public var phase: Phase
         /// Last words of the live transcript, kept short: the combined
         /// static + dynamic Live Activity payload must stay under 4KB.
@@ -37,6 +44,18 @@ public struct DictationActivityAttributes: ActivityAttributes, Sendable {
         /// True inside the last minute before the recording cap: the island
         /// timer flips to an amber countdown.
         public var capWarning: Bool
+        /// Local vs cloud — during recording: the live engine; during
+        /// transcribing/refining: the final-pass provider.
+        public var engineBadge: EngineBadge?
+        /// The final pass is running (second micro-stage of transcribing).
+        public var refining: Bool
+        /// Ready-window: tone-variant buttons are live.
+        public var variantsAvailable: Bool
+        /// Confirmation after a variant tap ("Formal copied ✓").
+        public var toneNote: String?
+        /// Set while paused: freezes the island timer via
+        /// `Text(timerInterval:pauseTime:)`.
+        public var pausedAt: Date?
 
         public init(
             phase: Phase,
@@ -45,7 +64,12 @@ public struct DictationActivityAttributes: ActivityAttributes, Sendable {
             levels: [UInt8] = [],
             wordCount: Int? = nil,
             recordedSeconds: Int? = nil,
-            capWarning: Bool = false
+            capWarning: Bool = false,
+            engineBadge: EngineBadge? = nil,
+            refining: Bool = false,
+            variantsAvailable: Bool = false,
+            toneNote: String? = nil,
+            pausedAt: Date? = nil
         ) {
             self.phase = phase
             self.transcriptPreview = String(transcriptPreview.suffix(220))
@@ -54,13 +78,21 @@ public struct DictationActivityAttributes: ActivityAttributes, Sendable {
             self.wordCount = wordCount
             self.recordedSeconds = recordedSeconds
             self.capWarning = capWarning
+            self.engineBadge = engineBadge
+            self.refining = refining
+            self.variantsAvailable = variantsAvailable
+            self.toneNote = toneNote
+            self.pausedAt = pausedAt
         }
     }
 
     public var sessionID: UUID
+    /// Static per session, zero bytes per update ("it"/"en", nil = auto).
+    public var language: String?
 
-    public init(sessionID: UUID) {
+    public init(sessionID: UUID, language: String? = nil) {
         self.sessionID = sessionID
+        self.language = language
     }
 }
 #endif

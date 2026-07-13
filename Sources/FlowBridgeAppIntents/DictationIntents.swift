@@ -54,6 +54,53 @@ extension StartDictationIntent: ForegroundContinuableIntent {}
 /// Stops the active dictation. Wired to the Live Activity's stop button and
 /// exposed to Shortcuts. Runs in the app process (`LiveActivityIntent`),
 /// where the recorder and the audio session live.
+struct PauseDictationIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Pause Dictation"
+    static let description = IntentDescription("Pause the active FlowBridge dictation without ending it.")
+    static let openAppWhenRun = false
+
+    func perform() async throws -> some IntentResult {
+        await DictationCommandHub.shared.requestPause()
+        return .result()
+    }
+}
+
+struct ResumeDictationIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Resume Dictation"
+    static let description = IntentDescription("Resume the paused FlowBridge dictation.")
+    static let openAppWhenRun = false
+
+    func perform() async throws -> some IntentResult {
+        await DictationCommandHub.shared.requestResume()
+        return .result()
+    }
+}
+
+/// One tap in the island re-polishes the just-delivered transcript with a
+/// different tone and refreshes the clipboard — a better version for the
+/// message you're about to paste, without opening the app.
+struct ApplyToneIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Copy Tone Variant"
+    static let description = IntentDescription("Copy a re-polished variant of the last transcript.")
+    static let openAppWhenRun = false
+
+    @Parameter(title: "Tone")
+    var tone: String
+
+    init() {
+        tone = "formal"
+    }
+
+    init(tone: String) {
+        self.tone = tone
+    }
+
+    func perform() async throws -> some IntentResult {
+        await DictationCommandHub.shared.requestApplyTone(tone)
+        return .result()
+    }
+}
+
 struct StopDictationIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Stop Dictation"
     static let description = IntentDescription("Stop the active FlowBridge dictation and deliver the transcript.")

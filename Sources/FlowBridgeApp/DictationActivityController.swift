@@ -16,6 +16,8 @@ import Foundation
 final class DictationActivityController {
     private var activity: Activity<DictationActivityAttributes>?
     private var pipeline: Task<Void, Never>?
+    /// Auto-close of the interactive ready window.
+    private var windowTask: Task<Void, Never>?
 
     var isActive: Bool {
         activity != nil
@@ -26,6 +28,8 @@ final class DictationActivityController {
     /// and which would otherwise sit in the island for hours. Called at app
     /// bootstrap and before each new session.
     func endAllActivities() {
+        windowTask?.cancel()
+        windowTask = nil
         activity = nil
         let all = Activity<DictationActivityAttributes>.activities
         guard !all.isEmpty else { return }
@@ -47,9 +51,83 @@ final class DictationActivityController {
             levels: DictationActivityAttributes.ContentState.restingLevels
         )
         activity = try? Activity.request(
-            attributes: DictationActivityAttributes(sessionID: sessionID),
+            attributes: DictationActivityAttributes(
+                sessionID: sessionID,
+                language: DictationLanguage.current.whisperCode
+            ),
             content: content(for: state)
         )
+    }
+
+    // MARK: - Interactive ready window (tone variants)
+
+    /// Delivery WITHOUT ending: the island stays alive ~30s with the tone
+    /// variant buttons; each tap renews the window; a new session or the
+    /// timer closes it.
+    func deliverInteractive(
+        transcriptPreview: String,
+        startedAt: Date,
+        wordCount: Int?,
+        recordedSeconds: Int?
+    ) {
+        guard let activity else { return }
+        let state = DictationActivityAttributes.ContentState(
+            phase: .ready,
+            transcriptPreview: transcriptPreview,
+            startedAt: startedAt,
+            levels: DictationActivityAttributes.ContentState.restingLevels,
+            wordCount: wordCount,
+            recordedSeconds: recordedSeconds,
+            variantsAvailable: true
+        )
+        enqueue {
+            await activity.update(ActivityContent(state: state, staleDate: nil))
+        }
+        scheduleWindowEnd(finalState: state)
+    }
+
+    /// A variant landed: confirm in place and renew the window.
+    func noteVariantApplied(_ note: String, preview: String) {
+        guard let activity else { return }
+        var state = DictationActivityAttributes.ContentState(
+            phase: .ready,
+            transcriptPreview: preview,
+            startedAt: Date(),
+            levels: DictationActivityAttributes.ContentState.restingLevels,
+            variantsAvailable: true,
+            toneNote: note
+        )
+        state.recordedSeconds = nil
+        enqueue {
+            await activity.update(ActivityContent(state: state, staleDate: nil))
+        }
+        scheduleWindowEnd(finalState: state)
+    }
+
+    private func scheduleWindowEnd(finalState: DictationActivityAttributes.ContentState, after seconds: TimeInterval = 30) {
+        windowTask?.cancel()
+        windowTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(seconds))
+            } catch {
+                return // cancelled: the window was renewed or superseded
+            }
+            guard !Task.isCancelled else { return }
+            self?.closeWindow(finalState: finalState)
+        }
+    }
+
+    private func closeWindow(finalState: DictationActivityAttributes.ContentState) {
+        guard let activity else { return }
+        self.activity = nil
+        var settled = finalState
+        settled.variantsAvailable = false
+        enqueue {
+            await activity.end(
+                ActivityContent(state: settled, staleDate: nil),
+                dismissalPolicy: .after(.now + 2)
+            )
+        }
     }
 
     func update(_ state: DictationActivityAttributes.ContentState) {
@@ -69,6 +147,8 @@ final class DictationActivityController {
         failed: Bool = false
     ) {
         guard let activity else { return }
+        windowTask?.cancel()
+        windowTask = nil
         self.activity = nil
 
         let state = DictationActivityAttributes.ContentState(
@@ -96,6 +176,8 @@ final class DictationActivityController {
 
     func end(immediately: Bool) {
         guard let activity else { return }
+        windowTask?.cancel()
+        windowTask = nil
         self.activity = nil
         enqueue {
             await activity.end(nil, dismissalPolicy: immediately ? .immediate : .default)
@@ -119,9 +201,11 @@ final class DictationActivityController {
     private func content(
         for state: DictationActivityAttributes.ContentState
     ) -> ActivityContent<DictationActivityAttributes.ContentState> {
-        ActivityContent(
+        let staleSeconds: TimeInterval? = state.pausedAt != nil ? 45
+            : (state.phase == .recording ? 15 : nil)
+        return ActivityContent(
             state: state,
-            staleDate: state.phase == .recording ? Date(timeIntervalSinceNow: 15) : nil
+            staleDate: staleSeconds.map { Date(timeIntervalSinceNow: $0) }
         )
     }
 }

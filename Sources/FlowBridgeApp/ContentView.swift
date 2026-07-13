@@ -226,19 +226,42 @@ struct ContentView: View {
     }
 
     private var primaryCapsule: some View {
-        Button {
-            Task { await coordinator.toggleRecording() }
-        } label: {
-            Label(coordinator.state.primaryActionTitle, systemImage: coordinator.state.primaryActionSymbol)
-                .font(.title3.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
+        HStack(spacing: FlowTheme.space8) {
+            if isRecording {
+                Button {
+                    Task {
+                        if coordinator.pausedAt == nil {
+                            await coordinator.pauseDictation()
+                        } else {
+                            await coordinator.resumeDictation()
+                        }
+                    }
+                } label: {
+                    Image(systemName: coordinator.pausedAt == nil ? "pause.fill" : "play.fill")
+                        .font(.title3.weight(.semibold))
+                        .frame(width: 56, height: 56)
+                }
+                .buttonStyle(.glass)
+                .tint(coordinator.pausedAt == nil ? FlowTheme.accent : .green)
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                .accessibilityLabel(coordinator.pausedAt == nil ? "Pause dictation" : "Resume dictation")
+            }
+
+            Button {
+                Task { await coordinator.toggleRecording() }
+            } label: {
+                Label(coordinator.state.primaryActionTitle, systemImage: coordinator.state.primaryActionSymbol)
+                    .font(.title3.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.capsule)
+            .tint(isRecording ? .red : FlowTheme.accent)
+            .disabled(coordinator.state.isBusyWithoutStop)
         }
-        .buttonStyle(.glassProminent)
-        .buttonBorderShape(.capsule)
-        .tint(isRecording ? .red : FlowTheme.accent)
-        .disabled(coordinator.state.isBusyWithoutStop)
         .animation(FlowMotion.state, value: isRecording)
+        .animation(FlowMotion.state, value: coordinator.pausedAt)
     }
 
     private var isRecording: Bool {

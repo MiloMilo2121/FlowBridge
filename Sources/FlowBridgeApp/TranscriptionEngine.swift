@@ -21,4 +21,17 @@ protocol TranscriptionEngine: Sendable {
 
     /// Releases model memory. Safe to call at any time.
     func unload() async
+
+    /// Gates the microphone without ending the live session.
+    func pauseLive() async
+
+    /// Reopens the microphone of a paused live session.
+    func resumeLive() async throws
+}
+
+extension TranscriptionEngine {
+    // Engines that can't pause (cloud realtime) simply don't: the island
+    // hides the button behind the local badge.
+    func pauseLive() async {}
+    func resumeLive() async throws {}
 }

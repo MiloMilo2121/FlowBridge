@@ -82,6 +82,8 @@ actor TranscriptPolisher {
             return " Target: a chat message — keep it relaxed, drop the trailing period on the final sentence."
         case .formal:
             return " Target: an email or document — complete sentences and standard punctuation."
+        case .concise:
+            return " Target: tighter — compress the phrasing, drop redundancies and hedges, keep every fact and the language."
         }
     }
 

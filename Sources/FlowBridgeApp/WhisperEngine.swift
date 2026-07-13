@@ -223,6 +223,19 @@ actor WhisperEngine: TranscriptionEngine {
         )
     }
 
+    func pauseLive() async {
+        FBLog.log("whisper: pause")
+        whisperKit?.audioProcessor.pauseRecording()
+    }
+
+    func resumeLive() async throws {
+        FBLog.log("whisper: resume")
+        guard let whisperKit else { throw FlowBridgeError.notRecording }
+        // nil callback retains the previous one; the sample buffer stays
+        // continuous (verified in the vendored AudioProcessor source).
+        try whisperKit.audioProcessor.resumeRecordingLive(inputDeviceID: nil, callback: nil)
+    }
+
     func unload() async {
         FBLog.log("whisper: unload (live=\(liveSessionID != nil))")
         unloadTask?.cancel()

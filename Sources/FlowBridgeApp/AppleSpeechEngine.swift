@@ -205,6 +205,16 @@ actor AppleSpeechEngine: TranscriptionEngine {
         )
     }
 
+    func pauseLive() async {
+        FBLog.log("apple: pause")
+        audioEngine?.pause()
+    }
+
+    func resumeLive() async throws {
+        FBLog.log("apple: resume")
+        try audioEngine?.start()
+    }
+
     func unload() async {
         stopCapture()
         inputContinuation?.finish()
