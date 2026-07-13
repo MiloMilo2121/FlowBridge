@@ -41,35 +41,41 @@ struct ContentView: View {
                 primaryCapsule
             }
             .padding(FlowTheme.space20)
-            .navigationTitle("FlowBridge")
-            .navigationBarTitleDisplayMode(.inline)
+            .background(RoomBackground(intensity: roomIntensity, listens: isRecording))
             .toolbar {
+                // No title: the orb is the identity. Items recede (opacity,
+                // never removal) while recording.
                 ToolbarItemGroup(placement: .topBarLeading) {
                     Button {
                         showHistory = true
                     } label: {
                         Image(systemName: "clock.arrow.circlepath")
                     }
-
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
+                    .opacity(chromeOpacity)
+                    .allowsHitTesting(!isRecording)
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         showPrivacy = true
                     } label: {
                         Image(systemName: "shield.lefthalf.filled")
+                            .overlay(alignment: .topTrailing) {
+                                Circle()
+                                    .fill(cloudActive ? Color.orange : Color.green)
+                                    .frame(width: 6, height: 6)
+                                    .offset(x: 2, y: -2)
+                            }
                     }
+                    .opacity(chromeOpacity)
+                    .allowsHitTesting(!isRecording)
 
                     Button {
-                        Task { await coordinator.copyLastTranscript() }
+                        showSettings = true
                     } label: {
-                        Image(systemName: "doc.on.clipboard")
+                        Image(systemName: "gearshape")
                     }
-                    .disabled(coordinator.lastTranscript == nil)
+                    .opacity(chromeOpacity)
+                    .allowsHitTesting(!isRecording)
                 }
             }
             .sheet(isPresented: $showHistory) {
@@ -127,7 +133,7 @@ struct ContentView: View {
                 .animation(.snappy(duration: 0.25), value: Int(elapsed))
                 .padding(.horizontal, FlowTheme.space12)
                 .padding(.vertical, FlowTheme.space4)
-                .background(.thinMaterial, in: Capsule(style: .continuous))
+                .flowGlass()
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
         }
     }
@@ -171,9 +177,14 @@ struct ContentView: View {
             }
             .font(FlowTheme.numeric(14, weight: .medium))
             .foregroundStyle(.secondary)
+            .padding(.horizontal, FlowTheme.space12)
+            .padding(.vertical, FlowTheme.space8)
         }
-        .buttonStyle(FlowPressButtonStyle())
-        .animation(.smooth(duration: 0.8), value: coordinator.timeSavedMinutes)
+        .buttonStyle(.glass)
+        .opacity(isRecording ? 0 : 1)
+        .allowsHitTesting(!isRecording)
+        .animation(FlowMotion.tick, value: coordinator.timeSavedMinutes)
+        .animation(FlowMotion.state, value: isRecording)
         .accessibilityLabel("Time given back: \(Int(coordinator.timeSavedMinutes.rounded())) minutes. Opens statistics.")
     }
 
@@ -197,7 +208,8 @@ struct ContentView: View {
                     reveal: coordinator.polishReveal,
                     vocabularySuggestions: coordinator.vocabularySuggestions,
                     onAddSuggestion: { coordinator.addVocabularySuggestion($0) },
-                    onDismissSuggestion: { coordinator.dismissVocabularySuggestion($0) }
+                    onDismissSuggestion: { coordinator.dismissVocabularySuggestion($0) },
+                    onCopy: { Task { await coordinator.copyLastTranscript() } }
                 )
             }
         }
@@ -213,7 +225,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.glassProminent)
         .buttonBorderShape(.capsule)
         .tint(isRecording ? .red : FlowTheme.accent)
         .disabled(coordinator.state.isBusyWithoutStop)
@@ -225,6 +237,28 @@ struct ContentView: View {
             return true
         }
         return false
+    }
+
+    /// Chrome recedes while the voice has the stage.
+    private var chromeOpacity: Double {
+        isRecording ? 0.35 : 1
+    }
+
+    private var cloudActive: Bool {
+        FinalPassMode.current == .cloudScribe || EnginePreference.current == .cloudRealtime
+    }
+
+    /// The room's single reactive scalar; while recording the aurora also
+    /// reads the mic level per frame on its own.
+    private var roomIntensity: Double {
+        switch coordinator.state {
+        case .idle: return 0.35
+        case .warming: return 0.5
+        case .recording: return 0.65
+        case .transcribing: return 0.55
+        case .ready: return 0.75
+        case .failed: return 0.4
+        }
     }
 }
 

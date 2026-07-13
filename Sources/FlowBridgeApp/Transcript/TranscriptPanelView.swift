@@ -11,17 +11,20 @@ struct TranscriptPanelView: View {
     var vocabularySuggestions: [String] = []
     var onAddSuggestion: (String) -> Void = { _ in }
     var onDismissSuggestion: (String) -> Void = { _ in }
+    var onCopy: (() -> Void)?
 
     @State private var showRaw = false
     @State private var captionVisible = false
-    @ScaledMetric(relativeTo: .title2) private var heroSize: CGFloat = 22
+    @ScaledMetric(relativeTo: .title2) private var heroSize: CGFloat = 24
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: FlowTheme.space12) {
-            HStack {
+            HStack(spacing: FlowTheme.space8) {
+                // Serif italic: the label for "things you said".
                 Text(showRaw && captionVisible ? "Verbatim" : "Latest")
-                    .font(.headline)
+                    .font(FlowTheme.serifFlavor(15, weight: .medium))
+                    .foregroundStyle(.secondary)
                     .contentTransition(.opacity)
                 Spacer()
                 if let record {
@@ -29,15 +32,31 @@ struct TranscriptPanelView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                if let onCopy {
+                    Button(action: onCopy) {
+                        Image(systemName: "doc.on.clipboard")
+                            .font(.footnote)
+                    }
+                    .buttonStyle(.glass)
+                    .disabled(record == nil)
+                    .accessibilityLabel("Copy transcript")
+                }
             }
 
             ZStack(alignment: .topLeading) {
-                Text(displayText)
-                    .font(.system(size: heroSize))
-                    .textSelection(.enabled)
-                    .foregroundStyle(record == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                    .id(showRaw)
-                    .revealTransition(reduceMotion: reduceMotion)
+                if record == nil {
+                    Text("Nothing yet — tap the orb and just talk.")
+                        .font(FlowTheme.serifFlavor(17))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(displayText)
+                        .font(FlowTheme.hero(heroSize))
+                        .lineSpacing(3)
+                        .textSelection(.enabled)
+                        .foregroundStyle(.primary)
+                        .id(showRaw)
+                        .revealTransition(reduceMotion: reduceMotion)
+                }
             }
             .frame(maxWidth: .infinity, minHeight: 110, alignment: .topLeading)
 
