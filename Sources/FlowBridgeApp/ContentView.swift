@@ -14,6 +14,8 @@ struct ContentView: View {
     @State private var readyPulse = 0
     @State private var failPulse = 0
     @State private var streakPulse = 0
+    @State private var showDayWhisper = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationStack {
@@ -121,6 +123,11 @@ struct ContentView: View {
             .onChange(of: coordinator.isNewStreakDay) { _, isNew in
                 if isNew {
                     streakPulse += 1
+                    Task { @MainActor in
+                        withAnimation(FlowMotion.state) { showDayWhisper = true }
+                        try? await Task.sleep(for: RevealBeat.whisperDwell)
+                        withAnimation(FlowMotion.state) { showDayWhisper = false }
+                    }
                 }
             }
         }
@@ -163,17 +170,18 @@ struct ContentView: View {
             HStack(spacing: FlowTheme.space8) {
                 Image(systemName: "hourglass")
                 Text("\(Int(coordinator.timeSavedMinutes.rounded())) min given back")
-                    .contentTransition(.numericText(value: coordinator.timeSavedMinutes))
+                    .contentTransition(reduceMotion ? .opacity : .numericText(value: coordinator.timeSavedMinutes))
 
                 if coordinator.streakDays > 1 {
                     HStack(spacing: 2) {
                         Image(systemName: "flame.fill")
+                            .symbolEffect(.bounce, value: streakPulse)
                         Text("\(coordinator.streakDays)")
-                            .contentTransition(.numericText())
+                            .contentTransition(reduceMotion ? .opacity : .numericText())
                     }
                     .foregroundStyle(FlowTheme.accent)
-                    .phaseAnimator([1.0, 1.25, 1.0], trigger: streakPulse) { view, scale in
-                        view.scaleEffect(scale)
+                    .phaseAnimator([1.0, 1.15, 1.0], trigger: streakPulse) { view, scale in
+                        view.scaleEffect(reduceMotion ? 1.0 : scale)
                     } animation: { _ in
                         FlowMotion.celebrate
                     }
@@ -187,8 +195,20 @@ struct ContentView: View {
         .buttonStyle(.glass)
         .opacity(isRecording ? 0 : 1)
         .allowsHitTesting(!isRecording)
-        .animation(FlowMotion.tick, value: coordinator.timeSavedMinutes)
+        // The ticker rolls as the text reveal settles — eye follows
+        // text → number (RevealBeat clock).
+        .animation(FlowMotion.tick.delay(RevealBeat.tickerDelay), value: coordinator.timeSavedMinutes)
         .animation(FlowMotion.state, value: isRecording)
+        .overlay(alignment: .bottom) {
+            if showDayWhisper {
+                // The once-a-day moment: small text that appears and leaves.
+                Text("day \(coordinator.streakDays)")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(FlowTheme.accentGradient)
+                    .offset(y: 20)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 4)))
+            }
+        }
         .accessibilityLabel("Time given back: \(Int(coordinator.timeSavedMinutes.rounded())) minutes. Opens statistics.")
     }
 
