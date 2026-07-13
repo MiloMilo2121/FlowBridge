@@ -69,6 +69,7 @@
 		AFBFD21CFF2D7FA6C103754C /* DictationActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 253FCE496170F7FC75566588 /* DictationActivityController.swift */; };
 		B0417E4A75F0C23C84C86D39 /* AudioSafetyBufferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46153FC5A6417E9EEDBBDCE1 /* AudioSafetyBufferTests.swift */; };
 		B19CC0FAC0ECE4703984AB78 /* FlowBridgeShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D412B4D4FD9766E9DF8D3D32 /* FlowBridgeShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B3DF39D25753CD138A2910A6 /* RoomBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75B1B5E9C9C34E931CE15D33 /* RoomBackground.swift */; };
 		BA21DA869BB6148743AFAF67 /* FlowBridgeShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; };
 		BA4B572DAC67E0A46383D35A /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 048BFA8FD28603AE6F27DE18 /* TranscriptStore.swift */; };
 		BAF4CF35D1494B8C92F1DCCD /* ToggleDictationIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95A1A56F4B31CBD5EF94C4DE /* ToggleDictationIntent.swift */; };
@@ -239,6 +240,7 @@
 		748711B42A512CA9A05AA1AC /* FlowBridgeKeyboard.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = FlowBridgeKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		74D2726B6533203B057035C1 /* Benchmark */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Benchmark; path = Resources/Benchmark; sourceTree = SOURCE_ROOT; };
 		75585582B711A04DA59F231A /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		75B1B5E9C9C34E931CE15D33 /* RoomBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomBackground.swift; sourceTree = "<group>"; };
 		786B1AE80A62F3B8718B36D4 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		896D5D4E8D80D707EE776D26 /* WhisperEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperEngine.swift; sourceTree = "<group>"; };
 		89F1FBE7C9C0FDA311E4F3F7 /* PrivacyCockpitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyCockpitView.swift; sourceTree = "<group>"; };
@@ -512,6 +514,7 @@
 			children = (
 				1C4CDE7D918A097299B69DA8 /* FlowMotion.swift */,
 				D1D06F4ADAED4A199D9BA818 /* FlowTheme.swift */,
+				75B1B5E9C9C34E931CE15D33 /* RoomBackground.swift */,
 			);
 			path = Design;
 			sourceTree = "<group>";
@@ -835,6 +838,7 @@
 				86A4485F46CF9543559106BA /* PrivacyCockpitView.swift in Sources */,
 				07F42114DE32911BB7DAEE37 /* RecapCardView.swift in Sources */,
 				C7A96D647040FAD699DA5C34 /* RecordingFeedbackDriver.swift in Sources */,
+				B3DF39D25753CD138A2910A6 /* RoomBackground.swift in Sources */,
 				CD2D4B9FEE7752AB9D0DE2EF /* SettingsView.swift in Sources */,
 				42D4D29B20554986478BE9E8 /* StatsView.swift in Sources */,
 				BAF4CF35D1494B8C92F1DCCD /* ToggleDictationIntent.swift in Sources */,

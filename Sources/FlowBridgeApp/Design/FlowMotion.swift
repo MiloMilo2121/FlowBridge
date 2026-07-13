@@ -7,6 +7,26 @@ enum FlowMotion {
     static let state: Animation = .smooth(duration: 0.35)
     static let interactive: Animation = .snappy(duration: 0.28, extraBounce: 0.06)
     static let celebrate: Animation = .bouncy(duration: 0.5, extraBounce: 0.15)
+    /// Press → listening bloom.
+    static let ignition: Animation = .snappy(duration: 0.38, extraBounce: 0.12)
+    /// The raw→polished text morph.
+    static let reveal: Animation = .smooth(duration: 0.55)
+    /// Room intensity swells.
+    static let drift: Animation = .smooth(duration: 1.6)
+    /// Ticker/stat roll.
+    static let tick: Animation = .smooth(duration: 0.8)
+}
+
+/// One clock for the stop→reveal→tick choreography: every element of the
+/// payoff sequence reads its cue from here, so the beats can never drift
+/// apart.
+enum RevealBeat {
+    /// Verbatim continuity hold before the polished morph.
+    static let rawHold: Duration = .milliseconds(350)
+    /// Ticker roll stagger after the reveal lands.
+    static let tickerDelay: Double = 0.45
+    /// The once-a-day "day N" whisper dwell.
+    static let whisperDwell: Duration = .seconds(2.8)
 }
 
 /// Press feedback for tappable controls: subtle scale, subtle fade, one soft
