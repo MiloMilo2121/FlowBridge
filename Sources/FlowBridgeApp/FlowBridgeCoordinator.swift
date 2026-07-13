@@ -409,11 +409,17 @@ final class FlowBridgeCoordinator: ObservableObject {
         let remaining = FlowBridgeConstants.maxRecordingSeconds - Date().timeIntervalSince(startedAt)
         let snapshot = LiveTranscriptStore.latest()
         let isCurrentSession = snapshot?.isRecording == true && snapshot?.sessionID == currentSessionID
+        let liveText = isCurrentSession ? (snapshot?.text ?? "") : ""
         let contentState = DictationActivityAttributes.ContentState(
             phase: .recording,
-            transcriptPreview: isCurrentSession ? (snapshot?.text ?? "") : "",
+            transcriptPreview: liveText,
             startedAt: startedAt,
             levels: AudioLevelMeter.shared.barSnapshot(),
+            // Live word ticker: only changes when the text changes, which is
+            // already an update trigger — the change gate stays intact. At
+            // ready, numericText rolls from this to the polished count: you
+            // watch the polish trim the fillers.
+            wordCount: liveText.isEmpty ? nil : liveText.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count,
             capWarning: remaining <= 60
         )
         guard contentState != lastSentIslandState else { return }

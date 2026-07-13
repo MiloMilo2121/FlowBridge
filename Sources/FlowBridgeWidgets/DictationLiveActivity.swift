@@ -47,6 +47,64 @@ struct DictationLiveActivity: Widget {
     }
 }
 
+// MARK: - The wave
+
+/// One continuous voice ribbon (owner's call: "non le solite lineette").
+/// Falls back to the battle-tested bars under Reduce Motion and on the
+/// always-on display.
+private struct LiveWave: View {
+    let levels: [UInt8]
+    var controlPoints = 24
+    var height: CGFloat = 26
+    var tint = AnyShapeStyle(FlowBridgeTheme.recordingGradient)
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isLuminanceReduced) private var luminanceReduced
+
+    var body: some View {
+        if reduceMotion || luminanceReduced {
+            WaveformBarsView(
+                levels: levels,
+                barCount: min(controlPoints, 24),
+                barWidth: 3,
+                spacing: 2.5,
+                maxHeight: height,
+                tint: tint
+            )
+        } else {
+            FlowWaveShape(
+                levels: levels.map { Double($0) / 100 },
+                controlPoints: controlPoints
+            )
+            .fill(tint)
+            .frame(height: height)
+            .animation(.smooth(duration: 0.55), value: levels)
+        }
+    }
+}
+
+/// The island visibly runs out of time: a self-updating ring over the last
+/// sixty seconds before the recording cap. Zero payload — derived entirely
+/// from existing fields.
+private struct CapRing: View {
+    let startedAt: Date
+
+    var body: some View {
+        let capEnd = startedAt.addingTimeInterval(FlowBridgeConstants.maxRecordingSeconds)
+        ProgressView(
+            timerInterval: capEnd.addingTimeInterval(-60)...capEnd,
+            countsDown: true
+        ) {
+            EmptyView()
+        } currentValueLabel: {
+            EmptyView()
+        }
+        .progressViewStyle(.circular)
+        .tint(.orange)
+        .frame(width: 16, height: 16)
+    }
+}
+
 // MARK: - Phase styling
 
 private enum PhaseStyle {
@@ -73,15 +131,14 @@ private struct CompactLeading: View {
     var body: some View {
         switch state.phase {
         case .recording:
-            // A live 5-bar "now" — the island breathes with the voice.
-            WaveformBarsView(
+            // A live mini-ribbon — optically matched to the trailing side.
+            LiveWave(
                 levels: state.levels,
-                barCount: 5,
-                barWidth: 2.5,
-                spacing: 2,
-                maxHeight: 14,
+                controlPoints: 6,
+                height: 14,
                 tint: PhaseStyle.waveTint(for: .recording)
             )
+            .frame(width: 26)
             .opacity(isStale ? 0.35 : 1)
         case .transcribing:
             Image(systemName: "ellipsis")
@@ -103,7 +160,12 @@ private struct CompactTrailing: View {
     var body: some View {
         HStack(spacing: 3) {
             if state.phase == .recording {
-                RecordingDot(capWarning: state.capWarning)
+                if state.capWarning {
+                    CapRing(startedAt: state.startedAt)
+                        .frame(width: 14, height: 14)
+                } else {
+                    RecordingDot()
+                }
             }
             TimerText(state: state)
                 .font(.caption.monospacedDigit())
@@ -145,15 +207,14 @@ private struct ExpandedLeading: View {
     var body: some View {
         switch state.phase {
         case .recording:
-            WaveformBarsView(
+            LiveWave(
                 levels: state.levels,
-                barCount: 7,
-                barWidth: 3.5,
-                spacing: 2.5,
-                maxHeight: 30,
+                controlPoints: 7,
+                height: 30,
                 tint: PhaseStyle.waveTint(for: .recording)
             )
             .opacity(isStale ? 0.35 : 1)
+            .transition(.scale(scale: 0.85).combined(with: .opacity))
         case .transcribing:
             Image(systemName: "ellipsis")
                 .font(.title2)
@@ -179,7 +240,11 @@ private struct ExpandedTrailing: View {
         VStack(alignment: .trailing, spacing: 2) {
             HStack(spacing: 4) {
                 if state.phase == .recording {
-                    RecordingDot(capWarning: state.capWarning)
+                    if state.capWarning {
+                        CapRing(startedAt: state.startedAt)
+                    } else {
+                        RecordingDot()
+                    }
                 }
                 TimerText(state: state)
                     .font(.title3.monospacedDigit())
@@ -187,6 +252,12 @@ private struct ExpandedTrailing: View {
             Text(microLabel)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)
+            if state.phase == .recording, let words = state.wordCount {
+                Text("\(words) words")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+            }
         }
     }
 
@@ -217,15 +288,14 @@ private struct ExpandedBottom: View {
                     .frame(maxWidth: .infinity)
             } else {
                 HStack(spacing: 12) {
-                    WaveformBarsView(
+                    LiveWave(
                         levels: state.levels,
-                        barCount: 24,
-                        barWidth: 3,
-                        spacing: 2.5,
-                        maxHeight: 26,
+                        controlPoints: 24,
+                        height: 26,
                         tint: PhaseStyle.waveTint(for: .recording)
                     )
                     .frame(maxWidth: .infinity)
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
 
                     Button(intent: StopDictationIntent()) {
                         Label("Stop", systemImage: "stop.fill")
@@ -234,16 +304,15 @@ private struct ExpandedBottom: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.red)
                 }
+                .animation(.snappy(duration: 0.38, extraBounce: 0.12), value: state.phase)
             }
         case .transcribing:
             // The wave freezes at its last real levels and turns violet:
             // same organism, new phase.
-            WaveformBarsView(
+            LiveWave(
                 levels: state.levels,
-                barCount: 24,
-                barWidth: 3,
-                spacing: 2.5,
-                maxHeight: 26,
+                controlPoints: 24,
+                height: 26,
                 tint: PhaseStyle.waveTint(for: .transcribing)
             )
             .frame(maxWidth: .infinity)
@@ -258,12 +327,10 @@ private struct ExpandedBottom: View {
 // MARK: - Shared pieces
 
 private struct RecordingDot: View {
-    var capWarning = false
-
     var body: some View {
         Image(systemName: "circle.fill")
             .font(.system(size: 6))
-            .foregroundStyle(capWarning ? Color.orange : FlowBridgeTheme.recordingWarm)
+            .foregroundStyle(FlowBridgeTheme.recordingWarm)
             .symbolEffect(.pulse, options: .repeating)
     }
 }
@@ -300,7 +367,9 @@ private struct TranscriptHero: View {
         Text(displayText)
             .font(font)
             .fontDesign(.rounded)
-            .fontWeight(.medium)
+            .fontWeight(state.phase == .ready ? .semibold : .medium)
+            .italic(!hasText)
+            .minimumScaleFactor(0.9)
             .lineLimit(lineLimit)
             .truncationMode(.head)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -381,20 +450,24 @@ private struct FullLockView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                WaveformBarsView(
+                LiveWave(
                     levels: state.levels,
-                    barCount: 7,
-                    barWidth: 3,
-                    spacing: 2,
-                    maxHeight: 16,
+                    controlPoints: 7,
+                    height: 16,
                     tint: PhaseStyle.waveTint(for: state.phase)
                 )
+                .frame(width: 44)
                 .opacity(isStale && state.phase == .recording ? 0.35 : 1)
                 Text("FlowBridge")
                     .font(.headline)
                 Spacer()
                 if state.phase == .recording {
-                    RecordingDot(capWarning: state.capWarning)
+                    if state.capWarning {
+                        CapRing(startedAt: state.startedAt)
+                            .frame(width: 14, height: 14)
+                    } else {
+                        RecordingDot()
+                    }
                 }
                 TimerText(state: state)
                     .font(.subheadline.monospacedDigit())
@@ -429,14 +502,13 @@ private struct WatchView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                WaveformBarsView(
+                LiveWave(
                     levels: state.levels,
-                    barCount: 5,
-                    barWidth: 2.5,
-                    spacing: 2,
-                    maxHeight: 12,
+                    controlPoints: 5,
+                    height: 12,
                     tint: PhaseStyle.waveTint(for: state.phase)
                 )
+                .frame(width: 36)
                 Spacer()
                 TimerText(state: state)
                     .font(.caption.monospacedDigit())

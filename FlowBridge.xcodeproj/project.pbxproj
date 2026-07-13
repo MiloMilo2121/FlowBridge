@@ -34,6 +34,7 @@
 		43EB0A4CFD7AF3BF23EF18C0 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 399A0AEAA06EC3C5FC0410F2 /* ContentView.swift */; };
 		448DA9F4C7777DF83979FBDA /* DictationTextNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B54A746A43497CB353DB7071 /* DictationTextNormalizerTests.swift */; };
 		453C7BBD98950403E6B7C650 /* VocabularySuggester.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6CA36551C2FA87C8C597EF1 /* VocabularySuggester.swift */; };
+		48028981C23CD471395406A3 /* FlowWaveShape.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDABF6EFF85E608C7C90CA6F /* FlowWaveShape.swift */; };
 		482D55BADF4D2AF74392511B /* TranscriptHistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 678D04AE880D789EFCD73955 /* TranscriptHistoryStoreTests.swift */; };
 		49EBD2B635C75D1F5C62F833 /* FlowBridgeShared.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		4AB4F08AC8930C07253DD6D5 /* VocabularyAndStatsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2E470CC9E4CDE3B97DC829 /* VocabularyAndStatsTests.swift */; };
@@ -276,6 +277,7 @@
 		D9FCB7173B4C2474162C05C6 /* AudioSafetyBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSafetyBuffer.swift; sourceTree = "<group>"; };
 		D9FF73C8B5B764406DF50EF0 /* HapticPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticPlayer.swift; sourceTree = "<group>"; };
 		DD254DDA27ABED52D80A81F0 /* TranscriptPolisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPolisher.swift; sourceTree = "<group>"; };
+		DDABF6EFF85E608C7C90CA6F /* FlowWaveShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowWaveShape.swift; sourceTree = "<group>"; };
 		E19C0FA693309D325CBE3172 /* CloudScribeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudScribeClient.swift; sourceTree = "<group>"; };
 		E544C636FFC31B0B111A9306 /* WaveformBarsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarsView.swift; sourceTree = "<group>"; };
 		E9101AD4F00FA60371792FE4 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
@@ -388,6 +390,7 @@
 				BDC8F35F4BEF7779523B7323 /* DictationLiveActivity.swift */,
 				F66E0DAC1051FC60CF651C98 /* FlowBridgeHomeWidget.swift */,
 				8C3376497876B786552C9DAF /* FlowBridgeWidgetsBundle.swift */,
+				DDABF6EFF85E608C7C90CA6F /* FlowWaveShape.swift */,
 				E544C636FFC31B0B111A9306 /* WaveformBarsView.swift */,
 			);
 			path = FlowBridgeWidgets;
@@ -805,6 +808,7 @@
 				746430C46F885BB1099C6AA8 /* DictationLiveActivity.swift in Sources */,
 				63980C454E8084B5691C433C /* FlowBridgeHomeWidget.swift in Sources */,
 				149F7D31E87FFAC860C6D73A /* FlowBridgeWidgetsBundle.swift in Sources */,
+				48028981C23CD471395406A3 /* FlowWaveShape.swift in Sources */,
 				651103041D4F142E353CC2D3 /* WaveformBarsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -15,17 +15,19 @@ struct WaveformBarsView: View {
     var tint = AnyShapeStyle(FlowBridgeTheme.recordingGradient)
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isLuminanceReduced) private var luminanceReduced
 
     var body: some View {
         HStack(alignment: .center, spacing: spacing) {
             ForEach(0..<barCount, id: \.self) { index in
                 Capsule(style: .continuous)
-                    .fill(tint)
-                    .frame(width: barWidth, height: height(at: index))
+                    .fill(luminanceReduced ? AnyShapeStyle(FlowBridgeTheme.flowVioletDeep.opacity(0.7)) : tint)
+                    .frame(width: barWidth, height: height(at: index) * (luminanceReduced ? 0.8 : 1))
             }
         }
         .frame(height: maxHeight)
-        .animation(reduceMotion ? .linear(duration: 0.2) : .smooth(duration: 0.45), value: levels)
+        // 0.55 spans the whole 500ms tick gap: motion without dead stops.
+        .animation(reduceMotion || luminanceReduced ? .linear(duration: 0.2) : .smooth(duration: 0.55), value: levels)
     }
 
     /// Renders the newest `barCount` values so small variants (compact,

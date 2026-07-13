@@ -82,7 +82,8 @@ final class DictationActivityController {
         enqueue {
             await activity.end(
                 ActivityContent(state: state, staleDate: nil),
-                dismissalPolicy: .after(.now + FlowBridgeConstants.liveActivityIdleDismissSeconds)
+                // Error copy needs reading time; success needs a beat.
+                dismissalPolicy: .after(.now + (failed ? 10 : FlowBridgeConstants.liveActivityIdleDismissSeconds))
             )
         }
     }
