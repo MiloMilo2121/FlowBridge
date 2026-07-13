@@ -15,7 +15,12 @@ struct PrivacyCockpitView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") { dismiss() }
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                        }
+                        .accessibilityLabel("Close")
                     }
                 }
         }
@@ -34,6 +39,8 @@ struct PrivacyCockpitContent: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: FlowTheme.space16) {
+                Text("Privacy").flowEyebrow()
+
                 hero
 
                 countersCard
@@ -50,6 +57,8 @@ struct PrivacyCockpitContent: View {
             }
             .padding(FlowTheme.space20)
         }
+        .background(RoomBackground())
+        .scrollEdgeEffectStyle(.soft, for: .top)
     }
 
     private var hero: some View {

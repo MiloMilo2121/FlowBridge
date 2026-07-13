@@ -46,10 +46,7 @@ struct RecapCardView: View {
         .frame(width: 360, height: 450, alignment: .leading)
         .background(
             LinearGradient(
-                colors: [
-                    Color(red: 0.063, green: 0.059, blue: 0.102), // #100F1A
-                    Color(red: 0.043, green: 0.043, blue: 0.071), // #0B0B12
-                ],
+                colors: [FlowTheme.roomTop, FlowTheme.roomBottom],
                 startPoint: .top,
                 endPoint: .bottom
             )

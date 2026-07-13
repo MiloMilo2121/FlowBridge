@@ -68,7 +68,12 @@ struct HistoryView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
                 }
             }
             .task { await reload() }
@@ -83,18 +88,27 @@ struct HistoryView: View {
     private var list: some View {
         List {
             if isBrowsing && !pinned.isEmpty {
-                Section("Pinned") {
+                Section {
                     ForEach(pinned) { entry in
                         row(for: entry)
                     }
+                } header: {
+                    Text("Pinned").flowEyebrow()
                 }
             }
-            Section(isBrowsing && !pinned.isEmpty ? "Recent" : "") {
+            Section {
                 ForEach(isBrowsing ? recent : filteredEntries) { entry in
                     row(for: entry)
                 }
+            } header: {
+                if isBrowsing && !pinned.isEmpty {
+                    Text("Recent").flowEyebrow()
+                }
             }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(RoomBackground())
         .animation(.snappy(duration: 0.3), value: entries.map(\.id))
     }
 
@@ -130,7 +144,9 @@ struct HistoryView: View {
             Text(isBrowsing
                 ? "Your Action Button is getting bored. Everything you dictate lives here — on this device only."
                 : "Try different words, or drop a filter.")
+                .font(FlowTheme.serifFlavor(15))
         }
+        .background(RoomBackground())
     }
 
     // MARK: - Row
@@ -148,7 +164,7 @@ struct HistoryView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("\(wordCount(of: entry)) words")
-                    .font(.caption2.weight(.medium))
+                    .font(FlowTheme.numeric(11, weight: .medium))
                     .padding(.horizontal, FlowTheme.space8)
                     .padding(.vertical, 2)
                     .background(.quaternary, in: Capsule(style: .continuous))
@@ -160,6 +176,17 @@ struct HistoryView: View {
                 .font(.body)
                 .lineLimit(3)
         }
+        .padding(FlowTheme.space16)
+        .flowCard(radius: FlowTheme.radiusRow)
+        .overlay {
+            if entry.isPinned {
+                RoundedRectangle(cornerRadius: FlowTheme.radiusRow, style: .continuous)
+                    .strokeBorder(FlowTheme.accent.opacity(0.35), lineWidth: 1)
+            }
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
         .contentShape(Rectangle())
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {

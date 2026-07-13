@@ -28,24 +28,65 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                engineSection
-                cloudSection
-                polishSection
-                captureSection
-                hapticsSection
-                vocabularySection
-                statsSection
-                privacySection
+                statusHeroSection
+                Group {
+                    engineSection
+                    cloudSection
+                    polishSection
+                    captureSection
+                    hapticsSection
+                    vocabularySection
+                    statsSection
+                    privacySection
+                }
+                .listRowBackground(FlowTheme.surfaceRaised)
             }
+            .scrollContentBackground(.hidden)
+            .background(RoomBackground())
+            .listSectionSpacing(FlowTheme.space20)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
                 }
             }
             .onAppear(perform: load)
         }
+    }
+
+    /// "What is my dictation doing right now" — one glance, no digging.
+    private var statusHeroSection: some View {
+        Section {
+            HStack(spacing: FlowTheme.space12) {
+                Circle()
+                    .fill(cloudActive ? Color.orange : Color.green)
+                    .frame(width: 10, height: 10)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(engine.displayName)
+                        .font(.headline)
+                    Text("\(language.displayName) · Final pass: \(finalPassMode.displayName)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: cloudActive ? "cloud.fill" : "iphone")
+                    .foregroundStyle(.secondary)
+            }
+            .padding(FlowTheme.space16)
+            .flowCard()
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
+        }
+    }
+
+    private var cloudActive: Bool {
+        finalPassMode == .cloudScribe || engine == .cloudRealtime
     }
 
     private var engineSection: some View {
@@ -75,7 +116,7 @@ struct SettingsView: View {
                 FinalPassMode.set(newValue)
             }
         } header: {
-            Text("Transcription")
+            Text("Transcription").flowEyebrow()
         } footer: {
             Text(engineFooter + " Pinning the language noticeably improves accuracy; auto-detect struggles on short phrases. The final pass re-transcribes the whole recording once you stop — a moment slower, distinctly more accurate. Engine changes apply from the next app launch.")
         }
@@ -110,7 +151,7 @@ struct SettingsView: View {
                 .disabled(cloudKeyInput.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         } header: {
-            Text("Cloud transcription (ElevenLabs)")
+            Text("Cloud transcription (ElevenLabs)").flowEyebrow()
         } footer: {
             Text("Optional. When a cloud option is active, the audio of your dictation is sent to ElevenLabs for transcription — nothing else, never in the background. The key lives in this device's Keychain. The Privacy Cockpit shows every cloud request.")
         }
@@ -148,7 +189,7 @@ struct SettingsView: View {
                 coordinator.toneContext?.setDefaultTone(newValue)
             }
         } header: {
-            Text("Cleanup")
+            Text("Cleanup").flowEyebrow()
         } footer: {
             Text("Fillers out, punctuation fixed — by Apple's on-device model. The verbatim transcript is always kept. The keyboard adapts the tone to the field you're writing in; this is the fallback.")
         }
@@ -171,7 +212,7 @@ struct SettingsView: View {
                 defaults?.set(newValue, forKey: FlowBridgeConstants.sessionAppendWindowKey)
             }
         } header: {
-            Text("Capture")
+            Text("Capture").flowEyebrow()
         } footer: {
             Text("Spoken commands: “punto”, “virgola”, “a capo”, “nuovo paragrafo” — applied literally, in Italian and English. Dictations within the chosen window are delivered as one continued text.")
         }
@@ -197,7 +238,7 @@ struct SettingsView: View {
                     defaults?.set(newValue, forKey: FlowBridgeConstants.hapticVoicePeaksEnabledKey)
                 }
         } header: {
-            Text("Touch")
+            Text("Touch").flowEyebrow()
         } footer: {
             Text("A fixed vocabulary: heartbeat to start and stop, a crystal tap when the text is ready. The optional textures make dictation followable from the pocket.")
         }
@@ -234,7 +275,7 @@ struct SettingsView: View {
                 stats = DictationStatsStore.Stats()
             }
         } header: {
-            Text("Time given back")
+            Text("Time given back").flowEyebrow()
         } footer: {
             Text("Computed on this device, for you. Never collected, never sent.")
         }

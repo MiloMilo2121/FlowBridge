@@ -17,6 +17,13 @@ struct OnboardingView: View {
     @State private var demoReadyPulse = 0
 
     var body: some View {
+        ZStack {
+            RoomBackground()
+            tabs
+        }
+    }
+
+    private var tabs: some View {
         TabView(selection: $page) {
             speakScene.tag(0)
             triggerScene.tag(1)
@@ -53,7 +60,7 @@ struct OnboardingView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 48)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
             .buttonBorderShape(.capsule)
             .tint(FlowTheme.accent)
         } symbolView: {
@@ -73,7 +80,7 @@ struct OnboardingView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 48)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
             .buttonBorderShape(.capsule)
             .tint(FlowTheme.accent)
         } symbolView: {
@@ -94,7 +101,7 @@ struct OnboardingView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 48)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .buttonBorderShape(.capsule)
                 .tint(FlowTheme.accent)
 
@@ -118,7 +125,7 @@ struct OnboardingView: View {
 
             staggered(0) {
                 Text("Try it now.")
-                    .font(.largeTitle.bold())
+                    .font(FlowTheme.serifFlavor(40, weight: .medium))
             }
 
             staggered(1) {
@@ -160,7 +167,7 @@ struct OnboardingView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 48)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .buttonBorderShape(.capsule)
                 .tint(FlowTheme.accent)
             }
@@ -184,7 +191,7 @@ struct OnboardingView: View {
             staggered(0, page: scenePage) { symbolView() }
             staggered(1, page: scenePage) {
                 Text(title)
-                    .font(.largeTitle.bold())
+                    .font(FlowTheme.serifFlavor(40, weight: .medium))
             }
             staggered(2, page: scenePage) {
                 Text(message)

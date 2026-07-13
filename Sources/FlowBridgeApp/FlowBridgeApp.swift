@@ -21,7 +21,7 @@ struct FlowBridgeApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     Task { await coordinator.handleScenePhase(phase) }
                 }
-                .sheet(isPresented: $showOnboarding) {
+                .fullScreenCover(isPresented: $showOnboarding) {
                     OnboardingView {
                         showOnboarding = false
                     }

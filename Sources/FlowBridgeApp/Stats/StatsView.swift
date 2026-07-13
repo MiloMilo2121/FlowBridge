@@ -15,7 +15,12 @@ struct StatsView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") { dismiss() }
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                        }
+                        .accessibilityLabel("Close")
                     }
                 }
         }
@@ -47,10 +52,14 @@ struct StatsContent: View {
         }
     }
 
+    @ScaledMetric(relativeTo: .largeTitle) private var heroNumeral: CGFloat = 64
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: FlowTheme.space16) {
-                chips
+                heroBlock
+
+                statStrip
 
                 streakCard
 
@@ -75,47 +84,69 @@ struct StatsContent: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 48)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
                     .buttonBorderShape(.capsule)
                     .tint(FlowTheme.accent)
                 }
             }
             .padding(FlowTheme.space20)
         }
+        .background(RoomBackground())
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .task { reload() }
         .onChange(of: range) { _, _ in reload() }
     }
 
-    // MARK: - Cards
+    // MARK: - Hero
 
-    private var chips: some View {
-        Grid(horizontalSpacing: FlowTheme.space12, verticalSpacing: FlowTheme.space12) {
-            GridRow {
-                chip(value: "\(Int(stats.timeSavedMinutes.rounded()))", unit: "min given back", icon: "hourglass")
-                chip(value: "\(stats.words)", unit: "words", icon: "text.word.spacing")
+    /// The one number this screen exists for, directly on the room.
+    private var heroBlock: some View {
+        VStack(alignment: .leading, spacing: FlowTheme.space4) {
+            Text("Time given back").flowEyebrow()
+            HStack(alignment: .firstTextBaseline, spacing: FlowTheme.space4) {
+                Text("\(Int(stats.timeSavedMinutes.rounded()))")
+                    .font(FlowTheme.numeric(heroNumeral, weight: .bold))
+                    .contentTransition(.numericText())
+                Text("min")
+                    .font(FlowTheme.numeric(20))
+                    .foregroundStyle(.secondary)
             }
-            GridRow {
-                chip(value: "\(stats.sessions)", unit: "dictations", icon: "waveform")
-                chip(value: stats.wordsPerMinute.formatted(.number.precision(.fractionLength(0))), unit: "wpm", icon: "speedometer")
-            }
+            Text(heroFlavor)
+                .font(FlowTheme.serifFlavor(16))
+                .foregroundStyle(.secondary)
         }
     }
 
-    private func chip(value: String, unit: String, icon: String) -> some View {
-        VStack(alignment: .leading, spacing: FlowTheme.space4) {
-            Image(systemName: icon)
-                .font(.caption)
-                .foregroundStyle(FlowTheme.accent)
-            Text(value)
-                .font(FlowTheme.numeric(24, weight: .bold))
-                .contentTransition(.numericText())
-            Text(unit)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private var heroFlavor: String {
+        let minutes = Int(stats.timeSavedMinutes.rounded())
+        if minutes < 15 { return "your first minutes back" }
+        let hours = Double(minutes) / 60
+        if hours < 1.5 { return "about an hour of typing" }
+        return "about \(Int(hours.rounded())) hours of typing"
+    }
+
+    private var statStrip: some View {
+        HStack(spacing: 0) {
+            stripCell("\(stats.words)", "words")
+            Divider().frame(height: 36)
+            stripCell("\(stats.sessions)", "dictations")
+            Divider().frame(height: 36)
+            stripCell(stats.wordsPerMinute.formatted(.number.precision(.fractionLength(0))), "wpm")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(FlowTheme.space16)
         .flowCard()
+    }
+
+    private func stripCell(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(FlowTheme.numeric(20, weight: .semibold))
+                .contentTransition(.numericText())
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var streakCard: some View {
@@ -155,12 +186,17 @@ struct StatsContent: View {
                     y: .value("Words", day.words)
                 )
                 .foregroundStyle(FlowTheme.accentGradient)
-                .cornerRadius(3)
+                .cornerRadius(4)
+            }
+            .chartYAxis {
+                AxisMarks(values: .automatic(desiredCount: 3)) { _ in
+                    AxisGridLine().foregroundStyle(.white.opacity(0.06))
+                    AxisValueLabel().font(.caption2).foregroundStyle(.tertiary)
+                }
             }
             .chartXAxis {
-                AxisMarks { value in
-                    AxisValueLabel()
-                        .font(.caption2)
+                AxisMarks { _ in
+                    AxisValueLabel().font(.caption2).foregroundStyle(.tertiary)
                 }
             }
             .frame(height: 160)
@@ -186,6 +222,17 @@ struct StatsContent: View {
                 )
                 .interpolationMethod(.catmullRom)
                 .foregroundStyle(FlowTheme.accent.opacity(0.1))
+            }
+            .chartYAxis {
+                AxisMarks(values: .automatic(desiredCount: 3)) { _ in
+                    AxisGridLine().foregroundStyle(.white.opacity(0.06))
+                    AxisValueLabel().font(.caption2).foregroundStyle(.tertiary)
+                }
+            }
+            .chartXAxis {
+                AxisMarks { _ in
+                    AxisValueLabel().font(.caption2).foregroundStyle(.tertiary)
+                }
             }
             .frame(height: 120)
         }
