@@ -100,6 +100,7 @@
 		F50A90548C5BCCBE4E7D2B98 /* DictationActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AC1F7A2821AC69AFEBECAE7 /* DictationActivityAttributes.swift */; };
 		F9C2FD8E06BB127E1FCF6DCB /* AudioLevelMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF684D4FD515B6CC5219504 /* AudioLevelMeter.swift */; };
 		F9FD85C69C97E622EA1D4AB0 /* DictationStatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D956BEAEE6CFBDC18F98329 /* DictationStatsStore.swift */; };
+		FBCB7F2F784565EAB5469844 /* StreamingTextRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54A39941DD4AB0117527AC48 /* StreamingTextRenderer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -227,6 +228,7 @@
 		465635746E8BA96BAC9A9DC3 /* FlowBridgeSharedTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FlowBridgeSharedTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4AC1F7A2821AC69AFEBECAE7 /* DictationActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationActivityAttributes.swift; sourceTree = "<group>"; };
 		4FC38FD292248ABAC08C9CE1 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		54A39941DD4AB0117527AC48 /* StreamingTextRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingTextRenderer.swift; sourceTree = "<group>"; };
 		5536AE9A59BEE1893922545A /* HapticEngineController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticEngineController.swift; sourceTree = "<group>"; };
 		5578CABA44085834319AB537 /* CloudGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudGate.swift; sourceTree = "<group>"; };
 		58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = FlowBridgeShared.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -400,6 +402,7 @@
 			isa = PBXGroup;
 			children = (
 				1F31CBD5CEB730A68D9A4CA4 /* LiveTranscriptView.swift */,
+				54A39941DD4AB0117527AC48 /* StreamingTextRenderer.swift */,
 				438A39D3CE109D9F79EC02C2 /* TranscriptPanelView.swift */,
 				EF72D22409E77372A71277E1 /* TranscriptStageView.swift */,
 			);
@@ -848,6 +851,7 @@
 				B3DF39D25753CD138A2910A6 /* RoomBackground.swift in Sources */,
 				CD2D4B9FEE7752AB9D0DE2EF /* SettingsView.swift in Sources */,
 				42D4D29B20554986478BE9E8 /* StatsView.swift in Sources */,
+				FBCB7F2F784565EAB5469844 /* StreamingTextRenderer.swift in Sources */,
 				BAF4CF35D1494B8C92F1DCCD /* ToggleDictationIntent.swift in Sources */,
 				F4478743C4F1DD22A939742D /* TranscriptPanelView.swift in Sources */,
 				D81DF238E6E32E10F372D3B3 /* TranscriptPolisher.swift in Sources */,

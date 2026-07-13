@@ -9,3 +9,4 @@ Resources/WhisperModels/**/*.mlpackage
 *.xcuserstate
 xcuserdata/
 .derived/
+.derived*/

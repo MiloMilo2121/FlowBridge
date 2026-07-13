@@ -69,7 +69,7 @@ struct TranscriptStageView: View {
     @ViewBuilder
     private func liveContent(dimmed: Bool) -> some View {
         if let snapshot = liveTranscript, !snapshot.text.isEmpty {
-            LiveTranscriptView(snapshot: snapshot)
+            LiveTranscriptView(snapshot: snapshot, frozen: dimmed)
                 .frame(maxHeight: 230)
                 .opacity(dimmed ? 0.65 : 1)
                 .allowsHitTesting(!dimmed)

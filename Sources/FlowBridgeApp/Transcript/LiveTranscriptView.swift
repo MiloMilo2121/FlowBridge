@@ -1,49 +1,88 @@
 import FlowBridgeShared
 import SwiftUI
 
-/// The words as they stream in: committed words in primary, the volatile
-/// tail in secondary. Rendered as ONE attributed Text — per-word views made
-/// the block "dance": every re-transcription of the volatile tail changed
-/// word widths and re-wrapped the whole layout. A single Text wraps
-/// naturally and only ever grows.
+/// The words as they stream in: one concatenated `Text` (single layout — no
+/// per-word views, so re-wraps can never dance), with per-word arrival
+/// stamps drawn by `StreamingTextRenderer` at draw time.
+///
+/// Arrival stamps are assigned by longest-common-prefix diff against the
+/// previous snapshot: the normalizer and Whisper can REWRITE earlier words
+/// between snapshots, so absolute indices are not stable — only the truly
+/// new suffix gets fresh stamps; rewritten words inherit theirs and stay
+/// still.
 struct LiveTranscriptView: View {
     let snapshot: LiveTranscriptSnapshot
+    /// Condensing: the stage freezes arrivals and the caret.
+    var frozen = false
 
+    @State private var displayText = Text(verbatim: "")
+    @State private var arrivals: [Date] = []
+    @State private var previousWords: [String] = []
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .title3) private var wordSize: CGFloat = 20
 
-    /// Older words scroll away; capping keeps the attributed rebuild cheap
-    /// at streaming cadence.
     private static let maxVisibleWords = 120
 
     var body: some View {
         ScrollView {
-            Text(attributedTranscript)
-                .font(.system(size: wordSize, weight: .medium))
-                .frame(maxWidth: .infinity, alignment: .leading)
+            TimelineView(.animation(minimumInterval: reduceMotion ? 1 / 20 : 1 / 60, paused: frozen)) { timeline in
+                displayText
+                    .font(.system(size: wordSize, weight: .medium))
+                    .lineSpacing(3)
+                    .textRenderer(StreamingTextRenderer(
+                        now: timeline.date.timeIntervalSinceReferenceDate,
+                        frozen: frozen,
+                        reduceMotion: reduceMotion,
+                        accent: FlowTheme.accent
+                    ))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .defaultScrollAnchor(.bottom)
+        .onAppear { rebuild() }
+        .onChange(of: snapshot.sequence) { _, _ in rebuild() }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Live transcript")
         .accessibilityValue(snapshot.text)
     }
 
-    private var attributedTranscript: AttributedString {
-        let words = snapshot.text.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+    /// Rebuilds the memoized Text only when a snapshot lands — the
+    /// TimelineView feeds the renderer's clock, never the string.
+    private func rebuild() {
+        let words = snapshot.text
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .map(String.init)
         let volatileCount = snapshot.previewText
             .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
             .count
-        let visible = words.suffix(Self.maxVisibleWords)
-        let committedCount = max(0, visible.count - volatileCount)
+        let now = Date()
 
-        var committed = AttributedString(visible.prefix(committedCount).joined(separator: " "))
-        committed.foregroundColor = .primary
+        // LCP diff: stamps survive rewrites, only appended words are "new".
+        var commonPrefix = 0
+        while commonPrefix < min(words.count, previousWords.count),
+              words[commonPrefix] == previousWords[commonPrefix] {
+            commonPrefix += 1
+        }
+        _ = commonPrefix // rewritten words inside the prefix keep their stamps
 
-        guard visible.count > committedCount else { return committed }
+        if arrivals.count < words.count {
+            arrivals.append(contentsOf: Array(repeating: now, count: words.count - arrivals.count))
+        } else if arrivals.count > words.count {
+            arrivals.removeLast(arrivals.count - words.count)
+        }
+        previousWords = words
 
-        var volatile = AttributedString(
-            (committedCount > 0 ? " " : "") + visible.suffix(visible.count - committedCount).joined(separator: " ")
-        )
-        volatile.foregroundColor = .secondary
-        return committed + volatile
+        let start = max(0, words.count - Self.maxVisibleWords)
+        var text = Text(verbatim: "")
+        for index in start..<words.count {
+            let piece = (index > start ? " " : "") + words[index]
+            text = text + Text(verbatim: piece)
+                .customAttribute(WordStampAttribute(
+                    arrival: arrivals[index],
+                    isVolatile: index >= words.count - volatileCount
+                ))
+        }
+        displayText = text
     }
 }
