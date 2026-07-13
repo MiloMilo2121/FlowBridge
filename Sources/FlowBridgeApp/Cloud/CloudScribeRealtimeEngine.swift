@@ -30,9 +30,13 @@ actor CloudScribeRealtimeEngine: TranscriptionEngine {
     // MARK: - TranscriptionEngine
 
     func transcribe(recording: RecordedAudio, source: TranscriptRecord.Source) async throws -> TranscriptRecord {
-        let result = try await CloudScribeClient.transcribe(fileURL: recording.url, language: DictationLanguage.current)
+        let result = try await CloudScribeClient.transcribe(
+            fileURL: recording.url,
+            language: DictationLanguage.current,
+            diarize: SpeakerDetection.isEnabled
+        )
         return TranscriptRecord(
-            text: result.text,
+            text: result.bestText,
             language: result.languageCode ?? DictationLanguage.current.whisperCode ?? "und",
             audioDuration: recording.duration,
             source: source

@@ -18,6 +18,11 @@ packages:
   ArgmaxOSSSwift:
     url: https://github.com/argmaxinc/argmax-oss-swift.git
     from: "1.0.0"
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio.git
+    # Pinned: v0.15.5 is the last dependency-free release (main adds a
+    # binary xcframework for TTS we don't use).
+    exactVersion: "0.15.5"
 targets:
   FlowBridgeShared:
     type: framework
@@ -48,10 +53,17 @@ targets:
       - path: Resources/Benchmark
         type: folder
         optional: true
+      # Diarization CoreML models (scripts/fetch-diarization-models.sh);
+      # folder reference so the compiled .mlmodelc bundles copy verbatim.
+      - path: Resources/DiarizationModels
+        type: folder
+        optional: true
     dependencies:
       - target: FlowBridgeShared
       - package: ArgmaxOSSSwift
         product: WhisperKit
+      - package: FluidAudio
+        product: FluidAudio
       - target: FlowBridgeKeyboard
       - target: FlowBridgeShareExtension
       - target: FlowBridgeWidgets

@@ -11,6 +11,7 @@ struct HistoryView: View {
     @State private var query = ""
     @State private var tokens: [HistoryToken] = []
     @State private var suggestedTokens = HistoryToken.allCases
+    @State private var renameTarget: TranscriptHistoryStore.Entry?
 
     enum HistoryToken: String, Identifiable, CaseIterable {
         case pinned = "Pinned"
@@ -79,6 +80,14 @@ struct HistoryView: View {
             .task { await reload() }
             .onChange(of: query) { _, _ in
                 Task { await reload() }
+            }
+            .sheet(item: $renameTarget) { entry in
+                RenameSpeakersSheet(entry: entry, history: coordinator.history) {
+                    await reload()
+                }
+                .presentationDetents([.medium])
+                .presentationBackground(.thinMaterial)
+                .presentationCornerRadius(FlowTheme.radiusSheet)
             }
         }
     }
@@ -172,7 +181,7 @@ struct HistoryView: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            Text(entry.record.text)
+            Text(SpeakerLabelStyler.attributed(entry.record.text))
                 .font(.body)
                 .lineLimit(3)
         }
@@ -232,6 +241,13 @@ struct HistoryView: View {
                     Label("Copy verbatim", systemImage: "text.quote")
                 }
             }
+            if SpeakerTranscriptFormatter.labels(in: entry.record.text) != nil {
+                Button {
+                    renameTarget = entry
+                } label: {
+                    Label("Rename speakers…", systemImage: "person.2")
+                }
+            }
             Button {
                 Task {
                     try? await coordinator.history?.setPinned(!entry.isPinned, id: entry.id)
@@ -258,5 +274,85 @@ struct HistoryView: View {
     private func reload() async {
         guard let store = coordinator.history else { return }
         entries = query.isEmpty ? await store.all() : await store.search(query)
+    }
+}
+
+/// Give the anonymous "Speaker 1/2/…" labels real names — a plain text
+/// replacement on this record only, nothing stored beyond it.
+private struct RenameSpeakersSheet: View {
+    let entry: TranscriptHistoryStore.Entry
+    let history: TranscriptHistoryStore?
+    let onSaved: () async -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var names: [String: String] = [:]
+
+    private var labels: [String] {
+        SpeakerTranscriptFormatter.labels(in: entry.record.text) ?? []
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    ForEach(labels, id: \.self) { label in
+                        TextField(label, text: binding(for: label))
+                            .textInputAutocapitalization(.words)
+                            .autocorrectionDisabled()
+                    }
+                    .listRowBackground(FlowTheme.surfaceRaised)
+                } header: {
+                    Text("Speakers").flowEyebrow()
+                } footer: {
+                    Text("Names replace the automatic labels in this transcript only. Leave a field empty to keep its label.")
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .navigationTitle("Rename speakers")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Cancel")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        save()
+                    } label: {
+                        Image(systemName: "checkmark")
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(FlowTheme.accent)
+                    .disabled(cleanMapping.isEmpty)
+                    .accessibilityLabel("Save names")
+                }
+            }
+        }
+    }
+
+    private var cleanMapping: [String: String] {
+        names
+            .mapValues { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.value.isEmpty }
+    }
+
+    private func binding(for label: String) -> Binding<String> {
+        Binding(
+            get: { names[label] ?? "" },
+            set: { names[label] = $0 }
+        )
+    }
+
+    private func save() {
+        let renamed = SpeakerTranscriptFormatter.renamed(entry.record.text, mapping: cleanMapping)
+        Task {
+            try? await history?.updateText(id: entry.id, text: renamed)
+            await onSaved()
+            dismiss()
+        }
     }
 }

@@ -70,11 +70,69 @@ actor WhisperEngine: TranscriptionEngine {
         )
     }
 
+    /// The precision pass with per-word timestamps — the transcription half
+    /// of on-device speaker fusion. Same decode as `transcribe`, plus the
+    /// cross-attention alignment stage; VAD chunking is left off so word
+    /// times stay file-absolute.
+    func transcribeWithWords(
+        recording: RecordedAudio
+    ) async throws -> (text: String, words: [(text: String, start: TimeInterval, end: TimeInterval)]) {
+        let kit = try await model()
+        let options = DecodingOptions(
+            verbose: false,
+            task: .transcribe,
+            language: DictationLanguage.current.whisperCode,
+            temperature: 0,
+            temperatureFallbackCount: 2,
+            sampleLength: 224,
+            usePrefillPrompt: true,
+            skipSpecialTokens: true,
+            withoutTimestamps: false,
+            wordTimestamps: true,
+            promptTokens: Self.vocabularyPromptTokens(for: kit),
+            concurrentWorkerCount: 1
+        )
+
+        let results: [TranscriptionResult]
+        do {
+            results = try await kit.transcribe(audioPath: recording.url.path, decodeOptions: options)
+        } catch {
+            throw FlowBridgeError.transcriptionFailed(error.localizedDescription)
+        }
+
+        try Task.checkCancellation()
+
+        let words = results
+            .flatMap(\.segments)
+            .flatMap { $0.words ?? [] }
+            .map { timing in
+                (
+                    text: timing.word.trimmingCharacters(in: .whitespaces),
+                    start: TimeInterval(timing.start),
+                    end: TimeInterval(timing.end)
+                )
+            }
+            .filter { !$0.text.isEmpty }
+
+        let text = DictationTextNormalizer.normalize(results.map(\.text).joined(separator: " "))
+        guard !text.isEmpty else {
+            throw FlowBridgeError.emptyTranscript
+        }
+
+        scheduleIdleUnload()
+        return (text, words)
+    }
+
     func startLiveTranscription(sessionID: UUID) async throws {
         guard streamTask == nil else {
             throw FlowBridgeError.alreadyRecording
         }
 
+        // Note: we deliberately do NOT deactivate the session here. Every
+        // stop/unload already releases it, so a new start begins from a clean
+        // route; deactivating mid-warming would risk dropping the audio
+        // assertion on a background (Action Button) start before WhisperKit
+        // reactivates it.
         let kit = try await model()
         unloadTask?.cancel()
         unloadTask = nil
@@ -185,6 +243,10 @@ actor WhisperEngine: TranscriptionEngine {
         // pass consumes it (and it survives for next-launch recovery if the
         // process dies before then). FinalPassService owns the cleanup.
         await stopSafetyFlush(keepFileForRecovery: true)
+        // WhisperKit tore down its tap+engine but leaves the AVAudioSession
+        // active: release it so the next session renegotiates a fresh input
+        // route instead of inheriting a stuck (silent) one.
+        Self.releaseAudioSession("stop")
 
         let liveStore = try LiveTranscriptStore()
         let text = DictationTextNormalizer.normalize(liveStore.latest()?.text ?? "")
@@ -249,9 +311,27 @@ actor WhisperEngine: TranscriptionEngine {
         streamTask = nil
         streamTranscriber = nil
         liveSessionID = nil
+        // Always release the session (even when no model is loaded): a stuck
+        // active session is exactly what starves the mic on the next start.
+        Self.releaseAudioSession("unload")
         guard let whisperKit else { return }
         await whisperKit.unloadModels()
         self.whisperKit = nil
+    }
+
+    /// WhisperKit's `AudioProcessor` activates `AVAudioSession` (.playAndRecord)
+    /// but never deactivates it, so the session stays active-and-routed between
+    /// dictations. A route that goes stale then feeds silence to the tap with
+    /// no recovery — the device log showed Whisper hallucinating on a live mic
+    /// ("I love you", "*Sigh*") after rapid start/stop/switch. Deactivating on
+    /// every teardown forces a fresh input route on the next activation.
+    private static func releaseAudioSession(_ reason: String) {
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            FBLog.log("whisper: audio session released (\(reason))")
+        } catch {
+            FBLog.log("whisper: audio session release failed (\(reason)): \(error)")
+        }
     }
 
     private func startSafetyFlush(sessionID: UUID, audioProcessor: any AudioProcessing) {

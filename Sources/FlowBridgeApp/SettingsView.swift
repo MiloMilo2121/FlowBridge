@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var engine = EnginePreference.current
     @State private var language = DictationLanguage.current
     @State private var finalPassMode = FinalPassMode.current
+    @State private var speakersEnabled = SpeakerDetection.isEnabled
     @State private var hasCloudKey = CloudCredentialsStore.hasKey
     @State private var cloudKeyInput = ""
     @State private var polishEnabled = true
@@ -115,10 +116,14 @@ struct SettingsView: View {
             .onChange(of: finalPassMode) { _, newValue in
                 FinalPassMode.set(newValue)
             }
+            Toggle("Detect speakers", isOn: $speakersEnabled)
+                .onChange(of: speakersEnabled) { _, newValue in
+                    SpeakerDetection.set(newValue)
+                }
         } header: {
             Text("Transcription").flowEyebrow()
         } footer: {
-            Text(engineFooter + " Pinning the language noticeably improves accuracy; auto-detect struggles on short phrases. The final pass re-transcribes the whole recording once you stop — a moment slower, distinctly more accurate. Engine changes apply from the next app launch.")
+            Text(engineFooter + " Pinning the language noticeably improves accuracy; auto-detect struggles on short phrases. The final pass re-transcribes the whole recording once you stop — a moment slower, distinctly more accurate. Speaker detection labels who said what when more than one voice is heard; it runs in the final pass, and quietly uses the on-device Precision pass when the final pass is off. Engine changes apply from the next app launch.")
         }
     }
 
@@ -299,6 +304,7 @@ struct SettingsView: View {
         engine = EnginePreference.current
         language = DictationLanguage.current
         finalPassMode = FinalPassMode.current
+        speakersEnabled = SpeakerDetection.isEnabled
         hasCloudKey = CloudCredentialsStore.hasKey
         let defaults = try? SharedContainer.userDefaults()
         polishEnabled = defaults?.object(forKey: FlowBridgeConstants.polishEnabledKey) as? Bool ?? true

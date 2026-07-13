@@ -60,6 +60,27 @@ public actor TranscriptHistoryStore {
         }
     }
 
+    /// Rewrites a stored transcript's text in place (speaker rename). The
+    /// record identity, verbatim raw text and metadata stay untouched.
+    public func updateText(id: UUID, text: String) throws {
+        var entries = load()
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        let old = entries[index].record
+        entries[index] = Entry(
+            record: TranscriptRecord(
+                id: old.id,
+                text: text,
+                rawText: old.rawText,
+                language: old.language,
+                createdAt: old.createdAt,
+                audioDuration: old.audioDuration,
+                source: old.source
+            ),
+            isPinned: entries[index].isPinned
+        )
+        try save(entries)
+    }
+
     public func setPinned(_ pinned: Bool, id: UUID) throws {
         var entries = load()
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }

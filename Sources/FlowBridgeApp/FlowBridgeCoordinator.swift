@@ -79,6 +79,16 @@ final class FlowBridgeCoordinator: ObservableObject {
     private var maxDurationTask: Task<Void, Never>?
     private var islandTask: Task<Void, Never>?
     private var lastSentIslandState: DictationActivityAttributes.ContentState?
+    /// Silence guard: the loudest level seen this session, and whether we've
+    /// already nudged the user. A dead mic (route stuck, another app holding
+    /// it, silent Bluetooth) makes Whisper hallucinate on nothing; better to
+    /// say so than to deliver "I love you" in the transcript.
+    private var sessionPeakLevel: Float = 0
+    private var silenceHintShown = false
+    /// When the mic actually began delivering (first recording tick, after
+    /// warming) — the clock the silence guard measures against, so a slow
+    /// model load never counts as silence.
+    private var micTicksStartedAt: Date?
     /// Guards snapshot readers: after a crash the App Group can still hold a
     /// `isRecording` snapshot from the dead session, which must never leak
     /// into a new session's island or live view.
@@ -353,6 +363,9 @@ final class FlowBridgeCoordinator: ObservableObject {
             vocabularySuggestions = []
             currentSessionID = sessionID
             lastSeenSnapshotSequence = 0
+            sessionPeakLevel = 0
+            silenceHintShown = false
+            micTicksStartedAt = nil
             AudioLevelMeter.shared.reset()
             HapticPlayer.prepare()
             // The Live Activity goes up before the engine warms: the island
@@ -422,6 +435,21 @@ final class FlowBridgeCoordinator: ObservableObject {
 
     private func pushIslandUpdate(startedAt: Date) {
         guard case .recording = state, activityController.isActive else { return }
+        // Silence guard: a stuck input route (or another app / silent
+        // Bluetooth) delivers near-zero audio, and Whisper then hallucinates
+        // on nothing. Measure from the first recording tick (not session
+        // start — a slow model load isn't silence); if only silence has
+        // arrived after a few seconds, and we're not paused, say so once.
+        let now = Date()
+        if micTicksStartedAt == nil { micTicksStartedAt = now }
+        sessionPeakLevel = max(sessionPeakLevel, AudioLevelMeter.shared.latestLevel)
+        if !silenceHintShown, pausedAt == nil,
+           let micStart = micTicksStartedAt, now.timeIntervalSince(micStart) > 4,
+           sessionPeakLevel < 0.03 {
+            silenceHintShown = true
+            statusMessage = "No sound from the mic — close any app using it (or Bluetooth), then retry."
+            FBLog.log("silence guard: no audio after 4s (peak \(sessionPeakLevel))")
+        }
         let remaining = FlowBridgeConstants.maxRecordingSeconds - Date().timeIntervalSince(startedAt)
         let snapshot = LiveTranscriptStore.latest()
         let isCurrentSession = snapshot?.isRecording == true && snapshot?.sessionID == currentSessionID
@@ -561,11 +589,21 @@ final class FlowBridgeCoordinator: ObservableObject {
         // then the on-device polish with the current tone target. The
         // engine's verbatim text always survives in rawText.
         var workingText = record.text
-        if Self.voiceCommandsEnabled {
-            workingText = VoiceCommandProcessor.apply(to: workingText)
-        }
         let tone = toneStore?.currentTone() ?? .neutral
-        workingText = await polisher.polish(workingText, tone: tone)
+        if let turns = SpeakerTranscriptFormatter.turns(in: workingText) {
+            // A labeled conversation: each turn is polished separately so
+            // the labels survive by construction; spoken commands don't
+            // apply to multi-voice audio. Very long exchanges skip the
+            // polish — the diarized verbatim already reads well.
+            if turns.count <= FlowBridgeConstants.speakerPolishMaxTurns {
+                workingText = await polishTurns(turns, tone: tone)
+            }
+        } else {
+            if Self.voiceCommandsEnabled {
+                workingText = VoiceCommandProcessor.apply(to: workingText)
+            }
+            workingText = await polisher.polish(workingText, tone: tone)
+        }
         let finalRecord = workingText == record.text ? record : record.polished(workingText)
 
         try? await historyStore?.add(finalRecord)
@@ -598,6 +636,14 @@ final class FlowBridgeCoordinator: ObservableObject {
         timeSavedMinutes = statsStore?.stats().timeSavedMinutes ?? timeSavedMinutes
         vocabularySuggestions = VocabularySuggester.suggestions(from: finalRecord.rawText ?? finalRecord.text)
         HapticPlayer.transcriptReady()
+    }
+
+    private func polishTurns(_ turns: [SpeakerTranscriptFormatter.Turn], tone: ToneProfile) async -> String {
+        var polished: [SpeakerTranscriptFormatter.Turn] = []
+        for turn in turns {
+            polished.append(.init(label: turn.label, text: await polisher.polish(turn.text, tone: tone)))
+        }
+        return SpeakerTranscriptFormatter.compose(turns: polished)
     }
 
     func addVocabularySuggestion(_ term: String) {
@@ -837,7 +883,15 @@ final class FlowBridgeCoordinator: ObservableObject {
               let base = lastTranscript?.text,
               !base.isEmpty else { return }
         FBLog.log("variant: \(rawTone)")
-        let variant = await polisher.polish(base, tone: tone)
+        let variant: String
+        if let turns = SpeakerTranscriptFormatter.turns(in: base) {
+            // Labeled conversation: per-turn, same rule as delivery.
+            variant = turns.count <= FlowBridgeConstants.speakerPolishMaxTurns
+                ? await polishTurns(turns, tone: tone)
+                : base
+        } else {
+            variant = await polisher.polish(base, tone: tone)
+        }
         UIPasteboard.general.string = variant
         statusMessage = "\(tone.displayName) copied"
         HapticPlayer.transcriptReady()
@@ -899,6 +953,12 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     private static func errorMessage(for error: Error) -> String {
-        (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        if case FlowBridgeError.emptyTranscript = error {
+            // The most common "nothing heard" cause is a mic the app never
+            // truly got (another recorder, a call, silent Bluetooth). Say
+            // what to do, not just what happened.
+            return "No sound picked up — close any app using the mic (or Bluetooth), then try again."
+        }
+        return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 }

@@ -6,6 +6,7 @@ Package.resolved
 Resources/WhisperModels/WhisperSmall/
 Resources/WhisperModels/**/*.mlmodelc
 Resources/WhisperModels/**/*.mlpackage
+Resources/DiarizationModels/
 *.xcuserstate
 xcuserdata/
 .derived/

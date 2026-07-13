@@ -42,6 +42,15 @@ public enum FlowBridgeConstants {
     /// Sessions longer than this skip the final pass to keep stop latency
     /// bounded.
     public static let finalPassMaxSeconds: TimeInterval = 180
+    /// UserDefaults (App Group) key: label speakers ("Speaker 1/2/…") in the
+    /// final transcript when more than one voice is detected.
+    public static let speakersEnabledKey = "detectSpeakers"
+    /// Labeled transcripts with more turns than this skip the polisher —
+    /// per-turn polishing an hour of back-and-forth would take minutes.
+    public static let speakerPolishMaxTurns = 8
+    /// Folder reference (bundle) holding the diarization CoreML models,
+    /// populated at build time by scripts/fetch-diarization-models.sh.
+    public static let diarizationModelsSubdirectory = "DiarizationModels"
     /// UserDefaults key: onboarding was completed.
     public static let onboardingCompletedKey = "onboardingCompleted"
 

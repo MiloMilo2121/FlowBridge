@@ -53,7 +53,13 @@ final class FinalPassService {
             return fallback
         }
 
-        let mode = FinalPassMode.current
+        var mode = FinalPassMode.current
+        let speakers = SpeakerDetection.isEnabled
+        // Diarization lives in the final pass: with the pass off it quietly
+        // borrows the on-device Precision pass (the Settings footer says so).
+        if speakers && mode == .off {
+            mode = .localPrecision
+        }
         let eligible = duration >= FlowBridgeConstants.safetyBufferMinimumRecoverySeconds
             && duration <= FlowBridgeConstants.finalPassMaxSeconds
 
@@ -63,12 +69,12 @@ final class FinalPassService {
             case .off:
                 break
             case .localPrecision:
-                refined = await localRefine(url: url, duration: duration)
+                refined = await localRefine(url: url, duration: duration, speakers: speakers)
             case .cloudScribe:
-                refined = await cloudRefine(url: url, duration: duration)
+                refined = await cloudRefine(url: url, duration: duration, speakers: speakers)
                 if refined == nil {
                     FBLog.log("finalpass: cloud failed, cascading to local precision")
-                    refined = await localRefine(url: url, duration: duration)
+                    refined = await localRefine(url: url, duration: duration, speakers: speakers)
                 }
             }
         }
@@ -82,18 +88,18 @@ final class FinalPassService {
         return text
     }
 
-    private func cloudRefine(url: URL, duration: TimeInterval) async -> String? {
+    private func cloudRefine(url: URL, duration: TimeInterval, speakers: Bool) async -> String? {
         guard CloudCredentialsStore.hasKey else {
             FBLog.log("finalpass: cloud selected but no API key")
             return nil
         }
-        FBLog.log("finalpass: cloud pass (\(Int(duration))s audio)")
+        FBLog.log("finalpass: cloud pass (\(Int(duration))s audio\(speakers ? ", diarized" : ""))")
         return try? await CloudScribeClient
-            .transcribe(fileURL: url, language: DictationLanguage.current)
-            .text
+            .transcribe(fileURL: url, language: DictationLanguage.current, diarize: speakers)
+            .bestText
     }
 
-    private func localRefine(url: URL, duration: TimeInterval) async -> String? {
+    private func localRefine(url: URL, duration: TimeInterval, speakers: Bool) async -> String? {
         let engine: WhisperEngine
         if let precisionEngine {
             engine = precisionEngine
@@ -103,12 +109,37 @@ final class FinalPassService {
             precisionEngine = engine
         }
 
+        let recording = RecordedAudio(url: url, duration: duration)
+
+        if speakers, LocalDiarizer.isAvailable {
+            FBLog.log("finalpass: local diarized pass (\(Int(duration))s audio)")
+            // Diarizer (ANE) and Whisper run concurrently over the same WAV;
+            // words meet segments at their midpoints. Any failure degrades
+            // to the flat precision text — never a lost dictation.
+            async let segmentsTask = LocalDiarizer.shared.diarize(url: url)
+            async let wordsTask = engine.transcribeWithWords(recording: recording)
+            let segments = (try? await segmentsTask) ?? []
+            let transcription = try? await wordsTask
+            if let transcription {
+                if !segments.isEmpty, !transcription.words.isEmpty {
+                    let labeled = SpeakerTranscriptFormatter.labeledText(
+                        words: SpeakerTranscriptFormatter.assign(words: transcription.words, to: segments)
+                    )
+                    if !labeled.isEmpty {
+                        return labeled
+                    }
+                }
+                FBLog.log("finalpass: diarizer produced nothing usable, keeping flat text")
+                return transcription.text
+            }
+            FBLog.log("finalpass: word-level pass failed, falling back to plain pass")
+        } else if speakers {
+            FBLog.log("finalpass: speakers on but diarization models not bundled")
+        }
+
         FBLog.log("finalpass: local pass (\(Int(duration))s audio)")
         let started = Date()
-        let record = try? await engine.transcribe(
-            recording: RecordedAudio(url: url, duration: duration),
-            source: .microphone
-        )
+        let record = try? await engine.transcribe(recording: recording, source: .microphone)
         FBLog.log("finalpass: local \(record == nil ? "failed" : "ok \(record!.text.count)ch") in \(Int(Date().timeIntervalSince(started)))s")
         return record?.text
     }

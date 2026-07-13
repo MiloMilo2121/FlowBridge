@@ -4,8 +4,12 @@ import XCTest
 
 final class TranscriptStoreTests: XCTestCase {
     func testSavesAndLoadsLatestTranscript() async throws {
-        let defaults = try makeDefaults()
-        let store = try TranscriptStore(defaults: defaults)
+        // One UserDefaults instance per use: the store actor consumes its
+        // instance (region-based isolation forbids reusing it afterwards);
+        // both instances share the same suite on disk.
+        let suite = "FlowBridgeTests.\(UUID().uuidString)"
+        try XCTUnwrap(UserDefaults(suiteName: suite)).removePersistentDomain(forName: suite)
+        let store = try TranscriptStore(defaults: XCTUnwrap(UserDefaults(suiteName: suite)))
         let record = TranscriptRecord(
             text: "Hello from FlowBridge.",
             language: "en",
@@ -17,13 +21,7 @@ final class TranscriptStoreTests: XCTestCase {
 
         let loaded = await store.latest()
         XCTAssertEqual(loaded, record)
-        XCTAssertEqual(TranscriptStore.latest(defaults: defaults), record)
-    }
-
-    private func makeDefaults() throws -> UserDefaults {
-        let suite = "FlowBridgeTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
+        let checkDefaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        XCTAssertEqual(TranscriptStore.latest(defaults: checkDefaults), record)
     }
 }

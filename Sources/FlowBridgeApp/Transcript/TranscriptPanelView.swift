@@ -49,7 +49,7 @@ struct TranscriptPanelView: View {
                         .font(FlowTheme.serifFlavor(17))
                         .foregroundStyle(.secondary)
                 } else {
-                    Text(displayText)
+                    Text(SpeakerLabelStyler.attributed(displayText))
                         .font(FlowTheme.hero(heroSize))
                         .lineSpacing(3)
                         .textSelection(.enabled)
