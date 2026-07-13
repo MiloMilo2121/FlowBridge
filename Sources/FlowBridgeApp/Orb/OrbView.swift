@@ -13,6 +13,8 @@ import SwiftUI
 struct OrbView: View {
     let state: FlowBridgeCoordinator.State
     var diameter: CGFloat = 220
+    /// Increment when entering `.recording` — drives the ignition kick.
+    var ignitionPulse = 0
     /// Increment when entering `.ready` — drives the crystallize pulse.
     var readyPulse = 0
     /// Increment when entering `.failed` — drives the shake.
@@ -40,6 +42,11 @@ struct OrbView: View {
             }
         }
         .buttonStyle(OrbPressStyle(reduceMotion: reduceMotion))
+        .phaseAnimator([1.0, 1.045, 1.0], trigger: ignitionPulse) { view, scale in
+            view.scaleEffect(reduceMotion ? 1.0 : scale)
+        } animation: { _ in
+            FlowMotion.ignition
+        }
         .phaseAnimator([1.0, 1.06, 1.0], trigger: readyPulse) { view, scale in
             view.scaleEffect(reduceMotion ? 1.0 : scale)
         } animation: { _ in
@@ -62,7 +69,7 @@ struct OrbView: View {
     @ViewBuilder
     private func energyLayer(t: TimeInterval, level: CGFloat) -> some View {
         switch state {
-        case .recording:
+        case .recording(let startedAt):
             if reduceMotion {
                 // Information without motion: the halo tracks the voice.
                 Circle()
@@ -73,8 +80,15 @@ struct OrbView: View {
                     t: t,
                     level: level,
                     diameter: diameter,
-                    accent: FlowTheme.accent
+                    accent: FlowTheme.accent,
+                    ignitionAge: t - startedAt.timeIntervalSinceReferenceDate
                 )
+                // Ignition blooms outward; condensing contracts back — the
+                // ring enters and leaves as the same organism.
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.82).combined(with: .opacity),
+                    removal: .scale(scale: 0.85).combined(with: .opacity)
+                ))
             }
         case .warming, .transcribing:
             if reduceMotion {
@@ -255,6 +269,9 @@ private struct RecordingRing: View {
     let level: CGFloat
     let diameter: CGFloat
     let accent: Color
+    /// Seconds since recording began — drives the one-shot ignition
+    /// shockwave, deterministically (replays correct on re-render).
+    var ignitionAge: TimeInterval = .infinity
 
     var body: some View {
         Canvas { context, size in
@@ -262,6 +279,25 @@ private struct RecordingRing: View {
             let innerRadius = diameter / 2 + 9
             let barCount = 48
             let slice = Int(t * 3)
+
+            // Ignition shockwave: one ring expanding +52pt over the first
+            // 700ms of the session.
+            if ignitionAge >= 0, ignitionAge < 0.7 {
+                let p = ignitionAge / 0.7
+                let eased = p * p * (3 - 2 * p)
+                let radius = innerRadius + CGFloat(eased) * 52
+                let rect = CGRect(
+                    x: center.x - radius,
+                    y: center.y - radius,
+                    width: radius * 2,
+                    height: radius * 2
+                )
+                context.stroke(
+                    Circle().path(in: rect),
+                    with: .color(accent.opacity((1 - eased) * 0.5)),
+                    style: StrokeStyle(lineWidth: 2)
+                )
+            }
 
             for index in 0..<barCount {
                 let angle = (2 * .pi / CGFloat(barCount)) * CGFloat(index) - .pi / 2

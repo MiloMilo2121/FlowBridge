@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var showStats = false
     @State private var showPrivacy = false
+    @State private var ignitionPulse = 0
     @State private var readyPulse = 0
     @State private var failPulse = 0
     @State private var streakPulse = 0
@@ -21,7 +22,8 @@ struct ContentView: View {
 
                 OrbView(
                     state: coordinator.state,
-                    diameter: 190,
+                    diameter: 210,
+                    ignitionPulse: ignitionPulse,
                     readyPulse: readyPulse,
                     failPulse: failPulse
                 ) {
@@ -106,6 +108,8 @@ struct ContentView: View {
             }
             .onChange(of: coordinator.state) { _, newState in
                 switch newState {
+                case .recording:
+                    ignitionPulse += 1
                 case .ready:
                     readyPulse += 1
                 case .failed:
