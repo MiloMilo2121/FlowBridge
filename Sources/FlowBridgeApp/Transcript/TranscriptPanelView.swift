@@ -89,8 +89,7 @@ struct TranscriptPanelView: View {
                 .transition(.opacity.combined(with: .offset(y: 6)))
             }
         }
-        .padding(FlowTheme.space16)
-        .flowCard()
+        // Card ownership lives in TranscriptStageView: the panel is content.
         .animation(FlowMotion.state, value: vocabularySuggestions)
         .onChange(of: reveal) { _, newReveal in
             runReveal(newReveal)

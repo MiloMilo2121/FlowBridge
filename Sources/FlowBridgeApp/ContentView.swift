@@ -192,32 +192,17 @@ struct ContentView: View {
         .accessibilityLabel("Time given back: \(Int(coordinator.timeSavedMinutes.rounded())) minutes. Opens statistics.")
     }
 
-    @ViewBuilder
     private var transcriptArea: some View {
-        Group {
-            if isRecording, let snapshot = coordinator.liveTranscript, !snapshot.text.isEmpty {
-                LiveTranscriptView(snapshot: snapshot)
-                    .frame(maxHeight: 230)
-                    .padding(FlowTheme.space16)
-                    .flowCard()
-            } else if isRecording {
-                Text("Listening…")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 80)
-                    .flowCard()
-            } else {
-                TranscriptPanelView(
-                    record: coordinator.lastTranscript,
-                    reveal: coordinator.polishReveal,
-                    vocabularySuggestions: coordinator.vocabularySuggestions,
-                    onAddSuggestion: { coordinator.addVocabularySuggestion($0) },
-                    onDismissSuggestion: { coordinator.dismissVocabularySuggestion($0) },
-                    onCopy: { Task { await coordinator.copyLastTranscript() } }
-                )
-            }
-        }
-        .animation(FlowMotion.state, value: isRecording)
+        TranscriptStageView(
+            state: coordinator.state,
+            liveTranscript: coordinator.liveTranscript,
+            record: coordinator.lastTranscript,
+            reveal: coordinator.polishReveal,
+            vocabularySuggestions: coordinator.vocabularySuggestions,
+            onAddSuggestion: { coordinator.addVocabularySuggestion($0) },
+            onDismissSuggestion: { coordinator.dismissVocabularySuggestion($0) },
+            onCopy: { Task { await coordinator.copyLastTranscript() } }
+        )
     }
 
     private var primaryCapsule: some View {

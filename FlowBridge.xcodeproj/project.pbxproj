@@ -15,6 +15,7 @@
 		081FA5C1D34A98F5283614F9 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786B1AE80A62F3B8718B36D4 /* KeyboardViewController.swift */; };
 		09F4684AAA12F2FBAFB8DAD5 /* TranscriptHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5649734D540433B6C860832 /* TranscriptHistoryStore.swift */; };
 		0BB002587B4667A395F887CF /* NetworkGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2DF086A59984159DC095240 /* NetworkGuard.swift */; };
+		0D7637319CBB617062508FA6 /* TranscriptStageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF72D22409E77372A71277E1 /* TranscriptStageView.swift */; };
 		0E4B77221AD7F3E263122A21 /* DarwinNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = C92AC93BA661C8358A14C9E6 /* DarwinNotifier.swift */; };
 		0EB9CBD54D1AF6CAF867563D /* FlowBridgeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D3BEA99E7DB4AE0BE1A7340 /* FlowBridgeApp.swift */; };
 		149F7D31E87FFAC860C6D73A /* FlowBridgeWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C3376497876B786552C9DAF /* FlowBridgeWidgetsBundle.swift */; };
@@ -279,6 +280,7 @@
 		E544C636FFC31B0B111A9306 /* WaveformBarsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarsView.swift; sourceTree = "<group>"; };
 		E9101AD4F00FA60371792FE4 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		EA7CF10ABEEB3E9B75ACA0CF /* DictationCommandHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationCommandHub.swift; sourceTree = "<group>"; };
+		EF72D22409E77372A71277E1 /* TranscriptStageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStageView.swift; sourceTree = "<group>"; };
 		F66E0DAC1051FC60CF651C98 /* FlowBridgeHomeWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeHomeWidget.swift; sourceTree = "<group>"; };
 		F6CA36551C2FA87C8C597EF1 /* VocabularySuggester.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularySuggester.swift; sourceTree = "<group>"; };
 		F98863E9ECE314D07BDF2B39 /* FinalPassService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinalPassService.swift; sourceTree = "<group>"; };
@@ -396,6 +398,7 @@
 			children = (
 				1F31CBD5CEB730A68D9A4CA4 /* LiveTranscriptView.swift */,
 				438A39D3CE109D9F79EC02C2 /* TranscriptPanelView.swift */,
+				EF72D22409E77372A71277E1 /* TranscriptStageView.swift */,
 			);
 			path = Transcript;
 			sourceTree = "<group>";
@@ -844,6 +847,7 @@
 				BAF4CF35D1494B8C92F1DCCD /* ToggleDictationIntent.swift in Sources */,
 				F4478743C4F1DD22A939742D /* TranscriptPanelView.swift in Sources */,
 				D81DF238E6E32E10F372D3B3 /* TranscriptPolisher.swift in Sources */,
+				0D7637319CBB617062508FA6 /* TranscriptStageView.swift in Sources */,
 				7C00E195506912F47299B5AB /* TranscriptionEngine.swift in Sources */,
 				453C7BBD98950403E6B7C650 /* VocabularySuggester.swift in Sources */,
 				924A33B98416C97AF2CDDDEE /* WhisperEngine.swift in Sources */,
