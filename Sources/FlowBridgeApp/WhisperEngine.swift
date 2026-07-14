@@ -20,6 +20,7 @@ actor WhisperEngine: TranscriptionEngine {
     private var meteringTask: Task<Void, Never>?
     private var lastMeteredSampleCount = 0
     private var meterLogTick = 0
+    private var routeObserver: NSObjectProtocol?
 
     private let variant: WhisperModelVariant
 
@@ -202,6 +203,14 @@ actor WhisperEngine: TranscriptionEngine {
 
         self.streamTranscriber = streamTranscriber
         liveSessionID = sessionID
+
+        // WhisperKit opens the mic with `.allowBluetooth` (its
+        // AudioProcessor.setupAudioSessionForDevice), so a connected Bluetooth
+        // device — AirPods in a pocket, a car kit — steals the input and the
+        // tap records near-silence while Voice Memos (which uses `.record`)
+        // still works. Pin the built-in mic on every route change so dictation
+        // follows the phone you're talking into.
+        installBuiltInMicPin()
         streamTask = Task {
             do {
                 FBLog.log("whisper: stream starting")
@@ -237,6 +246,7 @@ actor WhisperEngine: TranscriptionEngine {
         streamTask = nil
         streamTranscriber = nil
         liveSessionID = nil
+        removeBuiltInMicPin()
         stopMetering()
 
         // Close the safety WAV keeping the file: the coordinator's final
@@ -302,6 +312,7 @@ actor WhisperEngine: TranscriptionEngine {
         FBLog.log("whisper: unload (live=\(liveSessionID != nil))")
         unloadTask?.cancel()
         unloadTask = nil
+        removeBuiltInMicPin()
         stopMetering()
         // An unload during a live session is an interruption (memory pressure,
         // teardown): keep the safety file so the dictation can be recovered.
@@ -317,6 +328,44 @@ actor WhisperEngine: TranscriptionEngine {
         guard let whisperKit else { return }
         await whisperKit.unloadModels()
         self.whisperKit = nil
+    }
+
+    /// Re-pins the built-in mic whenever the route changes (WhisperKit's own
+    /// session activation counts as a change, and re-routes to Bluetooth if a
+    /// device is paired). The guard breaks the feedback loop — setting the
+    /// preferred input itself fires a route-change notification.
+    private func installBuiltInMicPin() {
+        removeBuiltInMicPin()
+        Self.pinBuiltInMic()
+        routeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil,
+            queue: nil
+        ) { _ in
+            Self.pinBuiltInMic()
+        }
+    }
+
+    private func removeBuiltInMicPin() {
+        if let routeObserver {
+            NotificationCenter.default.removeObserver(routeObserver)
+        }
+        routeObserver = nil
+    }
+
+    static func pinBuiltInMic() {
+        let session = AVAudioSession.sharedInstance()
+        let current = session.currentRoute.inputs.first?.portType
+        guard current != .builtInMic else { return }
+        guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else {
+            return
+        }
+        do {
+            try session.setPreferredInput(builtIn)
+            FBLog.log("whisper: input was \(current?.rawValue ?? "none") → pinned built-in mic")
+        } catch {
+            FBLog.log("whisper: pin built-in mic failed: \(error)")
+        }
     }
 
     /// WhisperKit's `AudioProcessor` activates `AVAudioSession` (.playAndRecord)
@@ -411,7 +460,8 @@ actor WhisperEngine: TranscriptionEngine {
 
         meterLogTick += 1
         if meterLogTick % 20 == 1 {
-            FBLog.log("meter: \(count) mic samples buffered")
+            let route = AVAudioSession.sharedInstance().currentRoute.inputs.first?.portType.rawValue ?? "none"
+            FBLog.log("meter: \(count) samples, level=\(String(format: "%.3f", AudioLevelMeter.shared.latestLevel)) in=\(route)")
         }
 
         if count < lastMeteredSampleCount {
