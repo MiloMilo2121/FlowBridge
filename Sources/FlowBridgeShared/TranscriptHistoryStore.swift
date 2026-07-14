@@ -74,7 +74,30 @@ public actor TranscriptHistoryStore {
                 language: old.language,
                 createdAt: old.createdAt,
                 audioDuration: old.audioDuration,
-                source: old.source
+                source: old.source,
+                actionTaken: old.actionTaken
+            ),
+            isPinned: entries[index].isPinned
+        )
+        try save(entries)
+    }
+
+    /// Stamps what the dictation became ("Calendar Event", "Reminder") so
+    /// History can show the voice → action trail.
+    public func setAction(_ action: String, id: UUID) throws {
+        var entries = load()
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        let old = entries[index].record
+        entries[index] = Entry(
+            record: TranscriptRecord(
+                id: old.id,
+                text: old.text,
+                rawText: old.rawText,
+                language: old.language,
+                createdAt: old.createdAt,
+                audioDuration: old.audioDuration,
+                source: old.source,
+                actionTaken: action
             ),
             isPinned: entries[index].isPinned
         )

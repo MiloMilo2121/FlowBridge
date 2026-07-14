@@ -18,6 +18,10 @@ public struct TranscriptRecord: Codable, Equatable, Identifiable, Sendable {
     public let createdAt: Date
     public let audioDuration: TimeInterval
     public let source: Source
+    /// What this dictation became beyond text ("Calendar Event", "Reminder")
+    /// — the voice → understanding → action trail in History. Nil for plain
+    /// dictations; optional, so records saved before this field decode fine.
+    public let actionTaken: String?
 
     public init(
         id: UUID = UUID(),
@@ -26,7 +30,8 @@ public struct TranscriptRecord: Codable, Equatable, Identifiable, Sendable {
         language: String,
         createdAt: Date = Date(),
         audioDuration: TimeInterval,
-        source: Source
+        source: Source,
+        actionTaken: String? = nil
     ) {
         self.id = id
         self.text = text
@@ -35,6 +40,7 @@ public struct TranscriptRecord: Codable, Equatable, Identifiable, Sendable {
         self.createdAt = createdAt
         self.audioDuration = audioDuration
         self.source = source
+        self.actionTaken = actionTaken
     }
 
     /// Same record with polished text applied and the verbatim original kept.
@@ -46,7 +52,8 @@ public struct TranscriptRecord: Codable, Equatable, Identifiable, Sendable {
             language: language,
             createdAt: createdAt,
             audioDuration: audioDuration,
-            source: source
+            source: source,
+            actionTaken: actionTaken
         )
     }
 }

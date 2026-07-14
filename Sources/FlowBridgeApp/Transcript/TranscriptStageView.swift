@@ -12,6 +12,7 @@ struct TranscriptStageView: View {
     let liveTranscript: LiveTranscriptSnapshot?
     let record: TranscriptRecord?
     let reveal: FlowBridgeCoordinator.PolishReveal?
+    var processingStage: FlowBridgeCoordinator.ProcessingStage?
     var vocabularySuggestions: [String] = []
     var suggestedAction: SuggestedAction?
     var actionConfirmation: String?
@@ -45,14 +46,28 @@ struct TranscriptStageView: View {
             case .condensing:
                 // Continuity: the words you just said stay on screen,
                 // quieted, while the engine works. Blur is reserved for the
-                // reveal — here it's dim + a slow shimmer sweep.
-                liveContent(dimmed: true)
-                    .overlay {
-                        if !reduceMotion {
-                            ShimmerSweep()
+                // reveal — here it's dim + a slow shimmer sweep. Underneath,
+                // the pipeline narrates its real micro-stages.
+                VStack(alignment: .leading, spacing: FlowTheme.space8) {
+                    liveContent(dimmed: true)
+                        .overlay {
+                            if !reduceMotion {
+                                ShimmerSweep()
+                            }
                         }
+                        .clipShape(RoundedRectangle(cornerRadius: FlowTheme.radiusCard, style: .continuous))
+                    if let processingStage {
+                        Text(processingStage.label)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(FlowTheme.accent)
+                            .id(processingStage)
+                            // `.blurReplace` is a `Transition`, not an
+                            // `AnyTransition` — a plain cross-fade reads
+                            // right here and honors Reduce Motion for free.
+                            .transition(.opacity)
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: FlowTheme.radiusCard, style: .continuous))
+                }
+                .animation(FlowMotion.state, value: processingStage)
             case .settled:
                 TranscriptPanelView(
                     record: record,
@@ -82,7 +97,7 @@ struct TranscriptStageView: View {
                 .opacity(dimmed ? 0.65 : 1)
                 .allowsHitTesting(!dimmed)
         } else {
-            Text(dimmed ? "Refining…" : "Listening…")
+            Text(dimmed ? (processingStage?.label ?? "Refining…") : "Listening…")
                 .font(FlowTheme.serifFlavor(17))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)

@@ -35,6 +35,7 @@ struct SettingsView: View {
                     cloudSection
                     polishSection
                     captureSection
+                    accessSection
                     hapticsSection
                     vocabularySection
                     statsSection
@@ -221,6 +222,52 @@ struct SettingsView: View {
         } footer: {
             Text("Spoken commands: “punto”, “virgola”, “a capo”, “nuovo paragrafo” — applied literally, in Italian and English. Dictations within the chosen window are delivered as one continued text.")
         }
+    }
+
+    /// Every way in that doesn't require opening the app. Informational —
+    /// iOS owns these switches, so the rows say exactly where they live.
+    private var accessSection: some View {
+        Section {
+            accessRow(
+                symbol: "button.vertical.left.press",
+                title: "Action Button",
+                detail: "Settings → Action Button → choose FlowBridge “Quick Dictation”."
+            )
+            accessRow(
+                symbol: "hand.tap",
+                title: "Back Tap",
+                detail: "Settings → Accessibility → Touch → Back Tap → pick the “Quick Dictation” shortcut."
+            )
+            accessRow(
+                symbol: "lock.iphone",
+                title: "Lock Screen widget",
+                detail: "Hold the Lock Screen → Customize → add the FlowBridge “Speak” widget."
+            )
+            accessRow(
+                symbol: "switch.2",
+                title: "Control Center",
+                detail: "Open Control Center → hold to edit → add the FlowBridge control."
+            )
+        } header: {
+            Text("Access").flowEyebrow()
+        } footer: {
+            Text("Dictation starts in the background from any of these — live progress lands in the Dynamic Island, no need to open the app.")
+        }
+    }
+
+    private func accessRow(symbol: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: FlowTheme.space12) {
+            Image(systemName: symbol)
+                .foregroundStyle(FlowTheme.accent)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     private var hapticsSection: some View {

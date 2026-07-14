@@ -184,6 +184,12 @@ struct HistoryView: View {
             Text(SpeakerLabelStyler.attributed(entry.record.text))
                 .font(.body)
                 .lineLimit(3)
+            // Voice → action trail: what this dictation became beyond text.
+            if let action = entry.record.actionTaken {
+                Label(action, systemImage: "arrow.turn.down.right")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(FlowTheme.accent)
+            }
         }
         .padding(FlowTheme.space16)
         .flowCard(radius: FlowTheme.radiusRow)

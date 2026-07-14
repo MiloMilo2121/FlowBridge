@@ -7,5 +7,6 @@ struct FlowBridgeWidgetsBundle: WidgetBundle {
         DictationLiveActivity()
         DictationControlWidget()
         FlowBridgeHomeWidget()
+        SpeakLockWidget()
     }
 }

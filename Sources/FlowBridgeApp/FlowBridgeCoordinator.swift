@@ -9,6 +9,45 @@ final class FlowBridgeCoordinator: ObservableObject {
     /// LiveActivityIntent) and which must reach the live audio session.
     static let shared = FlowBridgeCoordinator()
 
+    /// The pipeline's real phases, published as they happen. UI-only: the
+    /// coordinator's state machine is untouched, these ride on top of it.
+    enum ProcessingStage: Equatable {
+        case finalizingAudio
+        case decodingSpeech
+        case refiningText
+        case delivering
+
+        var label: String {
+            switch self {
+            case .finalizingAudio: return "Closing audio…"
+            case .decodingSpeech: return "Decoding speech…"
+            case .refiningText: return "Refining…"
+            case .delivering: return "Delivering…"
+            }
+        }
+    }
+
+    /// What went wrong, said like a person, plus the single tap that fixes
+    /// it. Recoverable errors contract the field; they never blank the room.
+    struct FlowErrorPresentation: Equatable {
+        enum Recovery: Equatable {
+            case openSettings
+            case tryAgain
+
+            var title: String {
+                switch self {
+                case .openSettings: return "Open Settings"
+                case .tryAgain: return "Try Again"
+                }
+            }
+        }
+
+        let title: String
+        let message: String
+        let symbol: String
+        let recovery: Recovery?
+    }
+
     enum State: Equatable {
         case idle
         case warming
@@ -60,6 +99,12 @@ final class FlowBridgeCoordinator: ObservableObject {
     /// One-tap action detected in the delivered text ("tomorrow lunch with
     /// Luca" → Calendar Event). Nil for plain dictations.
     @Published private(set) var suggestedAction: SuggestedAction?
+    /// Narrates what the pipeline is actually doing between stop and ready —
+    /// four real micro-stages instead of one opaque "Transcribing".
+    @Published private(set) var processingStage: ProcessingStage?
+    /// Structured error for the UI: what happened, and the one tap that
+    /// fixes it. The screen stays alive underneath.
+    @Published private(set) var errorPresentation: FlowErrorPresentation?
     /// Transient "Added to Calendar"-style confirmation after a performed
     /// action, in the slot the suggestion chip occupied.
     @Published private(set) var actionConfirmation: String?
@@ -85,6 +130,9 @@ final class FlowBridgeCoordinator: ObservableObject {
     private var maxDurationTask: Task<Void, Never>?
     private var suggestionTask: Task<Void, Never>?
     private var confirmationDismissTask: Task<Void, Never>?
+    /// History id of the take the current suggestion was computed from, so a
+    /// performed action can be stamped on the right record.
+    private var suggestionRecordID: UUID?
     private var islandTask: Task<Void, Never>?
     private var lastSentIslandState: DictationActivityAttributes.ContentState?
     /// Silence guard: the loudest level seen this session, and whether we've
@@ -300,6 +348,20 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
     }
 
+    /// `flowbridge://record` — the URL entry point (Lock Screen widget,
+    /// Shortcuts "Open URL"). Routed through the same pending-command store
+    /// the intents use, so the cold-start race is handled once.
+    func handleDeepLink(_ url: URL) async {
+        guard url.scheme == "flowbridge" else { return }
+        switch url.host ?? url.lastPathComponent {
+        case "record":
+            FBLog.log("deeplink: record")
+            try? PendingCommandStore().write(.toggleRecording)
+        default:
+            break
+        }
+    }
+
     func consumePendingCommand() async {
         guard let command = pendingCommandStore?.consume()?.command else { return }
         FBLog.log("pending command consumed: \(command)")
@@ -375,6 +437,8 @@ final class FlowBridgeCoordinator: ObservableObject {
             confirmationDismissTask = nil
             suggestedAction = nil
             actionConfirmation = nil
+            errorPresentation = nil
+            processingStage = nil
             currentSessionID = sessionID
             lastSeenSnapshotSequence = 0
             sessionPeakLevel = 0
@@ -520,6 +584,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             let duration = Date().timeIntervalSince(recordingStartedAt)
             FBLog.log("stop: transcribing after \(Int(duration))s")
             state = .transcribing
+            processingStage = .finalizingAudio
             // Freeze the wave at its last real levels while the widget
             // narrates the polish phase.
             activityController.update(
@@ -533,10 +598,12 @@ final class FlowBridgeCoordinator: ObservableObject {
                 )
             )
 
+            processingStage = .decodingSpeech
             var record = try await transcriber.stopLiveTranscription(duration: duration)
             FBLog.log("stop: engine returned \(record.text.count)ch")
 
             if let sessionID {
+                processingStage = .refiningText
                 statusMessage = FinalPassMode.current == .cloudScribe ? "Refining in cloud…" : "Refining…"
                 // The island narrates the second micro-stage: REFINING (+☁).
                 activityController.update(
@@ -568,6 +635,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             // The stream heard nothing usable — but the full session audio
             // may still be rescued by the final pass (precision or cloud).
             if case FlowBridgeError.emptyTranscript = error, let sessionID {
+                processingStage = .decodingSpeech
                 statusMessage = "Recovering audio…"
                 let rescued = await finalPass.refine(sessionID: sessionID, duration: duration, fallback: "")
                 if !rescued.isEmpty {
@@ -602,6 +670,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         // Deterministic spoken commands first ("punto", "a capo", …),
         // then the on-device polish with the current tone target. The
         // engine's verbatim text always survives in rawText.
+        processingStage = .refiningText
         var workingText = record.text
         let tone = toneStore?.currentTone() ?? .neutral
         if let turns = SpeakerTranscriptFormatter.turns(in: workingText) {
@@ -620,6 +689,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
         let finalRecord = workingText == record.text ? record : record.polished(workingText)
 
+        processingStage = .delivering
         try? await historyStore?.add(finalRecord)
         let outcome = statsStore?.record(text: finalRecord.text, audioDuration: duration)
 
@@ -632,6 +702,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         // has no rawText of its own.
         polishReveal = PolishReveal(record: finalRecord)
         UIPasteboard.general.string = delivered.text
+        processingStage = nil
         state = .ready
         statusMessage = delivered.id == finalRecord.id ? "Clipboard updated" : "Appended to previous dictation"
         // The island summary describes the take just recorded — with
@@ -655,6 +726,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         // clipboard whatever happens here. This take's text, not the
         // session-appended merge — the spoken command is the recent one.
         let deliveredText = finalRecord.text
+        suggestionRecordID = finalRecord.id
         suggestionTask?.cancel()
         suggestionTask = Task { [weak self] in
             let suggestion = await IntentClassifier.classify(deliveredText)
@@ -672,6 +744,10 @@ final class FlowBridgeCoordinator: ObservableObject {
         case .done(let message):
             HapticPlayer.transcriptReady()
             actionConfirmation = message
+            // The Flow trail: History shows what this dictation became.
+            if let id = suggestionRecordID {
+                try? await historyStore?.setAction(action.label, id: id)
+            }
             confirmationDismissTask?.cancel()
             confirmationDismissTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(3))
@@ -993,14 +1069,58 @@ final class FlowBridgeCoordinator: ObservableObject {
         // A stop that raced an already-ended session is a shrug, not a
         // failure: reset quietly instead of alarming the user.
         if case FlowBridgeError.notRecording = error {
+            processingStage = nil
             state = .idle
             statusMessage = nil
             return
         }
         let message = Self.errorMessage(for: error)
+        processingStage = nil
         state = .failed(message)
         statusMessage = message
+        errorPresentation = Self.presentation(for: error)
         HapticPlayer.failed()
+    }
+
+    func dismissError() {
+        errorPresentation = nil
+        if case .failed = state {
+            state = .idle
+            statusMessage = nil
+        }
+    }
+
+    private static func presentation(for error: Error) -> FlowErrorPresentation {
+        switch error {
+        case FlowBridgeError.microphonePermissionDenied:
+            return FlowErrorPresentation(
+                title: "Microphone is off",
+                message: "FlowBridge can't hear you until iOS allows it.",
+                symbol: "mic.slash",
+                recovery: .openSettings
+            )
+        case FlowBridgeError.emptyTranscript:
+            return FlowErrorPresentation(
+                title: "Nothing heard",
+                message: "Close any app or call using the mic, then speak again.",
+                symbol: "waveform.slash",
+                recovery: .tryAgain
+            )
+        case FlowBridgeError.modelMissing:
+            return FlowErrorPresentation(
+                title: "Model missing",
+                message: "The speech model isn't installed on this device.",
+                symbol: "square.stack.3d.up.slash",
+                recovery: nil
+            )
+        default:
+            return FlowErrorPresentation(
+                title: "That didn't work",
+                message: errorMessage(for: error),
+                symbol: "exclamationmark.triangle",
+                recovery: .tryAgain
+            )
+        }
     }
 
     private static func errorMessage(for error: Error) -> String {

@@ -36,6 +36,8 @@ struct ContentView: View {
 
                 statusCaption
 
+                errorCard
+
                 timeSavedTicker
 
                 Spacer(minLength: 0)
@@ -45,6 +47,7 @@ struct ContentView: View {
                 primaryCapsule
             }
             .padding(FlowTheme.space20)
+            .animation(FlowMotion.state, value: coordinator.errorPresentation)
             .background(RoomBackground(intensity: roomIntensity, listens: isRecording))
             .toolbar {
                 // No title: the orb is the identity. Items recede (opacity,
@@ -151,13 +154,69 @@ struct ContentView: View {
 
     @ViewBuilder
     private var statusCaption: some View {
-        if let message = coordinator.statusMessage {
+        // The error card owns the failure story; the caption would repeat it.
+        if let message = coordinator.statusMessage, coordinator.errorPresentation == nil {
             Text(message)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .id(message)
                 .transition(.blurReplace)
+        }
+    }
+
+    /// A recoverable failure contracts into this card — title, one honest
+    /// sentence, and the single tap that fixes it. The room stays alive.
+    @ViewBuilder
+    private var errorCard: some View {
+        if let error = coordinator.errorPresentation {
+            HStack(alignment: .top, spacing: FlowTheme.space12) {
+                Image(systemName: error.symbol)
+                    .font(.title3)
+                    .foregroundStyle(FlowTheme.accent)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: FlowTheme.space4) {
+                    Text(error.title)
+                        .font(.subheadline.weight(.semibold))
+                    Text(error.message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let recovery = error.recovery {
+                        Button(recovery.title) {
+                            performRecovery(recovery)
+                        }
+                        .font(.footnote.weight(.semibold))
+                        .buttonStyle(.glass)
+                        .padding(.top, FlowTheme.space4)
+                    }
+                }
+                Spacer(minLength: 0)
+                Button {
+                    coordinator.dismissError()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss error")
+            }
+            .padding(FlowTheme.space16)
+            .flowCard()
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        }
+    }
+
+    private func performRecovery(_ recovery: FlowBridgeCoordinator.FlowErrorPresentation.Recovery) {
+        switch recovery {
+        case .openSettings:
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        case .tryAgain:
+            coordinator.dismissError()
+            Task { await coordinator.toggleRecording() }
         }
     }
 
@@ -218,6 +277,7 @@ struct ContentView: View {
             liveTranscript: coordinator.liveTranscript,
             record: coordinator.lastTranscript,
             reveal: coordinator.polishReveal,
+            processingStage: coordinator.processingStage,
             vocabularySuggestions: coordinator.vocabularySuggestions,
             suggestedAction: coordinator.suggestedAction,
             actionConfirmation: coordinator.actionConfirmation,

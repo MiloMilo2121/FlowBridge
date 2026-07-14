@@ -15,8 +15,11 @@ struct FlowBridgeApp: App {
                 .task {
                     await coordinator.bootstrap()
                 }
-                .onOpenURL { _ in
-                    Task { await coordinator.consumePendingCommand() }
+                .onOpenURL { url in
+                    Task {
+                        await coordinator.handleDeepLink(url)
+                        await coordinator.consumePendingCommand()
+                    }
                 }
                 .onChange(of: scenePhase) { _, phase in
                     Task { await coordinator.handleScenePhase(phase) }

@@ -32,6 +32,7 @@
 		3A11F241FD8BFDFD8A3222E9 /* FlowBridgeShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; };
 		3E0E8C586E1E6C34612D7F2D /* FlowBridgeShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; };
 		42D4D29B20554986478BE9E8 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A025FB42F6B3C047EDA531F9 /* StatsView.swift */; };
+		42E7F9AE28AFD37418DA5392 /* SpeakLockWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 586C890DC73D5BFC6A7355BE /* SpeakLockWidget.swift */; };
 		43EB0A4CFD7AF3BF23EF18C0 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 399A0AEAA06EC3C5FC0410F2 /* ContentView.swift */; };
 		448DA9F4C7777DF83979FBDA /* DictationTextNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B54A746A43497CB353DB7071 /* DictationTextNormalizerTests.swift */; };
 		453C7BBD98950403E6B7C650 /* VocabularySuggester.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6CA36551C2FA87C8C597EF1 /* VocabularySuggester.swift */; };
@@ -241,6 +242,7 @@
 		54A39941DD4AB0117527AC48 /* StreamingTextRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingTextRenderer.swift; sourceTree = "<group>"; };
 		5536AE9A59BEE1893922545A /* HapticEngineController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticEngineController.swift; sourceTree = "<group>"; };
 		5578CABA44085834319AB537 /* CloudGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudGate.swift; sourceTree = "<group>"; };
+		586C890DC73D5BFC6A7355BE /* SpeakLockWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakLockWidget.swift; sourceTree = "<group>"; };
 		58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = FlowBridgeShared.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		5E718DFC0A2981C16F17BFBE /* CloudCredentialsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudCredentialsStore.swift; sourceTree = "<group>"; };
 		5FAD3D893A0D8E20126D8149 /* SpeakerTranscriptFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerTranscriptFormatter.swift; sourceTree = "<group>"; };
@@ -422,6 +424,7 @@
 				F66E0DAC1051FC60CF651C98 /* FlowBridgeHomeWidget.swift */,
 				8C3376497876B786552C9DAF /* FlowBridgeWidgetsBundle.swift */,
 				DDABF6EFF85E608C7C90CA6F /* FlowWaveShape.swift */,
+				586C890DC73D5BFC6A7355BE /* SpeakLockWidget.swift */,
 				E544C636FFC31B0B111A9306 /* WaveformBarsView.swift */,
 			);
 			path = FlowBridgeWidgets;
@@ -858,6 +861,7 @@
 				63980C454E8084B5691C433C /* FlowBridgeHomeWidget.swift in Sources */,
 				149F7D31E87FFAC860C6D73A /* FlowBridgeWidgetsBundle.swift in Sources */,
 				48028981C23CD471395406A3 /* FlowWaveShape.swift in Sources */,
+				42E7F9AE28AFD37418DA5392 /* SpeakLockWidget.swift in Sources */,
 				651103041D4F142E353CC2D3 /* WaveformBarsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
