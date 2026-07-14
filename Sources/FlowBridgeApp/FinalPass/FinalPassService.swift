@@ -43,6 +43,10 @@ enum FinalPassMode: String, CaseIterable {
 @MainActor
 final class FinalPassService {
     private var engines: [WhisperModelVariant: WhisperEngine] = [:]
+    /// Set once a sideloaded Precision model has produced nothing usable —
+    /// later takes this app session skip straight to the bundled model
+    /// instead of repeating the same failed (or hallucinated) decode.
+    private var precisionKnownBroken = false
 
     private func engine(for variant: WhisperModelVariant) -> WhisperEngine {
         if let engine = engines[variant] { return engine }
@@ -117,17 +121,23 @@ final class FinalPassService {
             FBLog.log("finalpass: speakers on but diarization models not bundled")
         }
 
-        let preferred: WhisperModelVariant = WhisperModelLocator.precisionFolderIfInstalled() != nil ? .precision : .bundled
+        var preferred: WhisperModelVariant = WhisperModelLocator.precisionFolderIfInstalled() != nil ? .precision : .bundled
+        if preferred == .precision, precisionKnownBroken {
+            preferred = .bundled
+        }
         if let text = await localAttempt(variant: preferred, url: url, duration: duration, segments: segments) {
             return text
         }
 
         // A sideloaded precision model can be broken in ways the bundled one
         // never is (bad ANE compile, corrupt weights) — it then decodes to
-        // empty on every take. The bundled model is the known-good floor:
-        // retry there rather than dropping to the streamed text.
+        // empty, or hallucinates plausible-looking garbage, on every take.
+        // The bundled model is the known-good floor: retry there rather than
+        // dropping to the streamed text, and remember the verdict so later
+        // takes this session skip the failing model entirely.
         guard preferred == .precision else { return nil }
-        FBLog.log("finalpass: precision produced nothing, retrying with bundled model")
+        FBLog.log("finalpass: precision produced nothing usable, retrying with bundled model")
+        precisionKnownBroken = true
         await engines[.precision]?.unload()
         return await localAttempt(variant: .bundled, url: url, duration: duration, segments: segments)
     }
@@ -145,7 +155,8 @@ final class FinalPassService {
             FBLog.log("finalpass: local diarized pass (\(Int(duration))s audio, \(variant))")
             // Words meet segments at their midpoints. Any failure degrades to
             // the flat text — never a lost dictation.
-            if let transcription = try? await engine.transcribeWithWords(recording: recording) {
+            if let transcription = try? await engine.transcribeWithWords(recording: recording),
+               !Self.looksHallucinated(transcription.text) {
                 if !transcription.words.isEmpty {
                     let labeled = SpeakerTranscriptFormatter.labeledText(
                         words: SpeakerTranscriptFormatter.assign(words: transcription.words, to: segments)
@@ -164,7 +175,27 @@ final class FinalPassService {
         let started = Date()
         let record = try? await engine.transcribe(recording: recording, source: .microphone)
         FBLog.log("finalpass: local \(record == nil ? "failed" : "ok \(record!.text.count)ch") in \(Int(Date().timeIntervalSince(started)))s")
-        return record?.text
+        guard let text = record?.text, !Self.looksHallucinated(text) else {
+            if record != nil {
+                FBLog.log("finalpass: local pass looked hallucinated, discarding")
+            }
+            return nil
+        }
+        return text
+    }
+
+    /// A model with corrupted weights or a broken ANE compile doesn't always
+    /// fail cleanly — it can hallucinate plausible-looking text from silence
+    /// (the documented symptom on this app: "I love you." repeated hundreds
+    /// of times). A short phrase dominating the output is that signature,
+    /// not a real dictation, so it's treated the same as no result at all.
+    private static func looksHallucinated(_ text: String) -> Bool {
+        let words = text.lowercased().split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+        guard words.count >= 12 else { return false }
+        var counts: [Substring: Int] = [:]
+        for word in words { counts[word, default: 0] += 1 }
+        let mostCommon = counts.values.max() ?? 0
+        return Double(mostCommon) / Double(words.count) > 0.4
     }
 
     static func safetyFileURL(sessionID: UUID) -> URL? {

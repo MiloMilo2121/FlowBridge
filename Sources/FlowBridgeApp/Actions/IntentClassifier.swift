@@ -52,26 +52,49 @@ enum SuggestedAction: Equatable, Sendable {
 ///    plain text, exactly as before this feature existed.
 /// 2. Runs after delivery, cancellable, off the critical path.
 /// 3. On-device only, like the polisher — no text leaves the phone.
-enum IntentClassifier {
+///
+/// Session lifecycle mirrors `TranscriptPolisher`: `prewarm()` (called
+/// alongside the polisher's, at recording start) loads one session ahead of
+/// time; `classify` consumes and clears it so the next take prewarms fresh
+/// — reusing one session across takes would grow its conversation history
+/// forever, since each `respond` call adds to it.
+actor IntentClassifier {
+    static let shared = IntentClassifier()
+
     /// Beyond this length it's prose being dictated, not a command.
     private static let maxWords = 120
 
-    static func classify(_ text: String, now: Date = Date()) async -> SuggestedAction? {
+#if canImport(FoundationModels)
+    private var session: LanguageModelSession?
+
+    func prewarm() {
+        guard SystemLanguageModel.default.availability == .available else { return }
+        if session == nil {
+            session = LanguageModelSession(instructions: Self.instructions)
+        }
+        session?.prewarm()
+    }
+#else
+    func prewarm() {}
+#endif
+
+    func classify(_ text: String, now: Date = Date()) async -> SuggestedAction? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         // A labeled conversation is a recording of other people, not an
         // instruction from the speaker.
         guard SpeakerTranscriptFormatter.turns(in: trimmed) == nil else { return nil }
         let wordCount = trimmed.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
-        guard (2...maxWords).contains(wordCount) else { return nil }
+        guard (2...Self.maxWords).contains(wordCount) else { return nil }
 
 #if canImport(FoundationModels)
         guard SystemLanguageModel.default.availability == .available else { return nil }
 
-        let session = LanguageModelSession(instructions: Self.instructions)
+        let activeSession = session ?? LanguageModelSession(instructions: Self.instructions)
+        session = nil
         let classification: Classification
         do {
-            let response = try await session.respond(
+            let response = try await activeSession.respond(
                 to: trimmed,
                 generating: Classification.self,
                 options: GenerationOptions(sampling: .greedy)
@@ -85,7 +108,13 @@ enum IntentClassifier {
         let fallbackTitle = trimmed.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
             .prefix(6).joined(separator: " ")
         let bestTitle = title.isEmpty ? fallbackTitle : title
-        let date = firstFutureDate(in: trimmed, after: now)
+        // The composer body: the command wrapper ("send Sarah a message
+        // saying…") stripped, just what was meant to be said. Falls back to
+        // the full dictation if the model returns nothing usable — a
+        // slightly redundant body beats a missing one.
+        let content = classification.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bestBody = content.isEmpty ? trimmed : content
+        let date = Self.firstFutureDate(in: trimmed, after: now)
 
         switch classification.category.lowercased() {
         case "calendar":
@@ -98,9 +127,9 @@ enum IntentClassifier {
         case "reminder":
             return .reminder(title: bestTitle, due: date)
         case "message":
-            return .message(body: trimmed)
+            return .message(body: bestBody)
         case "email":
-            return .email(subject: bestTitle, body: trimmed)
+            return .email(subject: bestTitle, body: bestBody)
         default:
             return nil
         }
@@ -119,6 +148,9 @@ enum IntentClassifier {
 
         @Guide(description: "A very short title for the event, reminder or email (at most 8 words), in the exact same language as the dictation. Empty when the category is 'dictation'.")
         var title: String
+
+        @Guide(description: "Only for 'message' or 'email': the actual message to send, with the command wrapper removed — e.g. 'send Sarah a message saying I'll be late' becomes just 'I'll be late'. Verbatim otherwise, same language, no added content. Empty for other categories.")
+        var content: String
     }
 
     private static let instructions = """

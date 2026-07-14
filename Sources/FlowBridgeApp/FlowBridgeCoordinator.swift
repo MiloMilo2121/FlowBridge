@@ -363,7 +363,11 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     func consumePendingCommand() async {
-        guard let command = pendingCommandStore?.consume()?.command else { return }
+        // Falls back to a fresh store when called before `bootstrap()` has
+        // assigned one — e.g. a cold start from the Lock Screen widget's
+        // deep link, whose onOpenURL can race the bootstrap task.
+        let store = pendingCommandStore ?? (try? PendingCommandStore())
+        guard let command = store?.consume()?.command else { return }
         FBLog.log("pending command consumed: \(command)")
 
         switch command {
@@ -477,6 +481,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             Task {
                 try? await Task.sleep(for: .seconds(3))
                 await polisher.prewarm()
+                await IntentClassifier.shared.prewarm()
             }
         } catch {
             FBLog.log("start FAILED: \(error)")
@@ -729,7 +734,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         suggestionRecordID = finalRecord.id
         suggestionTask?.cancel()
         suggestionTask = Task { [weak self] in
-            let suggestion = await IntentClassifier.classify(deliveredText)
+            let suggestion = await IntentClassifier.shared.classify(deliveredText)
             guard !Task.isCancelled, let suggestion else { return }
             FBLog.log("actions: suggesting \(suggestion.label)")
             self?.suggestedAction = suggestion
@@ -737,17 +742,20 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     func performSuggestedAction() async {
-        guard let action = suggestedAction else { return }
+        guard let action = suggestedAction, let recordID = suggestionRecordID else { return }
         let outcome = await ActionPerformer.shared.perform(action)
+        // `perform` can suspend for a while (EventKit permission round-trip,
+        // composer hand-off) — a newer take may have already delivered and
+        // replaced the suggestion in that window. Don't let this stale
+        // outcome stamp the wrong History record or clear the new chip.
+        guard suggestionRecordID == recordID else { return }
         suggestedAction = nil
         switch outcome {
         case .done(let message):
             HapticPlayer.transcriptReady()
             actionConfirmation = message
             // The Flow trail: History shows what this dictation became.
-            if let id = suggestionRecordID {
-                try? await historyStore?.setAction(action.label, id: id)
-            }
+            try? await historyStore?.setAction(action.label, id: recordID)
             confirmationDismissTask?.cancel()
             confirmationDismissTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(3))
@@ -1077,7 +1085,9 @@ final class FlowBridgeCoordinator: ObservableObject {
         let message = Self.errorMessage(for: error)
         processingStage = nil
         state = .failed(message)
-        statusMessage = message
+        // statusCaption hides itself whenever errorPresentation is set (see
+        // ContentView), so that's the only channel the failure card reads —
+        // no separate statusMessage write to keep in sync with it.
         errorPresentation = Self.presentation(for: error)
         HapticPlayer.failed()
     }
@@ -1090,26 +1100,30 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
     }
 
+    // `message` always comes from `errorMessage(for:)` — the one place
+    // error copy is written, also used by the Live Activity narration — so
+    // the in-app card and the island can never drift into saying two
+    // different things about the same failure.
     private static func presentation(for error: Error) -> FlowErrorPresentation {
         switch error {
         case FlowBridgeError.microphonePermissionDenied:
             return FlowErrorPresentation(
                 title: "Microphone is off",
-                message: "FlowBridge can't hear you until iOS allows it.",
+                message: errorMessage(for: error),
                 symbol: "mic.slash",
                 recovery: .openSettings
             )
         case FlowBridgeError.emptyTranscript:
             return FlowErrorPresentation(
                 title: "Nothing heard",
-                message: "Close any app or call using the mic, then speak again.",
+                message: errorMessage(for: error),
                 symbol: "waveform.slash",
                 recovery: .tryAgain
             )
         case FlowBridgeError.modelMissing:
             return FlowErrorPresentation(
                 title: "Model missing",
-                message: "The speech model isn't installed on this device.",
+                message: errorMessage(for: error),
                 symbol: "square.stack.3d.up.slash",
                 recovery: nil
             )

@@ -97,7 +97,10 @@ struct TranscriptStageView: View {
                 .opacity(dimmed ? 0.65 : 1)
                 .allowsHitTesting(!dimmed)
         } else {
-            Text(dimmed ? (processingStage?.label ?? "Refining…") : "Listening…")
+            // The specific micro-stage narrates once, in the caption below
+            // this card (`processingStage.label` in `body`) — this fallback
+            // stays generic so the two never say the same thing twice.
+            Text(dimmed ? "Refining…" : "Listening…")
                 .font(FlowTheme.serifFlavor(17))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)

@@ -20,12 +20,27 @@ actor WhisperEngine: TranscriptionEngine {
     private var meteringTask: Task<Void, Never>?
     private var lastMeteredSampleCount = 0
     private var meterLogTick = 0
-    private var routeObserver: NSObjectProtocol?
+    /// `NSObjectProtocol` isn't `Sendable`, so it can't live in an
+    /// actor-isolated stored property and still be reachable from `deinit`
+    /// (which runs nonisolated). Parking the token in this external box
+    /// sidesteps that without unsafely bypassing the actor for anything else.
+    private let observerBox = ObserverBox()
 
     private let variant: WhisperModelVariant
 
     init(variant: WhisperModelVariant = .bundled) {
         self.variant = variant
+    }
+
+    deinit {
+        // Belt-and-suspenders: normal teardown already removes this via
+        // stopLiveTranscription/unload, but an engine dropped mid-warmup (or
+        // any other abnormal path) would otherwise leave a block-based
+        // observer registered forever, still pinning the built-in mic on
+        // every future route change.
+        if let token = observerBox.token {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 
     func transcribe(recording: RecordedAudio, source: TranscriptRecord.Source) async throws -> TranscriptRecord {
@@ -337,7 +352,7 @@ actor WhisperEngine: TranscriptionEngine {
     private func installBuiltInMicPin() {
         removeBuiltInMicPin()
         Self.pinBuiltInMic()
-        routeObserver = NotificationCenter.default.addObserver(
+        observerBox.token = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: nil,
             queue: nil
@@ -347,10 +362,10 @@ actor WhisperEngine: TranscriptionEngine {
     }
 
     private func removeBuiltInMicPin() {
-        if let routeObserver {
-            NotificationCenter.default.removeObserver(routeObserver)
+        if let token = observerBox.token {
+            NotificationCenter.default.removeObserver(token)
         }
-        routeObserver = nil
+        observerBox.token = nil
     }
 
     static func pinBuiltInMic() {
@@ -566,4 +581,12 @@ actor WhisperEngine: TranscriptionEngine {
             .joined(separator: " ")
         return DictationTextNormalizer.normalize(raw)
     }
+}
+
+/// See `WhisperEngine.observerBox`: holds the one token the actor's deinit
+/// needs to reach nonisolated. `@unchecked Sendable` because access is
+/// already serialized in practice — only the owning actor's methods (and,
+/// once, its deinit) ever touch it.
+private final class ObserverBox: @unchecked Sendable {
+    var token: NSObjectProtocol?
 }

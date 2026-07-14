@@ -10,7 +10,7 @@ public struct TranscriptRecord: Codable, Equatable, Identifiable, Sendable {
     }
 
     public let id: UUID
-    public let text: String
+    public private(set) var text: String
     /// Verbatim transcript before on-device polishing. Nil when the record
     /// was never polished (raw and text are the same).
     public let rawText: String?
@@ -21,7 +21,7 @@ public struct TranscriptRecord: Codable, Equatable, Identifiable, Sendable {
     /// What this dictation became beyond text ("Calendar Event", "Reminder")
     /// — the voice → understanding → action trail in History. Nil for plain
     /// dictations; optional, so records saved before this field decode fine.
-    public let actionTaken: String?
+    public private(set) var actionTaken: String?
 
     public init(
         id: UUID = UUID(),
@@ -55,6 +55,21 @@ public struct TranscriptRecord: Codable, Equatable, Identifiable, Sendable {
             source: source,
             actionTaken: actionTaken
         )
+    }
+
+    /// Same record with the given field overridden — everything else,
+    /// including `id`, carries over unchanged.
+    public func withText(_ text: String) -> TranscriptRecord {
+        var copy = self
+        copy.text = text
+        return copy
+    }
+
+    /// Same record with `actionTaken` stamped — the voice → action trail.
+    public func withActionTaken(_ action: String) -> TranscriptRecord {
+        var copy = self
+        copy.actionTaken = action
+        return copy
     }
 }
 

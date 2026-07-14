@@ -63,44 +63,19 @@ public actor TranscriptHistoryStore {
     /// Rewrites a stored transcript's text in place (speaker rename). The
     /// record identity, verbatim raw text and metadata stay untouched.
     public func updateText(id: UUID, text: String) throws {
-        var entries = load()
-        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
-        let old = entries[index].record
-        entries[index] = Entry(
-            record: TranscriptRecord(
-                id: old.id,
-                text: text,
-                rawText: old.rawText,
-                language: old.language,
-                createdAt: old.createdAt,
-                audioDuration: old.audioDuration,
-                source: old.source,
-                actionTaken: old.actionTaken
-            ),
-            isPinned: entries[index].isPinned
-        )
-        try save(entries)
+        try mutateRecord(id: id) { $0.withText(text) }
     }
 
     /// Stamps what the dictation became ("Calendar Event", "Reminder") so
     /// History can show the voice → action trail.
     public func setAction(_ action: String, id: UUID) throws {
+        try mutateRecord(id: id) { $0.withActionTaken(action) }
+    }
+
+    private func mutateRecord(id: UUID, _ transform: (TranscriptRecord) -> TranscriptRecord) throws {
         var entries = load()
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
-        let old = entries[index].record
-        entries[index] = Entry(
-            record: TranscriptRecord(
-                id: old.id,
-                text: old.text,
-                rawText: old.rawText,
-                language: old.language,
-                createdAt: old.createdAt,
-                audioDuration: old.audioDuration,
-                source: old.source,
-                actionTaken: action
-            ),
-            isPinned: entries[index].isPinned
-        )
+        entries[index] = Entry(record: transform(entries[index].record), isPinned: entries[index].isPinned)
         try save(entries)
     }
 
