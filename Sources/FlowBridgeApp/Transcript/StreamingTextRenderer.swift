@@ -31,7 +31,9 @@ struct StreamingTextRenderer: TextRenderer {
 
                 if let stamp {
                     if stamp.isVolatile {
-                        let breathe = frozen ? 0.55 : 0.55 + 0.07 * sin(2 * .pi * now / 1.6)
+                        let breathe = frozen || reduceMotion
+                            ? 0.55
+                            : 0.55 + 0.07 * sin(2 * .pi * now / 1.6)
                         runContext.opacity = breathe
                     }
                     if !frozen {

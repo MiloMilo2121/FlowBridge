@@ -32,6 +32,26 @@ enum SuggestedAction: Equatable, Sendable {
         }
     }
 
+    var activityKind: DictationActivityAttributes.ContentState.SuggestedActionKind {
+        switch self {
+        case .calendarEvent: return .calendar
+        case .reminder: return .reminder
+        case .message: return .message
+        case .email: return .email
+        }
+    }
+
+    /// A verb belongs on a system control; the in-app Action Bar can keep
+    /// the noun label because it has more explanatory space.
+    var activityTitle: String {
+        switch self {
+        case .calendarEvent: return "Add event"
+        case .reminder: return "Add reminder"
+        case .message: return "Open Messages"
+        case .email: return "Open Mail"
+        }
+    }
+
     /// The short human title shown next to the label ("Lunch with Luca").
     var detail: String {
         switch self {
@@ -104,19 +124,21 @@ actor IntentClassifier {
             return nil
         }
 
-        let title = classification.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let fallbackTitle = trimmed.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
             .prefix(6).joined(separator: " ")
-        let bestTitle = title.isEmpty ? fallbackTitle : title
+        // Generated strings cross into EventKit and system URL composers.
+        // Keep that trust boundary narrow even if the guided model ignores
+        // its prompt: one-line titles and bounded bodies only.
+        let bestTitle = Self.boundedTitle(classification.title, fallback: fallbackTitle)
         // The composer body: the command wrapper ("send Sarah a message
         // saying…") stripped, just what was meant to be said. Falls back to
         // the full dictation if the model returns nothing usable — a
         // slightly redundant body beats a missing one.
         let content = classification.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        let bestBody = content.isEmpty ? trimmed : content
+        let bestBody = Self.boundedBody(content.isEmpty ? trimmed : content)
         let date = Self.firstFutureDate(in: trimmed, after: now)
 
-        switch classification.category.lowercased() {
+        switch classification.category.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "calendar":
             // An event needs a moment in time; without one it degrades to
             // the todo it actually is.
@@ -136,6 +158,19 @@ actor IntentClassifier {
 #else
         return nil
 #endif
+    }
+
+    private static func boundedTitle(_ generated: String, fallback: String) -> String {
+        let collapsed = generated
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .joined(separator: " ")
+        let candidate = collapsed.isEmpty ? fallback : collapsed
+        return String(candidate.prefix(96))
+    }
+
+    private static func boundedBody(_ generated: String) -> String {
+        String(generated.prefix(4_000))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
 #if canImport(FoundationModels)

@@ -366,16 +366,10 @@ actor CloudScribeRealtimeEngine: TranscriptionEngine {
             let ratio = targetFormat.sampleRate / inputFormat.sampleRate
             let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 16
             guard let converted = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else { return }
-            var consumed = false
+            let inputProvider = SingleBufferConverterInput(buffer: buffer)
             var conversionError: NSError?
             converter.convert(to: converted, error: &conversionError) { _, outStatus in
-                if consumed {
-                    outStatus.pointee = .noDataNow
-                    return nil
-                }
-                consumed = true
-                outStatus.pointee = .haveData
-                return buffer
+                inputProvider.next(status: outStatus)
             }
             guard conversionError == nil,
                   converted.frameLength > 0,
@@ -434,5 +428,31 @@ actor CloudScribeRealtimeEngine: TranscriptionEngine {
             case text
             case error
         }
+    }
+}
+
+/// `AVAudioConverter` declares its input callback `@Sendable` even though it
+/// invokes it synchronously during `convert`. A locked one-shot provider
+/// makes that contract explicit and prevents a captured mutable flag from
+/// becoming a Swift 6 data race.
+private final class SingleBufferConverterInput: @unchecked Sendable {
+    private let buffer: AVAudioPCMBuffer
+    private let lock = NSLock()
+    private var consumed = false
+
+    init(buffer: AVAudioPCMBuffer) {
+        self.buffer = buffer
+    }
+
+    func next(status: UnsafeMutablePointer<AVAudioConverterInputStatus>) -> AVAudioBuffer? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !consumed else {
+            status.pointee = .noDataNow
+            return nil
+        }
+        consumed = true
+        status.pointee = .haveData
+        return buffer
     }
 }

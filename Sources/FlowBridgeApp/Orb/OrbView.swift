@@ -1,367 +1,308 @@
 import FlowBridgeShared
 import SwiftUI
 
-/// The recording moment. A breathing glass disc that reacts to the real
-/// microphone level: idle it breathes slowly, recording it grows a ring of
-/// level-driven bars with ripples on speech, polishing it spins a shimmer
-/// arc, ready it crystallizes with a spring pulse.
-///
-/// Every state has a Reduce Motion variant that keeps the information (the
-/// glow still follows the voice) with the decorative motion removed. The
-/// level is read per-frame from `AudioLevelMeter` inside `TimelineView` —
-/// no `@Published` storm at display rate.
-struct OrbView: View {
+/// FlowBridge's signature object: one horizontal membrane that survives the
+/// entire session. It invites speech, reacts to real microphone energy,
+/// condenses while the engine works, and settles into a quiet delivered rail.
+/// The parent transcript surface never swaps it for another hero.
+struct LivingVoiceField: View {
     let state: FlowBridgeCoordinator.State
-    var diameter: CGFloat = 220
-    /// Increment when entering `.recording` — drives the ignition kick.
+    var elapsed: TimeInterval?
+    var pausedAt: Date?
+    var statusMessage: String?
+    var processingStage: FlowBridgeCoordinator.ProcessingStage?
     var ignitionPulse = 0
-    /// Increment when entering `.ready` — drives the crystallize pulse.
     var readyPulse = 0
-    /// Increment when entering `.failed` — drives the shake.
     var failPulse = 0
     var action: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
-    private var canvasSize: CGFloat { diameter + 76 }
-
     var body: some View {
-        Button(action: action) {
+        Button {
+            guard isInteractive else { return }
+            action()
+        } label: {
             TimelineView(.animation(minimumInterval: timelineInterval, paused: timelinePaused)) { timeline in
-                let t = timeline.date.timeIntervalSinceReferenceDate
-                let level = CGFloat(AudioLevelMeter.shared.latestLevel)
+                VStack(alignment: .leading, spacing: FlowTheme.space12) {
+                    header
 
-                ZStack {
-                    energyLayer(t: t, level: level)
-                    disc(level: level)
-                        .scaleEffect(breathScale(t: t))
-                    centerSymbol
+                    VoiceMembrane(
+                        state: state,
+                        phase: voicePhase,
+                        time: reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate,
+                        level: CGFloat(AudioLevelMeter.shared.latestLevel),
+                        reduceMotion: reduceMotion
+                    )
+                    .frame(height: membraneHeight)
+                    .accessibilityHidden(true)
+
+                    HStack(alignment: .firstTextBaseline, spacing: FlowTheme.space8) {
+                        Text(detailText)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: FlowTheme.space8)
+                        if isInteractive {
+                            Label("Speak", systemImage: "arrow.up.right")
+                                .labelStyle(.iconOnly)
+                                .font(.footnote.weight(.bold))
+                                .foregroundStyle(FlowTheme.accent)
+                                .frame(width: 34, height: 34)
+                                .flowGlass(interactive: true)
+                        }
+                    }
                 }
-                .frame(width: canvasSize, height: canvasSize)
+                .padding(FlowTheme.space20)
             }
         }
-        .buttonStyle(OrbPressStyle(reduceMotion: reduceMotion))
-        .phaseAnimator([1.0, 1.045, 1.0], trigger: ignitionPulse) { view, scale in
-            view.scaleEffect(reduceMotion ? 1.0 : scale)
-        } animation: { _ in
-            FlowMotion.ignition
-        }
-        .phaseAnimator([1.0, 1.06, 1.0], trigger: readyPulse) { view, scale in
-            view.scaleEffect(reduceMotion ? 1.0 : scale)
-        } animation: { _ in
-            FlowMotion.celebrate
-        }
+        .buttonStyle(LivingFieldPressStyle(enabled: isInteractive, reduceMotion: reduceMotion))
+        .disabled(!isInteractive)
         .phaseAnimator([0, -5, 5, -2, 0], trigger: failPulse) { view, offset in
             view.offset(x: reduceMotion ? 0 : offset)
         } animation: { _ in
             .snappy(duration: 0.1)
         }
-        .animation(FlowMotion.state, value: stateKey)
-        .accessibilityLabel(isRecording ? "Stop dictation" : "Start dictation")
-        .accessibilityValue(accessibilityValue)
-        .accessibilityHint(isBusy ? "" : "Double tap to toggle")
+        .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.6), trigger: ignitionPulse)
+        .sensoryFeedback(.success, trigger: readyPulse)
+        .sensoryFeedback(.error, trigger: failPulse)
+        .animation(FlowMotion.fieldMorph, value: stateKey)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(detailText)
+        .accessibilityHint(isInteractive ? "Double tap to start a dictation" : "")
     }
 
-    // MARK: - Layers
+    private var header: some View {
+        HStack(spacing: FlowTheme.space8) {
+            Image(systemName: stateSymbol)
+                .font(.footnote.weight(.bold))
+                .foregroundStyle(stateTint)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: readyPulse)
 
-    /// Everything that moves with the voice: ring bars, ripples, shimmer arc.
-    @ViewBuilder
-    private func energyLayer(t: TimeInterval, level: CGFloat) -> some View {
-        switch state {
-        case .recording(let startedAt):
-            if reduceMotion {
-                // Information without motion: the halo tracks the voice.
-                Circle()
-                    .stroke(FlowTheme.accent.opacity(0.25 + 0.6 * level), lineWidth: 3)
-                    .frame(width: diameter + 22, height: diameter + 22)
+            Text(stateTitle)
+                .font(FlowTheme.fieldLabel())
+                .tracking(1.15)
+                .foregroundStyle(stateTint)
+                .contentTransition(.opacity)
+
+            Spacer(minLength: FlowTheme.space8)
+
+            if let elapsed {
+                Text(Duration.seconds(elapsed).formatted(.time(pattern: .minuteSecond)))
+                    .font(FlowTheme.numeric(15))
+                    .contentTransition(.numericText(value: elapsed))
+                    .foregroundStyle(pausedAt == nil ? AnyShapeStyle(.primary) : AnyShapeStyle(voicePhase.primary))
             } else {
-                RecordingRing(
-                    t: t,
-                    level: level,
-                    diameter: diameter,
-                    accent: FlowTheme.accent,
-                    ignitionAge: t - startedAt.timeIntervalSinceReferenceDate
-                )
-                // Ignition blooms outward; condensing contracts back — the
-                // ring enters and leaves as the same organism.
-                .transition(.asymmetric(
-                    insertion: .scale(scale: 0.82).combined(with: .opacity),
-                    removal: .scale(scale: 0.85).combined(with: .opacity)
-                ))
+                Text("VOICE → TEXT")
+                    .font(FlowTheme.fieldLabel(10))
+                    .tracking(0.9)
+                    .foregroundStyle(.tertiary)
             }
-        case .warming, .transcribing:
-            if reduceMotion {
-                ProgressView()
-                    .tint(FlowTheme.accent)
-                    .offset(y: -(diameter / 2 + 26))
-            } else {
-                Circle()
-                    .trim(from: 0, to: 0.72)
-                    .stroke(
-                        AngularGradient(
-                            colors: [FlowTheme.accent.opacity(0), FlowTheme.accent],
-                            center: .center
-                        ),
-                        style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                    )
-                    .frame(width: diameter + 26, height: diameter + 26)
-                    .rotationEffect(.radians(t * 2 * .pi * 0.9))
-            }
-        case .ready:
-            Circle()
-                .stroke(Color.green.opacity(0.4), lineWidth: 2)
-                .frame(width: diameter + 22, height: diameter + 22)
-        case .failed:
-            Circle()
-                .stroke(Color.orange.opacity(0.4), lineWidth: 2)
-                .frame(width: diameter + 22, height: diameter + 22)
-        case .idle:
-            EmptyView()
         }
     }
 
-    /// The glass disc itself, with a voice-reactive glow behind it.
-    private func disc(level: CGFloat) -> some View {
-        Circle()
-            .fill(
-                reduceTransparency
-                    ? AnyShapeStyle(Color(uiColor: .secondarySystemBackground))
-                    : AnyShapeStyle(.ultraThinMaterial)
-            )
-            .overlay(
-                Circle().strokeBorder(
-                    LinearGradient(
-                        colors: [.white.opacity(0.28), .white.opacity(0.04)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-            )
-            .background(
-                Circle()
-                    .fill(tint)
-                    .opacity(glowOpacity(level: level))
-                    .blur(radius: 26)
-                    .scaleEffect(1 + 0.08 * level)
-            )
-            .frame(width: diameter, height: diameter)
-    }
-
-    private var centerSymbol: some View {
-        Image(systemName: symbolName)
-            .font(.system(size: diameter * 0.22, weight: .medium))
-            .foregroundStyle(symbolTint)
-            .contentTransition(.symbolEffect(.replace))
-            .symbolEffect(.bounce, value: readyPulse)
-            .opacity(showsSymbol ? 1 : 0)
-    }
-
-    // MARK: - State mapping
-
-    private var isRecording: Bool {
-        if case .recording = state { return true }
-        return false
-    }
-
-    private var isBusy: Bool {
+    private var membraneHeight: CGFloat {
         switch state {
-        case .warming, .transcribing: return true
-        default: return false
+        case .idle: return 68
+        case .warming: return 58
+        case .recording: return pausedAt == nil ? 82 : 48
+        case .transcribing: return 52
+        case .ready: return 32
+        case .failed: return 42
         }
     }
 
-    private var stateKey: String {
+    private var isInteractive: Bool {
         switch state {
-        case .idle: return "idle"
-        case .warming: return "warming"
-        case .recording: return "recording"
-        case .transcribing: return "transcribing"
-        case .ready: return "ready"
-        case .failed: return "failed"
-        }
-    }
-
-    private var symbolName: String {
-        switch state {
-        case .idle: return "mic.fill"
-        case .warming, .recording: return "waveform"
-        case .transcribing: return "waveform"
-        case .ready: return "checkmark"
-        case .failed: return "exclamationmark"
-        }
-    }
-
-    private var showsSymbol: Bool {
-        switch state {
-        case .transcribing, .warming: return false // the shimmer arc narrates
-        default: return true
-        }
-    }
-
-    private var symbolTint: AnyShapeStyle {
-        switch state {
-        case .ready: return AnyShapeStyle(Color.green)
-        case .failed: return AnyShapeStyle(Color.orange)
-        default: return AnyShapeStyle(FlowTheme.accentGradient)
-        }
-    }
-
-    private var tint: Color {
-        switch state {
-        case .ready: return .green
-        case .failed: return .orange
-        default: return FlowTheme.accent
-        }
-    }
-
-    private func glowOpacity(level: CGFloat) -> Double {
-        switch state {
-        case .idle: return 0.16
-        case .warming: return 0.22
-        case .recording: return 0.2 + 0.5 * Double(level)
-        case .transcribing: return 0.3
-        case .ready: return 0.35
-        case .failed: return 0.25
-        }
-    }
-
-    /// Slow 4.2s sine breath while idle; still while working (the energy
-    /// layer owns the motion there).
-    private func breathScale(t: TimeInterval) -> CGFloat {
-        guard case .idle = state, !reduceMotion else { return 1 }
-        return 1 + 0.02 * CGFloat(sin(2 * .pi * t / 4.2))
-    }
-
-    private var timelineInterval: TimeInterval? {
-        switch state {
-        case .idle: return 1 / 20 // a breath needs no ProMotion
-        case .recording, .warming, .transcribing: return nil
-        case .ready, .failed: return 1
-        }
-    }
-
-    private var timelinePaused: Bool {
-        switch state {
-        case .ready, .failed: return true
-        case .idle: return reduceMotion
+        case .idle, .ready, .failed: return true
         case .warming, .recording, .transcribing: return false
         }
     }
 
-    private var accessibilityValue: String {
-        switch state {
-        case .idle: return "Ready"
-        case .warming: return "Preparing"
-        case .recording: return "Recording"
-        case .transcribing: return "Transcribing"
-        case .ready: return "Transcript copied"
-        case .failed: return "Failed"
+    private var stateTitle: String {
+        voicePhase.title
+    }
+
+    private var stateSymbol: String {
+        voicePhase.symbol
+    }
+
+    private var stateTint: AnyShapeStyle {
+        AnyShapeStyle(voicePhase.primary)
+    }
+
+    private var detailText: String {
+        if let statusMessage, !statusMessage.isEmpty {
+            return statusMessage
         }
+        return voicePhase.defaultDetail
+    }
+
+    private var accessibilityLabel: String {
+        switch state {
+        case .idle, .ready, .failed: return "Start dictation"
+        case .warming: return "Preparing dictation"
+        case .recording where pausedAt != nil: return "Dictation paused"
+        case .recording: return "Dictation recording"
+        case .transcribing: return "Transcribing dictation"
+        }
+    }
+
+    private var stateKey: String {
+        voicePhase.rawValue
+    }
+
+    private var voicePhase: FlowVoicePhase {
+        .resolve(state: state, processingStage: processingStage, pausedAt: pausedAt)
+    }
+
+    private var timelineInterval: TimeInterval? {
+        guard !reduceMotion else { return 1 }
+        switch state {
+        case .recording: return 1 / 30
+        case .warming, .transcribing: return 1 / 24
+        case .idle, .ready, .failed: return 1 / 15
+        }
+    }
+
+    private var timelinePaused: Bool {
+        reduceMotion || stateKey == "ready" || stateKey == "failed" || stateKey == "paused"
     }
 }
 
-/// The 48-bar radial ring: bar length follows the live level with a touch of
-/// per-bar deterministic noise, plus ripples that expand while speech flows.
-private struct RecordingRing: View {
-    let t: TimeInterval
+/// A filled ribbon rather than equalizer bars. Its outer contour follows the
+/// real level, so the product has one recognizable silhouette in the app,
+/// widgets and Dynamic Island.
+private struct VoiceMembrane: View {
+    let state: FlowBridgeCoordinator.State
+    let phase: FlowVoicePhase
+    let time: TimeInterval
     let level: CGFloat
-    let diameter: CGFloat
-    let accent: Color
-    /// Seconds since recording began — drives the one-shot ignition
-    /// shockwave, deterministically (replays correct on re-render).
-    var ignitionAge: TimeInterval = .infinity
+    let reduceMotion: Bool
 
     var body: some View {
         Canvas { context, size in
-            let center = CGPoint(x: size.width / 2, y: size.height / 2)
-            let innerRadius = diameter / 2 + 9
-            let barCount = 48
-            let slice = Int(t * 3)
+            let ribbon = membranePath(in: size)
 
-            // Ignition shockwave: one ring expanding +52pt over the first
-            // 700ms of the session.
-            if ignitionAge >= 0, ignitionAge < 0.7 {
-                let p = ignitionAge / 0.7
-                let eased = p * p * (3 - 2 * p)
-                let radius = innerRadius + CGFloat(eased) * 52
-                let rect = CGRect(
-                    x: center.x - radius,
-                    y: center.y - radius,
-                    width: radius * 2,
-                    height: radius * 2
-                )
-                context.stroke(
-                    Circle().path(in: rect),
-                    with: .color(accent.opacity((1 - eased) * 0.5)),
-                    style: StrokeStyle(lineWidth: 2)
-                )
-            }
+            var glow = context
+            glow.addFilter(.blur(radius: 13))
+            glow.opacity = glowOpacity
+            glow.fill(ribbon, with: fillShading(in: size))
 
-            for index in 0..<barCount {
-                let angle = (2 * .pi / CGFloat(barCount)) * CGFloat(index) - .pi / 2
-                let jitter = Self.noise(index: index, slice: slice)
-                let length = 5 + level * 24 + jitter * 7 * level
-                let from = CGPoint(
-                    x: center.x + cos(angle) * innerRadius,
-                    y: center.y + sin(angle) * innerRadius
-                )
-                let to = CGPoint(
-                    x: center.x + cos(angle) * (innerRadius + length),
-                    y: center.y + sin(angle) * (innerRadius + length)
-                )
-                var path = Path()
-                path.move(to: from)
-                path.addLine(to: to)
-                context.stroke(
-                    path,
-                    with: .color(accent.opacity(0.45 + 0.55 * Double(level))),
-                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                )
-            }
+            context.fill(ribbon, with: fillShading(in: size))
+            context.stroke(
+                ribbon,
+                with: .color(edgeColor.opacity(0.72)),
+                style: StrokeStyle(lineWidth: 1, lineJoin: .round)
+            )
 
-            // Two staggered ripples, purely time-driven, weighted by the
-            // level so silence stays calm.
-            guard level > 0.06 else { return }
-            let cycle: TimeInterval = 1.4
-            for k in 0..<2 {
-                let phase = ((t / cycle) + Double(k) * 0.5).truncatingRemainder(dividingBy: 1)
-                let radius = innerRadius + 16 + CGFloat(phase) * 38
-                let opacity = (1 - phase) * 0.32 * Double(level)
-                let rect = CGRect(
-                    x: center.x - radius,
-                    y: center.y - radius,
-                    width: radius * 2,
-                    height: radius * 2
-                )
-                context.stroke(
-                    Circle().path(in: rect),
-                    with: .color(accent.opacity(opacity)),
-                    style: StrokeStyle(lineWidth: 1.5)
-                )
-            }
+            var spine = Path()
+            spine.move(to: CGPoint(x: 0, y: size.height / 2))
+            spine.addLine(to: CGPoint(x: size.width, y: size.height / 2))
+            context.stroke(
+                spine,
+                with: .linearGradient(
+                    Gradient(colors: [.clear, edgeColor.opacity(0.42), .clear]),
+                    startPoint: .zero,
+                    endPoint: CGPoint(x: size.width, y: 0)
+                ),
+                style: StrokeStyle(lineWidth: 1)
+            )
+        }
+        .animation(FlowMotion.fieldMorph, value: phaseKey)
+    }
+
+    private func membranePath(in size: CGSize) -> Path {
+        let samples = 44
+        let centerY = size.height / 2
+        var top: [CGPoint] = []
+        var bottom: [CGPoint] = []
+
+        for index in 0...samples {
+            let progress = CGFloat(index) / CGFloat(samples)
+            let x = size.width * progress
+            let envelope = pow(sin(.pi * progress), 0.58)
+            let energy = amplitude(at: progress) * envelope
+            let drift = reduceMotion ? 0 : CGFloat(sin(time * 2.1 + Double(progress) * 9.4)) * energy * 0.13
+            top.append(CGPoint(x: x, y: centerY - energy + drift))
+            bottom.append(CGPoint(x: x, y: centerY + energy + drift))
+        }
+
+        var path = Path()
+        if let first = top.first {
+            path.move(to: first)
+            for point in top.dropFirst() { path.addLine(to: point) }
+            for point in bottom.reversed() { path.addLine(to: point) }
+            path.closeSubpath()
+        }
+        return path
+    }
+
+    private func amplitude(at progress: CGFloat) -> CGFloat {
+        switch state {
+        case .idle:
+            return 4.5 + (reduceMotion ? 0 : 2.5 * CGFloat(sin(time * 1.45 + Double(progress) * 7)))
+        case .warming:
+            let focus = 1 - abs(progress - 0.5) * 1.5
+            return 5 + max(0, focus) * (8 + 4 * CGFloat(sin(time * 3.2)))
+        case .recording:
+            let live = max(0.06, min(1, level))
+            let harmonic = 0.58 + 0.42 * abs(CGFloat(sin(time * 5.2 + Double(progress) * 14)))
+            return 5 + live * 28 * harmonic
+        case .transcribing:
+            let inward = 1 - abs(progress - 0.5) * 2
+            let pulse = reduceMotion ? 0.65 : 0.65 + 0.35 * CGFloat(sin(time * 3.6))
+            return 4 + max(0, inward) * 12 * pulse
+        case .ready:
+            return 2.6
+        case .failed:
+            return 4 + 2 * abs(CGFloat(sin(Double(progress) * 18)))
         }
     }
 
-    /// Deterministic per-bar wiggle: no Math.random, stable across frames
-    /// within a time slice.
-    private static func noise(index: Int, slice: Int) -> CGFloat {
-        let hash = (index &* 73_856_093) ^ (slice &* 19_349_663)
-        return CGFloat(abs(hash % 1000)) / 1000
+    private func fillShading(in size: CGSize) -> GraphicsContext.Shading {
+        .linearGradient(
+            Gradient(colors: fillColors),
+            startPoint: CGPoint(x: 0, y: size.height / 2),
+            endPoint: CGPoint(x: size.width, y: size.height / 2)
+        )
+    }
+
+    private var fillColors: [Color] {
+        [phase.secondary.opacity(0.26), phase.primary, phase.secondary.opacity(0.72)]
+    }
+
+    private var edgeColor: Color {
+        phase.primary
+    }
+
+    private var glowOpacity: Double {
+        switch state {
+        case .idle: return 0.28
+        case .warming: return 0.38
+        case .recording: return 0.38 + 0.38 * Double(level)
+        case .transcribing: return 0.42
+        case .ready: return 0.28
+        case .failed: return 0.25
+        }
+    }
+
+    private var phaseKey: String {
+        phase.rawValue
     }
 }
 
-/// Press style tuned for the Orb: a deeper squeeze than standard controls.
-private struct OrbPressStyle: ButtonStyle {
+private struct LivingFieldPressStyle: ButtonStyle {
+    let enabled: Bool
     let reduceMotion: Bool
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.94 : 1)
-            .animation(.snappy(duration: 0.22), value: configuration.isPressed)
-            .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.5), trigger: configuration.isPressed) { oldValue, newValue in
-                !oldValue && newValue
-            }
+            .scaleEffect(configuration.isPressed && enabled && !reduceMotion ? 0.985 : 1)
+            .brightness(configuration.isPressed && enabled ? 0.025 : 0)
+            .animation(FlowMotion.interactive, value: configuration.isPressed)
     }
 }

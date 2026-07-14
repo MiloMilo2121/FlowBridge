@@ -1,7 +1,7 @@
 import FlowBridgeShared
 import SwiftUI
 
-/// ONE stable card that owns the transcript slot for the whole session:
+/// ONE stable transcript slot inside the Living Voice Field surface:
 /// live words while recording, the SAME words dimmed under a shimmer while
 /// the engine condenses (this kills the old stale-panel flash — the
 /// cheapest-feeling moment of the previous build), then the panel with the
@@ -84,9 +84,7 @@ struct TranscriptStageView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(FlowTheme.space16)
-        .flowCard()
-        .animation(FlowMotion.state, value: phase)
+        .animation(FlowMotion.settle, value: phase)
     }
 
     @ViewBuilder
@@ -103,7 +101,7 @@ struct TranscriptStageView: View {
             Text(dimmed ? "Refining…" : "Listening…")
                 .font(FlowTheme.serifFlavor(17))
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
+                .frame(maxWidth: .infinity, minHeight: 72, alignment: .topLeading)
         }
     }
 }

@@ -21,6 +21,10 @@ public final class DictationCommandHub {
     /// Re-polishes the delivered transcript with a tone (raw ToneProfile
     /// value) and refreshes clipboard + island.
     public var applyToneHandler: ((String) async -> Void)?
+    /// Performs the single contextual action currently shown in the ready
+    /// Live Activity. No persistence fallback: the offer only exists while
+    /// the serving app process owns that ready window.
+    public var performSuggestedActionHandler: (() async -> Void)?
 
     private init() {}
 
@@ -68,5 +72,9 @@ public final class DictationCommandHub {
         // No pending-store fallback: the variants window only exists while
         // the app process is alive to serve it.
         await applyToneHandler?(rawTone)
+    }
+
+    public func requestPerformSuggestedAction() async {
+        await performSuggestedActionHandler?()
     }
 }

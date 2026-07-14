@@ -8,8 +8,8 @@ import SwiftUI
 /// Arrival stamps are assigned by longest-common-prefix diff against the
 /// previous snapshot: the normalizer and Whisper can REWRITE earlier words
 /// between snapshots, so absolute indices are not stable — only the truly
-/// new suffix gets fresh stamps; rewritten words inherit theirs and stay
-/// still.
+/// new or rewritten suffix gets fresh stamps while the truly stable prefix
+/// keeps its timing.
 struct LiveTranscriptView: View {
     let snapshot: LiveTranscriptSnapshot
     /// Condensing: the stage freezes arrivals and the caret.
@@ -58,30 +58,31 @@ struct LiveTranscriptView: View {
             .count
         let now = Date()
 
-        // LCP diff: stamps survive rewrites, only appended words are "new".
+        // LCP diff: the unchanged prefix keeps its stamps. Any rewritten or
+        // appended suffix receives a fresh arrival, even when word count did
+        // not change (the old count-only logic made rewrites appear frozen).
         var commonPrefix = 0
         while commonPrefix < min(words.count, previousWords.count),
               words[commonPrefix] == previousWords[commonPrefix] {
             commonPrefix += 1
         }
-        _ = commonPrefix // rewritten words inside the prefix keep their stamps
-
-        if arrivals.count < words.count {
-            arrivals.append(contentsOf: Array(repeating: now, count: words.count - arrivals.count))
-        } else if arrivals.count > words.count {
-            arrivals.removeLast(arrivals.count - words.count)
+        var nextArrivals = Array(arrivals.prefix(commonPrefix))
+        if commonPrefix < words.count {
+            nextArrivals.append(contentsOf: Array(repeating: now, count: words.count - commonPrefix))
         }
+        arrivals = nextArrivals
         previousWords = words
 
         let start = max(0, words.count - Self.maxVisibleWords)
         var text = Text(verbatim: "")
         for index in start..<words.count {
             let piece = (index > start ? " " : "") + words[index]
-            text = text + Text(verbatim: piece)
+            let stampedWord = Text(verbatim: piece)
                 .customAttribute(WordStampAttribute(
                     arrival: arrivals[index],
                     isVolatile: index >= words.count - volatileCount
                 ))
+            text = Text("\(text)\(stampedWord)")
         }
         displayText = text
     }

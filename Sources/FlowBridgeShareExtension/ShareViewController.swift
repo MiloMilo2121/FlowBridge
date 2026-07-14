@@ -23,7 +23,9 @@ final class ShareViewController: UIViewController {
             await MainActor.run {
                 let url = URL(string: "flowbridge://transcribeQueuedAudio")!
                 extensionContext?.open(url) { [weak self] _ in
-                    self?.extensionContext?.completeRequest(returningItems: nil)
+                    Task { @MainActor [weak self] in
+                        self?.extensionContext?.completeRequest(returningItems: nil)
+                    }
                 }
             }
         } catch {

@@ -28,6 +28,16 @@ public struct DictationActivityAttributes: ActivityAttributes, Sendable {
             case cloud
         }
 
+        /// The one contextual action offered after delivery. Only the kind
+        /// and short display strings cross the ActivityKit boundary; the
+        /// app keeps the actual event/message payload in memory.
+        public enum SuggestedActionKind: String, Codable, Hashable, Sendable {
+            case calendar
+            case reminder
+            case message
+            case email
+        }
+
         public var phase: Phase
         /// Last words of the live transcript, kept short: the combined
         /// static + dynamic Live Activity payload must stay under 4KB.
@@ -49,13 +59,19 @@ public struct DictationActivityAttributes: ActivityAttributes, Sendable {
         public var engineBadge: EngineBadge?
         /// The final pass is running (second micro-stage of transcribing).
         public var refining: Bool
-        /// Ready-window: tone-variant buttons are live.
+        /// Ready-window: a concise fallback remains available until a more
+        /// contextual action is classified.
         public var variantsAvailable: Bool
-        /// Confirmation after a variant tap ("Formal copied ✓").
+        /// Confirmation after the ready-window action completes.
         public var toneNote: String?
         /// Set while paused: freezes the island timer via
         /// `Text(timerInterval:pauseTime:)`.
         public var pausedAt: Date?
+        /// One direct post-delivery action, replacing the old row of three
+        /// tone buttons when intent classification is confident.
+        public var suggestedActionKind: SuggestedActionKind?
+        public var suggestedActionTitle: String?
+        public var suggestedActionDetail: String?
 
         public init(
             phase: Phase,
@@ -69,7 +85,10 @@ public struct DictationActivityAttributes: ActivityAttributes, Sendable {
             refining: Bool = false,
             variantsAvailable: Bool = false,
             toneNote: String? = nil,
-            pausedAt: Date? = nil
+            pausedAt: Date? = nil,
+            suggestedActionKind: SuggestedActionKind? = nil,
+            suggestedActionTitle: String? = nil,
+            suggestedActionDetail: String? = nil
         ) {
             self.phase = phase
             self.transcriptPreview = String(transcriptPreview.suffix(220))
@@ -83,6 +102,9 @@ public struct DictationActivityAttributes: ActivityAttributes, Sendable {
             self.variantsAvailable = variantsAvailable
             self.toneNote = toneNote
             self.pausedAt = pausedAt
+            self.suggestedActionKind = suggestedActionKind
+            self.suggestedActionTitle = suggestedActionTitle.map { String($0.prefix(44)) }
+            self.suggestedActionDetail = suggestedActionDetail.map { String($0.prefix(72)) }
         }
     }
 

@@ -36,20 +36,11 @@ struct TranscriptPanelView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                if let onCopy {
-                    Button(action: onCopy) {
-                        Image(systemName: "doc.on.clipboard")
-                            .font(.footnote)
-                    }
-                    .buttonStyle(.glass)
-                    .disabled(record == nil)
-                    .accessibilityLabel("Copy transcript")
-                }
             }
 
             ZStack(alignment: .topLeading) {
                 if record == nil {
-                    Text("Nothing yet — tap the orb and just talk.")
+                    Text("Your latest words will settle here.")
                         .font(FlowTheme.serifFlavor(17))
                         .foregroundStyle(.secondary)
                 } else {
@@ -62,7 +53,7 @@ struct TranscriptPanelView: View {
                         .revealTransition(reduceMotion: reduceMotion)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 110, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: record == nil ? 62 : 104, alignment: .topLeading)
 
             if let reveal, captionVisible {
                 Button {
@@ -87,8 +78,10 @@ struct TranscriptPanelView: View {
             ContextActionBar(
                 suggestion: suggestedAction,
                 confirmation: actionConfirmation,
+                transcript: record?.text,
                 onPerform: onPerformAction,
-                onDismiss: onDismissAction
+                onDismiss: onDismissAction,
+                onCopy: onCopy ?? {}
             )
 
             if !vocabularySuggestions.isEmpty {
@@ -102,7 +95,7 @@ struct TranscriptPanelView: View {
                 .transition(.opacity.combined(with: .offset(y: 6)))
             }
         }
-        // Card ownership lives in TranscriptStageView: the panel is content.
+        // Surface ownership lives in ContentView: the panel is content.
         .animation(FlowMotion.state, value: vocabularySuggestions)
         .animation(FlowMotion.state, value: suggestedAction)
         .animation(FlowMotion.state, value: actionConfirmation)

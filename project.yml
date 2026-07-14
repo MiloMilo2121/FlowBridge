@@ -89,6 +89,16 @@ targets:
         # scaled/letterboxed instead of native resolution.
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
+        # iPhone remains portrait-first; on iPad the app participates in all
+        # multitasking rotations instead of relying on the full-screen escape
+        # hatch (which also removes the device-build warning).
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UIBackgroundModes:
           - audio
         CFBundleURLTypes:
@@ -192,6 +202,9 @@ targets:
       - path: Tests/FlowBridgeSharedTests
     dependencies:
       - target: FlowBridgeShared
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
 schemes:
   FlowBridgeApp:
     build:

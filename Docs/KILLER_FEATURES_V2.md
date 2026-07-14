@@ -1,6 +1,6 @@
 # FlowBridge V2 — 20 Killer Feature + UX Super Premium
 
-> Stato: **proposta** · Data: 2 luglio 2026 · Complemento di [ROADMAP_V2.md](ROADMAP_V2.md)
+> Stato: **proposta storica** · Data: 2 luglio 2026 · Complemento di [ROADMAP_V2.md](ROADMAP_V2.md). Per le decisioni UI correnti (Living Voice Field, materiali, motion e iPhone 17 baseline) prevale [DESIGN.md](../DESIGN.md).
 >
 > Regole invariate: **tutto in locale, zero cloud, poca frizione.** Ogni feature indica l'API iOS che la abilita (verificata nella ricerca di piattaforma), il perché è "killer" rispetto ai competitor, e la fase di roadmap in cui atterra. Le feature marcate ⭐ sono già nella roadmap base e qui vengono elevate a standard "killer"; le altre sono nuove.
 

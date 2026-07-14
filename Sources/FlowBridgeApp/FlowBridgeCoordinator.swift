@@ -1,6 +1,7 @@
 import FlowBridgeShared
 import SwiftUI
 import UIKit
+import WidgetKit
 
 @MainActor
 final class FlowBridgeCoordinator: ObservableObject {
@@ -90,7 +91,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     /// Unusual words from the last take, offered as one-tap vocabulary chips.
     @Published private(set) var vocabularySuggestions: [String] = []
     /// "Time given back" total, refreshed after every session (the ticker
-    /// under the Orb counts up to it).
+    /// in the Flow Rail counts up to it).
     @Published private(set) var timeSavedMinutes: Double = 0
     /// Consecutive dictation days, and whether the last session opened a
     /// new day (drives the streak celebration).
@@ -245,6 +246,9 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
         DictationCommandHub.shared.applyToneHandler = { [weak self] raw in
             await self?.applyToneVariant(raw)
+        }
+        DictationCommandHub.shared.performSuggestedActionHandler = { [weak self] in
+            await self?.performSuggestedAction()
         }
 
         // Pending commands can be written while the app is backgrounded under
@@ -402,6 +406,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     var history: TranscriptHistoryStore? { historyStore }
     var stats: DictationStatsStore? { statsStore }
     var toneContext: ToneContextStore? { toneStore }
+    var canPauseCurrentSession: Bool { activeEnginePreference != .cloudRealtime }
 
     func copyLastTranscript() async {
         guard let text = lastTranscript?.text else { return }
@@ -556,6 +561,19 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     private func stopRecordingAndTranscribe() async {
+        // The audio session releases at stop, and with it the background
+        // assertion that was keeping the app alive — but decode + final pass
+        // still have seconds of work left. Without this task, backgrounding
+        // the app mid-transcribe suspends it and the dictation is lost
+        // (observed on device: bundled cold load + home swipe = frozen
+        // "transcribing" and no delivery).
+        let backgroundLease = BackgroundExecutionLease()
+        backgroundLease.identifier = UIApplication.shared.beginBackgroundTask(withName: "FlowBridge.finalPass") {
+            FBLog.log("stop: background time expired during final pass")
+            backgroundLease.end()
+        }
+        defer { backgroundLease.end() }
+
         elapsedTask?.cancel()
         maxDurationTask?.cancel()
         stopIslandTick()
@@ -700,6 +718,7 @@ final class FlowBridgeCoordinator: ObservableObject {
 
         let delivered = sessionAppendedRecord(for: finalRecord) ?? finalRecord
         try await transcriptStore?.save(delivered)
+        WidgetCenter.shared.reloadAllTimelines()
         lastTranscript = delivered
         liveTranscript = nil
         currentSessionID = nil
@@ -738,6 +757,11 @@ final class FlowBridgeCoordinator: ObservableObject {
             guard !Task.isCancelled, let suggestion else { return }
             FBLog.log("actions: suggesting \(suggestion.label)")
             self?.suggestedAction = suggestion
+            self?.activityController.offerSuggestedAction(
+                kind: suggestion.activityKind,
+                title: suggestion.activityTitle,
+                detail: suggestion.detail
+            )
         }
     }
 
@@ -754,6 +778,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         case .done(let message):
             HapticPlayer.transcriptReady()
             actionConfirmation = message
+            activityController.noteActionCompleted(message)
             // The Flow trail: History shows what this dictation became.
             try? await historyStore?.setAction(action.label, id: recordID)
             confirmationDismissTask?.cancel()
@@ -763,14 +788,17 @@ final class FlowBridgeCoordinator: ObservableObject {
                 self?.actionConfirmation = nil
             }
         case .openedApp:
-            break
+            activityController.noteActionCompleted("Opened \(action.label)")
+            try? await historyStore?.setAction(action.label, id: recordID)
         case .failed(let message):
             statusMessage = message
+            activityController.noteActionFailed()
         }
     }
 
     func dismissSuggestedAction() {
         suggestedAction = nil
+        activityController.clearSuggestedAction()
     }
 
     private func polishTurns(_ turns: [SpeakerTranscriptFormatter.Turn], tone: ToneProfile) async -> String {
@@ -839,7 +867,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         statusMessage = url.lastPathComponent
 
         do {
-            let duration = AudioFileDurationReader.duration(of: url) ?? 0
+            let duration = await AudioFileDurationReader.duration(of: url) ?? 0
             let recording = RecordedAudio(url: url, duration: duration)
             let engine = await resolveEngine()
             let record = try await engine.transcribe(recording: recording, source: .sharedAudio)
@@ -1145,5 +1173,16 @@ final class FlowBridgeCoordinator: ObservableObject {
             return "No sound picked up — close any app using the mic (or Bluetooth), then try again."
         }
         return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+}
+
+@MainActor
+private final class BackgroundExecutionLease {
+    var identifier: UIBackgroundTaskIdentifier = .invalid
+
+    func end() {
+        guard identifier != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(identifier)
+        identifier = .invalid
     }
 }

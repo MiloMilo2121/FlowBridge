@@ -1,11 +1,13 @@
 import FlowBridgeShared
 import SwiftUI
 
-/// The room. One hero — the Orb — with the live words below while recording
-/// and the latest (polished) transcript otherwise. Everything else lives in
-/// sheets.
+/// The app is one continuous voice surface. The Living Voice Field and the
+/// transcript share a stable container; only the control layer floats above
+/// it in Liquid Glass.
 struct ContentView: View {
     @EnvironmentObject private var coordinator: FlowBridgeCoordinator
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var showHistory = false
     @State private var showSettings = false
     @State private var showStats = false
@@ -15,44 +17,44 @@ struct ContentView: View {
     @State private var failPulse = 0
     @State private var streakPulse = 0
     @State private var showDayWhisper = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var glassNamespace
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: FlowTheme.space16) {
-                Spacer(minLength: 0)
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(spacing: FlowTheme.space16) {
+                        flowRail
 
-                OrbView(
-                    state: coordinator.state,
-                    diameter: 210,
-                    ignitionPulse: ignitionPulse,
-                    readyPulse: readyPulse,
-                    failPulse: failPulse
-                ) {
-                    Task { await coordinator.toggleRecording() }
+                        voiceSurface
+
+                        errorStrip
+
+                        Spacer(minLength: FlowTheme.space20)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: max(0, geometry.size.height - 8), alignment: .top)
+                    .padding(.horizontal, FlowTheme.phoneInset)
+                    .padding(.top, FlowTheme.space8)
+                    .padding(.bottom, FlowTheme.space24)
                 }
-
-                elapsedPill
-
-                statusCaption
-
-                errorCard
-
-                timeSavedTicker
-
-                Spacer(minLength: 0)
-
-                transcriptArea
-
-                primaryCapsule
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
             }
-            .padding(FlowTheme.space20)
-            .animation(FlowMotion.state, value: coordinator.errorPresentation)
-            .background(RoomBackground(intensity: roomIntensity, listens: isRecording))
+            .background(
+                RoomBackground(
+                    intensity: roomIntensity,
+                    listens: isRecording,
+                    accent: voicePhase.primary,
+                    secondaryAccent: voicePhase.secondary
+                )
+            )
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                actionDock
+            }
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
-                // No title: the orb is the identity. Items recede (opacity,
-                // never removal) while recording.
-                ToolbarItemGroup(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
                         showHistory = true
                     } label: {
@@ -60,7 +62,9 @@ struct ContentView: View {
                     }
                     .opacity(chromeOpacity)
                     .allowsHitTesting(!isRecording)
+                    .accessibilityLabel("History")
                 }
+
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         showPrivacy = true
@@ -75,6 +79,7 @@ struct ContentView: View {
                     }
                     .opacity(chromeOpacity)
                     .allowsHitTesting(!isRecording)
+                    .accessibilityLabel(cloudActive ? "Privacy, cloud mode active" : "Privacy, on-device mode")
 
                     Button {
                         showSettings = true
@@ -83,6 +88,7 @@ struct ContentView: View {
                     }
                     .opacity(chromeOpacity)
                     .allowsHitTesting(!isRecording)
+                    .accessibilityLabel("Settings")
                 }
             }
             .sheet(isPresented: $showHistory) {
@@ -124,57 +130,177 @@ struct ContentView: View {
                 }
             }
             .onChange(of: coordinator.isNewStreakDay) { _, isNew in
-                if isNew {
-                    streakPulse += 1
-                    Task { @MainActor in
-                        withAnimation(FlowMotion.state) { showDayWhisper = true }
-                        try? await Task.sleep(for: RevealBeat.whisperDwell)
-                        withAnimation(FlowMotion.state) { showDayWhisper = false }
-                    }
+                guard isNew else { return }
+                streakPulse += 1
+                Task { @MainActor in
+                    withAnimation(FlowMotion.state) { showDayWhisper = true }
+                    try? await Task.sleep(for: RevealBeat.whisperDwell)
+                    withAnimation(FlowMotion.state) { showDayWhisper = false }
                 }
             }
         }
     }
 
-    // MARK: - Pieces
+    // MARK: - Continuous surface
 
-    @ViewBuilder
-    private var elapsedPill: some View {
-        if let elapsed = coordinator.recordingElapsed {
-            Text(Duration.seconds(elapsed).formatted(.time(pattern: .minuteSecond)))
-                .font(FlowTheme.numeric(17))
-                .contentTransition(.numericText(value: elapsed))
-                .animation(.snappy(duration: 0.25), value: Int(elapsed))
+    private var voiceSurface: some View {
+        VStack(spacing: 0) {
+            LivingVoiceField(
+                state: coordinator.state,
+                elapsed: coordinator.recordingElapsed,
+                pausedAt: coordinator.pausedAt,
+                statusMessage: coordinator.errorPresentation == nil ? coordinator.statusMessage : nil,
+                processingStage: coordinator.processingStage,
+                ignitionPulse: ignitionPulse,
+                readyPulse: readyPulse,
+                failPulse: failPulse
+            ) {
+                Task { await coordinator.toggleRecording() }
+            }
+
+            FlowSeam(tint: voicePhase.primary)
+                .padding(.horizontal, FlowTheme.space16)
+
+            TranscriptStageView(
+                state: coordinator.state,
+                liveTranscript: coordinator.liveTranscript,
+                record: coordinator.lastTranscript,
+                reveal: coordinator.polishReveal,
+                processingStage: coordinator.processingStage,
+                vocabularySuggestions: coordinator.vocabularySuggestions,
+                suggestedAction: coordinator.suggestedAction,
+                actionConfirmation: coordinator.actionConfirmation,
+                onAddSuggestion: { coordinator.addVocabularySuggestion($0) },
+                onDismissSuggestion: { coordinator.dismissVocabularySuggestion($0) },
+                onPerformAction: { Task { await coordinator.performSuggestedAction() } },
+                onDismissAction: { coordinator.dismissSuggestedAction() },
+                onCopy: { Task { await coordinator.copyLastTranscript() } }
+            )
+            .padding(.horizontal, FlowTheme.space20)
+            .padding(.top, FlowTheme.space16)
+            .padding(.bottom, FlowTheme.space20)
+        }
+        .flowVoiceSurface(tint: voicePhase.primary, secondaryTint: voicePhase.secondary)
+        .animation(FlowMotion.fieldMorph, value: stateKey)
+    }
+
+    private var flowRail: some View {
+        HStack(spacing: FlowTheme.space12) {
+            HStack(spacing: FlowTheme.space8) {
+                Image(systemName: "waveform.path")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(FlowTheme.accentGradient)
+                Text("FlowBridge")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .accessibilityElement(children: .combine)
+
+            Spacer(minLength: FlowTheme.space8)
+
+            Button {
+                showStats = true
+            } label: {
+                HStack(spacing: FlowTheme.space8) {
+                    Text("\(Int(coordinator.timeSavedMinutes.rounded()))")
+                        .font(FlowTheme.numeric(14, weight: .semibold))
+                        .contentTransition(reduceMotion ? .opacity : .numericText(value: coordinator.timeSavedMinutes))
+                    Text("MIN BACK")
+                        .font(FlowTheme.fieldLabel(9))
+                        .tracking(0.7)
+                        .foregroundStyle(.secondary)
+                    if coordinator.streakDays > 1 {
+                        Label("\(coordinator.streakDays)", systemImage: "flame.fill")
+                            .labelStyle(.titleAndIcon)
+                            .font(FlowTheme.numeric(12, weight: .medium))
+                            .foregroundStyle(FlowTheme.accent)
+                            .symbolEffect(.bounce, value: streakPulse)
+                    }
+                }
+                .frame(minHeight: 44)
                 .padding(.horizontal, FlowTheme.space12)
-                .padding(.vertical, FlowTheme.space4)
-                .flowGlass()
-                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
+            .buttonStyle(.glass)
+            .opacity(isRecording ? 0.35 : 1)
+            .allowsHitTesting(!isRecording)
+            .animation(FlowMotion.tick.delay(RevealBeat.tickerDelay), value: coordinator.timeSavedMinutes)
+            .overlay(alignment: .bottomTrailing) {
+                if showDayWhisper {
+                    Text("day \(coordinator.streakDays)")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(FlowTheme.accent)
+                        .offset(y: 18)
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 4)))
+                }
+            }
+            .accessibilityLabel("Time given back: \(Int(coordinator.timeSavedMinutes.rounded())) minutes. Opens statistics.")
         }
+        .frame(minHeight: 48)
+        .animation(FlowMotion.state, value: isRecording)
     }
 
-    @ViewBuilder
-    private var statusCaption: some View {
-        // The error card owns the failure story; the caption would repeat it.
-        if let message = coordinator.statusMessage, coordinator.errorPresentation == nil {
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .id(message)
-                .transition(.blurReplace)
+    // MARK: - Control layer
+
+    private var actionDock: some View {
+        GlassEffectContainer(spacing: FlowTheme.space12) {
+            HStack(spacing: FlowTheme.space12) {
+                if canPause {
+                    Button {
+                        Task {
+                            if coordinator.pausedAt == nil {
+                                await coordinator.pauseDictation()
+                            } else {
+                                await coordinator.resumeDictation()
+                            }
+                        }
+                    } label: {
+                        Image(systemName: coordinator.pausedAt == nil ? "pause.fill" : "play.fill")
+                            .font(.title3.weight(.semibold))
+                            .frame(width: 54, height: 54)
+                    }
+                    .buttonStyle(.glass)
+                    .tint(coordinator.pausedAt == nil ? FlowTheme.accent : .green)
+                    .glassEffectID("pause", in: glassNamespace)
+                    .transition(.scale(scale: 0.82).combined(with: .opacity))
+                    .accessibilityLabel(coordinator.pausedAt == nil ? "Pause dictation" : "Resume dictation")
+                }
+
+                Button {
+                    Task { await coordinator.toggleRecording() }
+                } label: {
+                    HStack(spacing: FlowTheme.space8) {
+                        Image(systemName: coordinator.state.primaryActionSymbol)
+                            .contentTransition(.symbolEffect(.replace))
+                        Text(coordinator.state.primaryActionTitle)
+                            .contentTransition(.opacity)
+                    }
+                    .font(.headline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+                .tint(primaryTint)
+                .glassEffectID("primary", in: glassNamespace)
+                .disabled(coordinator.state.isBusyWithoutStop)
+            }
+            .animation(FlowMotion.glassMorph, value: canPause)
+            .animation(FlowMotion.glassMorph, value: coordinator.pausedAt)
         }
+        .padding(.horizontal, FlowTheme.phoneInset)
+        .padding(.top, FlowTheme.space8)
+        .padding(.bottom, FlowTheme.space8)
     }
 
-    /// A recoverable failure contracts into this card — title, one honest
-    /// sentence, and the single tap that fixes it. The room stays alive.
+    // MARK: - Failure
+
     @ViewBuilder
-    private var errorCard: some View {
+    private var errorStrip: some View {
         if let error = coordinator.errorPresentation {
             HStack(alignment: .top, spacing: FlowTheme.space12) {
                 Image(systemName: error.symbol)
                     .font(.title3)
-                    .foregroundStyle(FlowTheme.accent)
-                    .padding(.top, 2)
+                    .foregroundStyle(FlowTheme.caution)
+                    .frame(width: 28)
                 VStack(alignment: .leading, spacing: FlowTheme.space4) {
                     Text(error.title)
                         .font(.subheadline.weight(.semibold))
@@ -195,16 +321,16 @@ struct ContentView: View {
                 Button {
                     coordinator.dismissError()
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
+                    Image(systemName: "xmark")
+                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.plain)
+                .foregroundStyle(.tertiary)
                 .accessibilityLabel("Dismiss error")
             }
             .padding(FlowTheme.space16)
-            .flowCard()
-            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            .flowCard(radius: FlowTheme.radiusRow)
+            .transition(.opacity.combined(with: .scale(scale: 0.97)))
         }
     }
 
@@ -220,173 +346,97 @@ struct ContentView: View {
         }
     }
 
-    /// The visible reward: minutes not spent typing, counting up after every
-    /// session. Tap for the full story.
-    private var timeSavedTicker: some View {
-        Button {
-            showStats = true
-        } label: {
-            HStack(spacing: FlowTheme.space8) {
-                Image(systemName: "hourglass")
-                Text("\(Int(coordinator.timeSavedMinutes.rounded())) min given back")
-                    .contentTransition(reduceMotion ? .opacity : .numericText(value: coordinator.timeSavedMinutes))
-
-                if coordinator.streakDays > 1 {
-                    HStack(spacing: 2) {
-                        Image(systemName: "flame.fill")
-                            .symbolEffect(.bounce, value: streakPulse)
-                        Text("\(coordinator.streakDays)")
-                            .contentTransition(reduceMotion ? .opacity : .numericText())
-                    }
-                    .foregroundStyle(FlowTheme.accent)
-                    .phaseAnimator([1.0, 1.15, 1.0], trigger: streakPulse) { view, scale in
-                        view.scaleEffect(reduceMotion ? 1.0 : scale)
-                    } animation: { _ in
-                        FlowMotion.celebrate
-                    }
-                }
-            }
-            .font(FlowTheme.numeric(14, weight: .medium))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, FlowTheme.space12)
-            .padding(.vertical, FlowTheme.space8)
-        }
-        .buttonStyle(.glass)
-        .opacity(isRecording ? 0 : 1)
-        .allowsHitTesting(!isRecording)
-        // The ticker rolls as the text reveal settles — eye follows
-        // text → number (RevealBeat clock).
-        .animation(FlowMotion.tick.delay(RevealBeat.tickerDelay), value: coordinator.timeSavedMinutes)
-        .animation(FlowMotion.state, value: isRecording)
-        .overlay(alignment: .bottom) {
-            if showDayWhisper {
-                // The once-a-day moment: small text that appears and leaves.
-                Text("day \(coordinator.streakDays)")
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(FlowTheme.accentGradient)
-                    .offset(y: 20)
-                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 4)))
-            }
-        }
-        .accessibilityLabel("Time given back: \(Int(coordinator.timeSavedMinutes.rounded())) minutes. Opens statistics.")
-    }
-
-    private var transcriptArea: some View {
-        TranscriptStageView(
-            state: coordinator.state,
-            liveTranscript: coordinator.liveTranscript,
-            record: coordinator.lastTranscript,
-            reveal: coordinator.polishReveal,
-            processingStage: coordinator.processingStage,
-            vocabularySuggestions: coordinator.vocabularySuggestions,
-            suggestedAction: coordinator.suggestedAction,
-            actionConfirmation: coordinator.actionConfirmation,
-            onAddSuggestion: { coordinator.addVocabularySuggestion($0) },
-            onDismissSuggestion: { coordinator.dismissVocabularySuggestion($0) },
-            onPerformAction: { Task { await coordinator.performSuggestedAction() } },
-            onDismissAction: { coordinator.dismissSuggestedAction() },
-            onCopy: { Task { await coordinator.copyLastTranscript() } }
-        )
-    }
-
-    private var primaryCapsule: some View {
-        HStack(spacing: FlowTheme.space8) {
-            if isRecording {
-                Button {
-                    Task {
-                        if coordinator.pausedAt == nil {
-                            await coordinator.pauseDictation()
-                        } else {
-                            await coordinator.resumeDictation()
-                        }
-                    }
-                } label: {
-                    Image(systemName: coordinator.pausedAt == nil ? "pause.fill" : "play.fill")
-                        .font(.title3.weight(.semibold))
-                        .frame(width: 56, height: 56)
-                }
-                .buttonStyle(.glass)
-                .tint(coordinator.pausedAt == nil ? FlowTheme.accent : .green)
-                .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                .accessibilityLabel(coordinator.pausedAt == nil ? "Pause dictation" : "Resume dictation")
-            }
-
-            Button {
-                Task { await coordinator.toggleRecording() }
-            } label: {
-                Label(coordinator.state.primaryActionTitle, systemImage: coordinator.state.primaryActionSymbol)
-                    .font(.title3.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-            }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.capsule)
-            .tint(isRecording ? .red : FlowTheme.accent)
-            .disabled(coordinator.state.isBusyWithoutStop)
-        }
-        .animation(FlowMotion.state, value: isRecording)
-        .animation(FlowMotion.state, value: coordinator.pausedAt)
-    }
+    // MARK: - State mapping
 
     private var isRecording: Bool {
-        if case .recording = coordinator.state {
-            return true
-        }
+        if case .recording = coordinator.state { return true }
         return false
     }
 
-    /// Chrome recedes while the voice has the stage.
+    private var canPause: Bool {
+        isRecording && coordinator.canPauseCurrentSession
+    }
+
     private var chromeOpacity: Double {
-        isRecording ? 0.35 : 1
+        isRecording ? 0.28 : 1
     }
 
     private var cloudActive: Bool {
         FinalPassMode.current == .cloudScribe || EnginePreference.current == .cloudRealtime
     }
 
-    /// The room's single reactive scalar; while recording the aurora also
-    /// reads the mic level per frame on its own.
+    private var primaryTint: Color {
+        voicePhase.primary
+    }
+
     private var roomIntensity: Double {
-        switch coordinator.state {
-        case .idle: return 0.35
-        case .warming: return 0.5
-        case .recording: return 0.65
-        case .transcribing: return 0.55
-        case .ready: return 0.75
-        case .failed: return 0.4
+        switch voicePhase {
+        case .resting: return 0.30
+        case .opening: return 0.48
+        case .listening: return 0.66
+        case .paused: return 0.40
+        case .finalizing: return 0.48
+        case .decoding: return 0.58
+        case .refining: return 0.68
+        case .delivering: return 0.74
+        case .delivered: return 0.72
+        case .attention: return 0.38
         }
+    }
+
+    private var stateKey: String {
+        voicePhase.rawValue
+    }
+
+    private var voicePhase: FlowVoicePhase {
+        .resolve(
+            state: coordinator.state,
+            processingStage: coordinator.processingStage,
+            pausedAt: coordinator.pausedAt
+        )
+    }
+}
+
+private struct FlowSeam: View {
+    let tint: Color
+
+    var body: some View {
+        LinearGradient(
+            colors: [.clear, tint.opacity(0.38), .clear],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        .frame(height: 1)
+        .animation(FlowMotion.state, value: tint.description)
+        .accessibilityHidden(true)
     }
 }
 
 extension FlowBridgeCoordinator.State {
     var primaryActionTitle: String {
         switch self {
-        case .recording:
-            return "Stop"
-        case .transcribing, .warming:
-            return "Working"
-        case .idle, .ready, .failed:
-            return "Record"
+        case .recording: return "Finish"
+        case .transcribing: return "Shaping words"
+        case .warming: return "Preparing"
+        case .ready: return "Speak again"
+        case .idle, .failed: return "Speak"
         }
     }
 
     var primaryActionSymbol: String {
         switch self {
-        case .recording:
-            return "stop.fill"
-        case .transcribing, .warming:
-            return "waveform"
-        case .idle, .ready, .failed:
-            return "mic.fill"
+        case .recording: return "stop.fill"
+        case .transcribing: return "waveform.badge.magnifyingglass"
+        case .warming: return "sparkles"
+        case .ready: return "arrow.counterclockwise"
+        case .idle, .failed: return "mic.fill"
         }
     }
 
     var isBusyWithoutStop: Bool {
         switch self {
-        case .transcribing, .warming:
-            return true
-        case .idle, .ready, .recording, .failed:
-            return false
+        case .transcribing, .warming: return true
+        case .idle, .ready, .recording, .failed: return false
         }
     }
 }

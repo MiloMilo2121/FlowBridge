@@ -30,16 +30,118 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 statusHeroSection
-                Group {
-                    engineSection
-                    cloudSection
-                    polishSection
-                    captureSection
-                    accessSection
-                    hapticsSection
-                    vocabularySection
-                    statsSection
-                    privacySection
+
+                Section {
+                    NavigationLink {
+                        settingsPage("Transcription") {
+                            engineSection
+                            cloudSection
+                        }
+                    } label: {
+                        settingsLink(
+                            symbol: "waveform.badge.magnifyingglass",
+                            title: "Transcription",
+                            detail: "\(engine.displayName) · \(language.displayName)",
+                            tint: cloudActive ? .orange : FlowTheme.accent
+                        )
+                    }
+
+                    NavigationLink {
+                        settingsPage("Writing") {
+                            polishSection
+                            captureSection
+                        }
+                    } label: {
+                        settingsLink(
+                            symbol: "text.badge.checkmark",
+                            title: "Writing",
+                            detail: polishEnabled ? "Cleanup on · \(defaultTone.displayName)" : "Verbatim only"
+                        )
+                    }
+                } header: {
+                    Text("Voice").flowEyebrow()
+                }
+                .listRowBackground(FlowTheme.surfaceRaised)
+
+                Section {
+                    NavigationLink {
+                        settingsPage("System access") {
+                            accessSection
+                        }
+                    } label: {
+                        settingsLink(
+                            symbol: "button.vertical.left.press",
+                            title: "Ways to speak",
+                            detail: "Action Button, Lock Screen, Control Center"
+                        )
+                    }
+
+                    NavigationLink {
+                        settingsPage("Touch") {
+                            hapticsSection
+                        }
+                    } label: {
+                        settingsLink(
+                            symbol: "hand.tap",
+                            title: "Touch feedback",
+                            detail: hapticsEnabled ? "Haptics on" : "Haptics off"
+                        )
+                    }
+
+                    NavigationLink {
+                        VocabularyEditorView()
+                    } label: {
+                        settingsLink(
+                            symbol: "character.book.closed",
+                            title: "My vocabulary",
+                            detail: "Names, brands and domain language"
+                        )
+                    }
+                } header: {
+                    Text("Experience").flowEyebrow()
+                }
+                .listRowBackground(FlowTheme.surfaceRaised)
+
+                Section {
+                    NavigationLink {
+                        StatsContent()
+                            .navigationTitle("Statistics")
+                            .navigationBarTitleDisplayMode(.inline)
+                            .toolbar {
+                                ToolbarItem(placement: .topBarTrailing) {
+                                    Menu {
+                                        Button("Reset statistics", role: .destructive) {
+                                            coordinator.stats?.reset()
+                                            stats = DictationStatsStore.Stats()
+                                        }
+                                    } label: {
+                                        Image(systemName: "ellipsis")
+                                    }
+                                    .accessibilityLabel("Statistics options")
+                                }
+                            }
+                    } label: {
+                        settingsLink(
+                            symbol: "chart.line.uptrend.xyaxis",
+                            title: "Time given back",
+                            detail: stats.timeSavedMinutes.formatted(.number.precision(.fractionLength(0))) + " minutes"
+                        )
+                    }
+
+                    NavigationLink {
+                        PrivacyCockpitContent()
+                            .navigationTitle("Privacy")
+                            .navigationBarTitleDisplayMode(.inline)
+                    } label: {
+                        settingsLink(
+                            symbol: "shield.lefthalf.filled",
+                            title: "Privacy Cockpit",
+                            detail: cloudActive ? "Cloud is explicitly active" : "On-device and sealed",
+                            tint: cloudActive ? .orange : .green
+                        )
+                    }
+                } header: {
+                    Text("Your data").flowEyebrow()
                 }
                 .listRowBackground(FlowTheme.surfaceRaised)
             }
@@ -62,6 +164,45 @@ struct SettingsView: View {
         }
     }
 
+    private func settingsLink(
+        symbol: String,
+        title: String,
+        detail: String,
+        tint: Color = FlowTheme.accent
+    ) -> some View {
+        HStack(spacing: FlowTheme.space12) {
+            Image(systemName: symbol)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 36, height: 36)
+                .background(tint.opacity(0.11), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body.weight(.medium))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.vertical, FlowTheme.space4)
+    }
+
+    private func settingsPage<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Form {
+            content()
+                .listRowBackground(FlowTheme.surfaceRaised)
+        }
+        .scrollContentBackground(.hidden)
+        .background(RoomBackground())
+        .listSectionSpacing(FlowTheme.space20)
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
     /// "What is my dictation doing right now" — one glance, no digging.
     private var statusHeroSection: some View {
         Section {
@@ -70,11 +211,12 @@ struct SettingsView: View {
                     .fill(cloudActive ? Color.orange : Color.green)
                     .frame(width: 10, height: 10)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(engine.displayName)
+                    Text(cloudActive ? "Cloud by choice" : "Private by default")
                         .font(.headline)
-                    Text("\(language.displayName) · Final pass: \(finalPassMode.displayName)")
+                    Text("\(engine.displayName) · \(language.displayName) · \(finalPassMode.displayName)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
                 Spacer()
                 Image(systemName: cloudActive ? "cloud.fill" : "iphone")
@@ -124,7 +266,7 @@ struct SettingsView: View {
         } header: {
             Text("Transcription").flowEyebrow()
         } footer: {
-            Text(engineFooter + " Pinning the language noticeably improves accuracy; auto-detect struggles on short phrases. The final pass re-transcribes the whole recording once you stop — a moment slower, distinctly more accurate. Speaker detection labels who said what when more than one voice is heard; it runs in the final pass, and quietly uses the on-device Precision pass when the final pass is off. Engine changes apply from the next app launch.")
+            Text(engineFooter + " Pinning the language noticeably improves accuracy; auto-detect struggles on short phrases. The final pass re-transcribes the whole recording once you stop — a moment slower, distinctly more accurate. Speaker detection labels who said what when more than one voice is heard; it runs in the final pass, and quietly uses the on-device Precision pass when the final pass is off.")
         }
     }
 
@@ -231,7 +373,7 @@ struct SettingsView: View {
             accessRow(
                 symbol: "button.vertical.left.press",
                 title: "Action Button",
-                detail: "Settings → Action Button → choose FlowBridge “Quick Dictation”."
+                detail: "Settings → Action Button → Controls → choose FlowBridge Dictation."
             )
             accessRow(
                 symbol: "hand.tap",

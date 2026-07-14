@@ -125,16 +125,16 @@ struct PrivacyCockpitContent: View {
     }
 
     private var badges: some View {
-        Grid(horizontalSpacing: FlowTheme.space8, verticalSpacing: FlowTheme.space8) {
-            GridRow {
-                badge(cloudActive ? "icloud" : "iphone", cloudActive ? "Local-first · cloud opt-in" : "On-device only")
-                badge("person.crop.circle.badge.xmark", "No account")
-            }
-            GridRow {
-                badge("airplane", cloudActive ? "Falls back to local offline" : "Airplane Mode ready")
-                badge("cpu", "Neural Engine")
-            }
+        VStack(spacing: 0) {
+            badge(cloudActive ? "icloud" : "iphone", cloudActive ? "Local-first · cloud opt-in" : "On-device only")
+            Divider().padding(.leading, 44)
+            badge("person.crop.circle.badge.xmark", "No account or identity layer")
+            Divider().padding(.leading, 44)
+            badge("airplane", cloudActive ? "Automatic local fallback offline" : "Airplane Mode ready")
+            Divider().padding(.leading, 44)
+            badge("cpu", "Neural Engine processing")
         }
+        .flowCard()
     }
 
     private func badge(_ icon: String, _ text: String) -> some View {
@@ -146,7 +146,6 @@ struct PrivacyCockpitContent: View {
             Spacer(minLength: 0)
         }
         .padding(FlowTheme.space12)
-        .flowCard(radius: FlowTheme.radiusControl)
     }
 
     private var airplaneCard: some View {

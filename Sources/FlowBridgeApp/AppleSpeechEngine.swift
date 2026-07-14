@@ -127,7 +127,7 @@ actor AppleSpeechEngine: TranscriptionEngine {
         resultsTask = Task {
             do {
                 for try await result in transcriber.results {
-                    await self.handleLiveResult(result, liveStore: liveStore, counter: counter, sessionID: sessionID)
+                    self.handleLiveResult(result, liveStore: liveStore, counter: counter, sessionID: sessionID)
                 }
             } catch {
                 let message = DictationTextNormalizer.normalize(error.localizedDescription)

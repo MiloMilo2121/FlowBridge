@@ -2,7 +2,7 @@ import Accelerate
 import Foundation
 
 /// Real-time microphone level shared by the Dynamic Island waveform and the
-/// in-app Orb. Written from the audio tap thread (AppleSpeechEngine) or a
+/// in-app Living Voice Field. Written from the audio tap thread (AppleSpeechEngine) or a
 /// polling task (WhisperEngine); read from the main actor. An NSLock beats
 /// an actor hop on the realtime path.
 final class AudioLevelMeter: @unchecked Sendable {
@@ -16,7 +16,7 @@ final class AudioLevelMeter: @unchecked Sendable {
     private var head = 0
     private var smoothed: Float = 0
 
-    /// Latest smoothed level in 0…1, read per-frame by the Orb.
+    /// Latest smoothed level in 0…1, read per-frame by the Voice Field.
     var latestLevel: Float {
         lock.lock()
         defer { lock.unlock() }

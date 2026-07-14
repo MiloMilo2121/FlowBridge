@@ -2,17 +2,19 @@ import FlowBridgeShared
 import SwiftUI
 
 /// The room every screen sits in. Dark: a deep near-black base with a slow
-/// violet aurora breathing behind the orb — hue never moves (violet means
+/// violet aurora breathing behind the Living Voice Field — hue never moves (violet means
 /// "listening"; intensity is the only thing allowed to react). Light: the
 /// system background with one quiet violet wash — the full aurora reads
 /// dirty on white.
 ///
 /// `intensity` is the single reactive scalar (idle 0.35 → ready 0.75);
 /// when `listens` is true the aurora additionally reads the mic level per
-/// frame (same discipline as the Orb: no @Published storm).
+/// frame (same discipline as the Voice Field: no @Published storm).
 struct RoomBackground: View {
     var intensity: Double = 0.35
     var listens: Bool = false
+    var accent: Color = FlowTheme.accent
+    var secondaryAccent: Color = FlowTheme.accentDeep
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -32,12 +34,14 @@ struct RoomBackground: View {
                     AuroraLayer(
                         intensity: cappedIntensity,
                         listens: listens,
-                        frozen: reduceMotion
+                        frozen: reduceMotion,
+                        accent: accent,
+                        secondaryAccent: secondaryAccent
                     )
                 } else {
                     // Light: one wash, no motion.
                     RadialGradient(
-                        colors: [FlowTheme.accent.opacity(0.05 + 0.04 * cappedIntensity), .clear],
+                        colors: [accent.opacity(0.05 + 0.04 * cappedIntensity), .clear],
                         center: UnitPoint(x: 0.5, y: 0.30),
                         startRadius: 0,
                         endRadius: 440
@@ -47,6 +51,7 @@ struct RoomBackground: View {
         }
         .ignoresSafeArea()
         .animation(FlowMotion.drift, value: intensity)
+        .animation(FlowMotion.fieldMorph, value: accent)
     }
 
     private var showsAurora: Bool {
@@ -66,6 +71,8 @@ private struct AuroraLayer: View {
     let intensity: Double
     let listens: Bool
     let frozen: Bool
+    let accent: Color
+    let secondaryAccent: Color
 
     var body: some View {
         TimelineView(.animation(minimumInterval: frozen ? nil : (listens ? 1 / 30 : 1 / 12), paused: frozen && !listens)) { timeline in
@@ -83,7 +90,7 @@ private struct AuroraLayer: View {
     }
 
     private func knotPositions(t: TimeInterval) -> [SIMD2<Float>] {
-        // Two live knots (violet, behind/above the orb's resting position);
+        // Two live knots (violet, behind/above the field's resting position);
         // the rest anchor the mesh at the borders.
         let ax = Float(0.32 + 0.06 * sin(2 * .pi * t / 23))
         let ay = Float(0.34 + 0.05 * sin(2 * .pi * t / 31))
@@ -98,12 +105,12 @@ private struct AuroraLayer: View {
     }
 
     private func knotColors(energy: Double) -> [Color] {
-        let violet = FlowTheme.accent.opacity(min(0.14, 0.16 * energy))
-        let deep = FlowTheme.accentDeep.opacity(min(0.10, 0.12 * energy))
+        let primary = accent.opacity(min(0.14, 0.16 * energy))
+        let secondary = secondaryAccent.opacity(min(0.10, 0.12 * energy))
         return [
             .clear, .clear, .clear,
-            .clear, violet, .clear,
-            .clear, deep, .clear,
+            .clear, primary, .clear,
+            .clear, secondary, .clear,
         ]
     }
 }

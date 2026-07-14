@@ -18,6 +18,9 @@ final class DictationActivityController {
     private var pipeline: Task<Void, Never>?
     /// Auto-close of the interactive ready window.
     private var windowTask: Task<Void, Never>?
+    /// Latest ready payload, retained so late intent classification can
+    /// replace the generic refinement action without losing summary data.
+    private var readyState: DictationActivityAttributes.ContentState?
 
     var isActive: Bool {
         activity != nil
@@ -30,6 +33,7 @@ final class DictationActivityController {
     func endAllActivities() {
         windowTask?.cancel()
         windowTask = nil
+        readyState = nil
         activity = nil
         let all = Activity<DictationActivityAttributes>.activities
         guard !all.isEmpty else { return }
@@ -43,6 +47,7 @@ final class DictationActivityController {
     func start(sessionID: UUID, startedAt: Date) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         endAllActivities()
+        readyState = nil
 
         let state = DictationActivityAttributes.ContentState(
             phase: .recording,
@@ -59,10 +64,10 @@ final class DictationActivityController {
         )
     }
 
-    // MARK: - Interactive ready window (tone variants)
+    // MARK: - Interactive ready window
 
-    /// Delivery WITHOUT ending: the island stays alive ~30s with the tone
-    /// variant buttons; each tap renews the window; a new session or the
+    /// Delivery WITHOUT ending: the island stays alive ~30s with one useful
+    /// follow-up action. Each tap renews the window; a new session or the
     /// timer closes it.
     func deliverInteractive(
         transcriptPreview: String,
@@ -80,6 +85,7 @@ final class DictationActivityController {
             recordedSeconds: recordedSeconds,
             variantsAvailable: true
         )
+        readyState = state
         enqueue {
             await activity.update(ActivityContent(state: state, staleDate: nil))
         }
@@ -89,19 +95,80 @@ final class DictationActivityController {
     /// A variant landed: confirm in place and renew the window.
     func noteVariantApplied(_ note: String, preview: String) {
         guard let activity else { return }
-        var state = DictationActivityAttributes.ContentState(
+        var state = readyState ?? DictationActivityAttributes.ContentState(
             phase: .ready,
             transcriptPreview: preview,
             startedAt: Date(),
             levels: DictationActivityAttributes.ContentState.restingLevels,
-            variantsAvailable: true,
-            toneNote: note
+            variantsAvailable: true
         )
-        state.recordedSeconds = nil
+        state.transcriptPreview = String(preview.suffix(220))
+        state.toneNote = note
+        readyState = state
         enqueue {
             await activity.update(ActivityContent(state: state, staleDate: nil))
         }
         scheduleWindowEnd(finalState: state)
+    }
+
+    /// Intent classification finishes after delivery. Replace the generic
+    /// "Tighter" fallback with the useful real-world action in-place.
+    func offerSuggestedAction(
+        kind: DictationActivityAttributes.ContentState.SuggestedActionKind,
+        title: String,
+        detail: String
+    ) {
+        guard let activity, var state = readyState else { return }
+        state.suggestedActionKind = kind
+        state.suggestedActionTitle = String(title.prefix(44))
+        state.suggestedActionDetail = detail.isEmpty ? nil : String(detail.prefix(72))
+        state.toneNote = nil
+        readyState = state
+        enqueue {
+            await activity.update(ActivityContent(state: state, staleDate: nil))
+        }
+        scheduleWindowEnd(finalState: state)
+    }
+
+    func clearSuggestedAction() {
+        guard let activity, var state = readyState else { return }
+        state.suggestedActionKind = nil
+        state.suggestedActionTitle = nil
+        state.suggestedActionDetail = nil
+        readyState = state
+        enqueue {
+            await activity.update(ActivityContent(state: state, staleDate: nil))
+        }
+        scheduleWindowEnd(finalState: state)
+    }
+
+    func noteActionCompleted(_ note: String) {
+        guard let activity, var state = readyState else { return }
+        state.suggestedActionKind = nil
+        state.suggestedActionTitle = nil
+        state.suggestedActionDetail = nil
+        state.variantsAvailable = false
+        state.toneNote = note
+        readyState = state
+        enqueue {
+            await activity.update(ActivityContent(state: state, staleDate: nil))
+        }
+        scheduleWindowEnd(finalState: state, after: 7)
+    }
+
+    /// A failed system hand-off must not leave a tappable action whose
+    /// in-memory payload has already been cleared by the coordinator.
+    func noteActionFailed() {
+        guard let activity, var state = readyState else { return }
+        state.suggestedActionKind = nil
+        state.suggestedActionTitle = nil
+        state.suggestedActionDetail = nil
+        state.variantsAvailable = false
+        readyState = state
+        enqueue {
+            await activity.update(ActivityContent(state: state, staleDate: nil))
+        }
+        scheduleWindowEnd(finalState: state, after: 7)
     }
 
     private func scheduleWindowEnd(finalState: DictationActivityAttributes.ContentState, after seconds: TimeInterval = 30) {
@@ -120,6 +187,7 @@ final class DictationActivityController {
     private func closeWindow(finalState: DictationActivityAttributes.ContentState) {
         guard let activity else { return }
         self.activity = nil
+        readyState = nil
         var settled = finalState
         settled.variantsAvailable = false
         enqueue {
@@ -149,6 +217,7 @@ final class DictationActivityController {
         guard let activity else { return }
         windowTask?.cancel()
         windowTask = nil
+        readyState = nil
         self.activity = nil
 
         let state = DictationActivityAttributes.ContentState(
@@ -178,6 +247,7 @@ final class DictationActivityController {
         guard let activity else { return }
         windowTask?.cancel()
         windowTask = nil
+        readyState = nil
         self.activity = nil
         enqueue {
             await activity.end(nil, dismissalPolicy: immediately ? .immediate : .default)

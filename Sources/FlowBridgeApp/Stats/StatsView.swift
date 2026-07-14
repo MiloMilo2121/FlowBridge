@@ -61,7 +61,7 @@ struct StatsContent: View {
 
                 statStrip
 
-                streakCard
+                rhythmRail
 
                 Picker("Range", selection: $range) {
                     ForEach(RangeChoice.allCases) { choice in
@@ -149,26 +149,26 @@ struct StatsContent: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var streakCard: some View {
+    private var rhythmRail: some View {
         HStack(spacing: FlowTheme.space16) {
             VStack(alignment: .leading, spacing: FlowTheme.space4) {
                 HStack(spacing: FlowTheme.space4) {
-                    Image(systemName: "flame.fill")
+                    Image(systemName: "waveform.path")
                         .foregroundStyle(FlowTheme.accent)
-                    Text(streak > 0 ? "Day \(streak) in a row" : "Start your streak")
+                    Text(streak > 0 ? "\(streak)-day voice rhythm" : "Your voice rhythm")
                         .font(.headline)
                         .contentTransition(.numericText())
                 }
-                Text("One dictation a day keeps the keyboard away.")
+                Text("A record, not a target. Use voice when it gives time back.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
             HStack(spacing: 6) {
                 ForEach(week, id: \.day) { day in
-                    Circle()
-                        .fill(day.sessions > 0 ? AnyShapeStyle(FlowTheme.accentGradient) : AnyShapeStyle(Color.secondary.opacity(0.25)))
-                        .frame(width: 10, height: 10)
+                    Capsule(style: .continuous)
+                        .fill(day.sessions > 0 ? AnyShapeStyle(FlowTheme.accentGradient) : AnyShapeStyle(Color.secondary.opacity(0.18)))
+                        .frame(width: 7, height: day.sessions > 0 ? 24 : 9)
                 }
             }
         }

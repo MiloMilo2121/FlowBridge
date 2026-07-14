@@ -1,37 +1,39 @@
 import FlowBridgeShared
 import SwiftUI
 
-/// Four scenes, ninety seconds: speak first, wire the Action Button, enable
-/// the keyboard (with the Full Access warning explained honestly), then try
-/// a real five-second dictation — the first run ends on the product's magic
-/// moment. Permission prompts stay contextual; every scene reveals with a
-/// staggered rise that Reduce Motion flattens to a fade.
+/// Magic first, explanation second. The first page runs the real five-second
+/// voice loop; the next two pages reveal the system surfaces and the privacy
+/// contract without turning onboarding into a manual.
 struct OnboardingView: View {
     let onFinished: () -> Void
 
     @ObservedObject private var coordinator = FlowBridgeCoordinator.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var page = 0
     @State private var revealedPage = 0
     @State private var microphoneGranted = false
+    @State private var microphoneDenied = false
     @State private var demoStarted = false
     @State private var demoReadyPulse = 0
 
     var body: some View {
         ZStack {
-            RoomBackground()
-            tabs
-        }
-    }
+            RoomBackground(
+                intensity: page == 0 ? 0.58 : 0.36,
+                listens: isRecording,
+                accent: trialPhase.primary,
+                secondaryAccent: trialPhase.secondary
+            )
 
-    private var tabs: some View {
-        TabView(selection: $page) {
-            speakScene.tag(0)
-            triggerScene.tag(1)
-            keyboardScene.tag(2)
-            tryScene.tag(3)
+            TabView(selection: $page) {
+                voiceScene.tag(0)
+                everywhereScene.tag(1)
+                trustScene.tag(2)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .always))
+            .interactiveDismissDisabled()
         }
-        .tabViewStyle(.page)
-        .interactiveDismissDisabled()
         .onChange(of: page) { _, newPage in
             revealedPage = -1
             Task { @MainActor in
@@ -46,180 +48,273 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Scenes
+    // MARK: - 1. Product proof
 
-    private var speakScene: some View {
-        scene(page: 0, symbol: "waveform.circle.fill", title: "Speak.", message: "FlowBridge turns your voice into clean text, entirely on this iPhone. No cloud, no account. Try it: allow the microphone and say something.") {
-            Button {
-                Task {
-                    microphoneGranted = await FlowBridgeCoordinator.shared.requestMicrophonePermission()
-                    withAnimation(FlowMotion.state) { page = 1 }
+    private var voiceScene: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: FlowTheme.space20) {
+                Spacer(minLength: FlowTheme.space40)
+
+                staggered(0, page: 0) {
+                    Text("VOICE FIRST").flowEyebrow()
                 }
-            } label: {
-                Label(microphoneGranted ? "Microphone ready" : "Allow microphone", systemImage: "mic.fill")
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-            }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.capsule)
-            .tint(FlowTheme.accent)
-        } symbolView: {
-            Image(systemName: "waveform.circle.fill")
-                .font(.system(size: 72))
-                .foregroundStyle(FlowTheme.accentGradient)
-                .symbolEffect(.variableColor.iterative, options: .repeating)
-        }
-    }
 
-    private var triggerScene: some View {
-        scene(page: 1, symbol: "button.vertical.left.press.fill", title: "Your button.", message: "Map the Action Button to FlowBridge and dictation starts with one press — without opening the app, with a live waveform in the Dynamic Island. Settings → Action Button → Controls → FlowBridge Dictation. No Action Button? Back Tap or the Lock Screen control work the same way.") {
-            Button {
-                withAnimation(FlowMotion.state) { page = 2 }
-            } label: {
-                Text("Done — next")
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-            }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.capsule)
-            .tint(FlowTheme.accent)
-        } symbolView: {
-            Image(systemName: "button.vertical.left.press.fill")
-                .font(.system(size: 72))
-                .foregroundStyle(FlowTheme.accentGradient)
-                .symbolEffect(.pulse, options: .repeating)
-        }
-    }
-
-    private var keyboardScene: some View {
-        scene(page: 2, symbol: "keyboard.fill", title: "Your keyboard (optional).", message: "The FlowBridge keyboard inserts what you dictate right where you're typing. iOS shows a scary Full Access warning when you enable it. What we actually do: read your transcript from this device's shared container. What we cannot do: send it anywhere — the app has no network path for your voice, ever.") {
-            VStack(spacing: FlowTheme.space8) {
-                Button {
-                    withAnimation(FlowMotion.state) { page = 3 }
-                } label: {
-                    Text("Enable later in Settings")
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
+                staggered(1, page: 0) {
+                    Text("Say it.\nWatch it become useful.")
+                        .font(FlowTheme.hero(38, weight: .semibold))
+                        .tracking(-1.2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .buttonStyle(.glassProminent)
-                .buttonBorderShape(.capsule)
-                .tint(FlowTheme.accent)
 
-                Button("Skip — clipboard works too") {
-                    withAnimation(FlowMotion.state) { page = 3 }
+                staggered(2, page: 0) {
+                    VStack(spacing: 0) {
+                        LivingVoiceField(
+                            state: coordinator.state,
+                            elapsed: coordinator.recordingElapsed,
+                            pausedAt: coordinator.pausedAt,
+                            statusMessage: trialStatus,
+                            processingStage: coordinator.processingStage,
+                            readyPulse: demoReadyPulse
+                        ) {
+                            beginVoiceTrial()
+                        }
+
+                        if let trialText, !trialText.isEmpty {
+                            LinearGradient(
+                                colors: [.clear, trialPhase.primary.opacity(0.35), .clear],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(height: 1)
+                            .padding(.horizontal, FlowTheme.space16)
+
+                            Text("“\(trialText)”")
+                                .font(FlowTheme.serifFlavor(18))
+                                .lineLimit(3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(FlowTheme.space20)
+                                .transition(
+                                    reduceMotion
+                                        ? .opacity
+                                        : .opacity.combined(with: .scale(scale: 0.985, anchor: .top))
+                                )
+                        }
+                    }
+                    .flowVoiceSurface(tint: trialPhase.primary, secondaryTint: trialPhase.secondary)
+                    .animation(FlowMotion.settle, value: trialText)
                 }
-                .font(.footnote)
-            }
-        } symbolView: {
-            Image(systemName: "keyboard.fill")
-                .font(.system(size: 72))
-                .foregroundStyle(FlowTheme.accentGradient)
-                .symbolEffect(.bounce, value: page == 2)
-        }
-    }
 
-    /// The magic-moment page: a real dictation, five seconds, live words.
-    private var tryScene: some View {
-        VStack(spacing: FlowTheme.space16) {
-            Spacer()
-
-            staggered(0) {
-                Text("Try it now.")
-                    .font(FlowTheme.serifFlavor(40, weight: .medium))
-            }
-
-            staggered(1) {
-                OrbView(state: coordinator.state, diameter: 150, readyPulse: demoReadyPulse) {
-                    runDemo()
-                }
-            }
-
-            staggered(2) {
-                Group {
-                    if let snapshot = coordinator.liveTranscript, !snapshot.text.isEmpty {
-                        Text(snapshot.text)
-                            .font(.title3.weight(.medium))
-                            .lineLimit(2)
-                            .truncationMode(.head)
-                    } else if demoStarted, let last = coordinator.lastTranscript, case .ready = coordinator.state {
-                        Text("“\(last.text)” — copied. That's the whole flow.")
-                            .font(.title3.weight(.medium))
-                            .lineLimit(3)
-                    } else if microphoneGranted {
-                        Text(demoStarted ? "Listening — five seconds, say anything." : "Tap the orb and say anything. It stops by itself.")
-                            .font(.body)
+                if microphoneDenied {
+                    staggered(3, page: 0) {
+                        Label("Microphone access is needed for the live trial. You can enable it later in Settings.", systemImage: "mic.slash")
+                            .font(.footnote)
                             .foregroundStyle(.secondary)
-                    } else {
-                        Text("Microphone not enabled — you can allow it anytime from the first dictation.")
-                            .font(.body)
-                            .foregroundStyle(.secondary)
+                            .padding(FlowTheme.space16)
+                            .flowCard(radius: FlowTheme.radiusRow)
                     }
                 }
-                .multilineTextAlignment(.center)
-                .animation(FlowMotion.state, value: coordinator.liveTranscript?.text)
-            }
 
-            Spacer()
+                Spacer(minLength: FlowTheme.space24)
 
-            staggered(3) {
-                Button(action: finish) {
-                    Text("Start using FlowBridge")
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
+                staggered(4, page: 0) {
+                    Button {
+                        if trialFinished || microphoneDenied {
+                            withAnimation(FlowMotion.state) { page = 1 }
+                        } else {
+                            beginVoiceTrial()
+                        }
+                    } label: {
+                        Label(voiceCTA, systemImage: trialFinished ? "arrow.right" : "mic.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .tint(FlowTheme.accent)
+                    .disabled(isRecording)
                 }
-                .buttonStyle(.glassProminent)
-                .buttonBorderShape(.capsule)
-                .tint(FlowTheme.accent)
+
+                Button("Skip the trial") {
+                    withAnimation(FlowMotion.state) { page = 1 }
+                }
+                .font(.footnote.weight(.medium))
+                .frame(maxWidth: .infinity)
+                .foregroundStyle(.secondary)
+
+                Spacer(minLength: 64)
             }
-            .padding(.bottom, 48)
+            .padding(.horizontal, FlowTheme.phoneInset)
         }
-        .padding(24)
+        .scrollIndicators(.hidden)
     }
 
-    // MARK: - Scene scaffolding
+    // MARK: - 2. System surfaces
 
-    private func scene(
-        page scenePage: Int,
-        symbol: String,
-        title: String,
-        message: String,
-        @ViewBuilder actions: () -> some View,
-        @ViewBuilder symbolView: () -> some View
-    ) -> some View {
-        VStack(spacing: FlowTheme.space20) {
-            Spacer()
-            staggered(0, page: scenePage) { symbolView() }
-            staggered(1, page: scenePage) {
-                Text(title)
-                    .font(FlowTheme.serifFlavor(40, weight: .medium))
+    private var everywhereScene: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: FlowTheme.space20) {
+                Spacer(minLength: FlowTheme.space40)
+
+                staggered(0, page: 1) {
+                    Text("NO APP HUNTING").flowEyebrow()
+                }
+
+                staggered(1, page: 1) {
+                    Text("FlowBridge lives\nwhere your hand already is.")
+                        .font(FlowTheme.hero(36, weight: .semibold))
+                        .tracking(-1)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                staggered(2, page: 1) {
+                    SystemBridgeMap()
+                }
+
+                staggered(3, page: 1) {
+                    Text("Set the Action Button to Controls → FlowBridge Dictation. The same one-tap entry is available on the Lock Screen and in Control Center.")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: FlowTheme.space24)
+
+                staggered(4, page: 1) {
+                    Button {
+                        withAnimation(FlowMotion.state) { page = 2 }
+                    } label: {
+                        Label("See the privacy contract", systemImage: "shield.lefthalf.filled")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .tint(FlowTheme.accent)
+                }
+
+                Spacer(minLength: 64)
             }
-            staggered(2, page: scenePage) {
-                Text(message)
-                    .font(.body)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            staggered(3, page: scenePage) { actions() }
-                .padding(.bottom, 48)
+            .padding(.horizontal, FlowTheme.phoneInset)
         }
-        .padding(24)
+        .scrollIndicators(.hidden)
     }
 
-    /// Staggered reveal: opacity + a 12pt rise, delayed per element. With
-    /// Reduce Motion the rise disappears and only the fade remains.
-    private func staggered(_ index: Int, page scenePage: Int? = nil, @ViewBuilder content: () -> some View) -> some View {
-        StaggeredReveal(
-            revealed: revealedPage == (scenePage ?? page),
-            delay: Double(index) * 0.08,
-            content: content
+    // MARK: - 3. Trust
+
+    private var trustScene: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: FlowTheme.space20) {
+                Spacer(minLength: FlowTheme.space40)
+
+                staggered(0, page: 2) {
+                    Text("TRUST YOU CAN VERIFY").flowEyebrow()
+                }
+
+                staggered(1, page: 2) {
+                    Text("Your voice is yours.\nThe controls make that visible.")
+                        .font(FlowTheme.hero(36, weight: .semibold))
+                        .tracking(-1)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                staggered(2, page: 2) {
+                    VStack(spacing: 0) {
+                        TrustRow(icon: "iphone", title: "On-device by default", detail: "Speech is processed locally on this iPhone.")
+                        Divider().padding(.leading, 56)
+                        TrustRow(icon: "cloud", title: "Cloud only by choice", detail: "A cloud engine appears only after you add a key and select it.")
+                        Divider().padding(.leading, 56)
+                        TrustRow(icon: "person.crop.circle.badge.xmark", title: "No account", detail: "History and vocabulary stay in the shared local container.")
+                        Divider().padding(.leading, 56)
+                        TrustRow(icon: "keyboard", title: "Keyboard is optional", detail: "Enable it later; clipboard delivery already works everywhere.")
+                    }
+                    .flowCard()
+                }
+
+                staggered(3, page: 2) {
+                    Label("Try Airplane Mode after setup. Dictation keeps working.", systemImage: "airplane")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(FlowTheme.accent)
+                }
+
+                Spacer(minLength: FlowTheme.space24)
+
+                staggered(4, page: 2) {
+                    Button(action: finish) {
+                        Label("Start using FlowBridge", systemImage: "waveform.path")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .tint(FlowTheme.accent)
+                }
+
+                Spacer(minLength: 64)
+            }
+            .padding(.horizontal, FlowTheme.phoneInset)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    // MARK: - Trial
+
+    private var isRecording: Bool {
+        if case .recording = coordinator.state { return true }
+        return false
+    }
+
+    private var trialPhase: FlowVoicePhase {
+        .resolve(
+            state: coordinator.state,
+            processingStage: coordinator.processingStage,
+            pausedAt: coordinator.pausedAt
         )
     }
 
-    private func runDemo() {
-        guard !demoStarted || !coordinator.state.isBusyWithoutStop else { return }
-        demoStarted = true
+    private var trialFinished: Bool {
+        if case .ready = coordinator.state, demoStarted { return true }
+        return false
+    }
+
+    private var trialText: String? {
+        if let live = coordinator.liveTranscript?.text, !live.isEmpty { return live }
+        if trialFinished { return coordinator.lastTranscript?.text }
+        return nil
+    }
+
+    private var trialStatus: String? {
+        if microphoneDenied { return "Microphone access is off."
+        }
+        if trialFinished { return "That text is already on your clipboard."
+        }
+        if demoStarted && isRecording { return "Keep talking. This trial stops after five seconds."
+        }
+        return "Tap the field or the button below to try the real loop."
+    }
+
+    private var voiceCTA: String {
+        if trialFinished { return "Continue"
+        }
+        if microphoneDenied { return "Continue without trial"
+        }
+        if demoStarted { return "Listening…"
+        }
+        return "Try with my voice"
+    }
+
+    private func beginVoiceTrial() {
+        guard !isRecording else { return }
         Task {
+            if !microphoneGranted {
+                microphoneGranted = await coordinator.requestMicrophonePermission()
+                microphoneDenied = !microphoneGranted
+            }
+            guard microphoneGranted else { return }
+
+            demoStarted = true
             await coordinator.toggleRecording()
             guard case .recording = coordinator.state else { return }
             try? await Task.sleep(for: .seconds(5))
@@ -233,6 +328,104 @@ struct OnboardingView: View {
         UserDefaults.standard.set(true, forKey: FlowBridgeConstants.onboardingCompletedKey)
         onFinished()
     }
+
+    private func staggered(_ index: Int, page scenePage: Int, @ViewBuilder content: () -> some View) -> some View {
+        StaggeredReveal(
+            revealed: revealedPage == scenePage,
+            delay: Double(index) * 0.07,
+            content: content
+        )
+    }
+}
+
+private struct SystemBridgeMap: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(spacing: FlowTheme.space16) {
+            HStack(spacing: FlowTheme.space12) {
+                Capsule(style: .continuous)
+                    .fill(.black)
+                    .frame(width: 186, height: 50)
+                    .overlay {
+                        HStack(spacing: FlowTheme.space8) {
+                            Image(systemName: "waveform")
+                                .foregroundStyle(FlowTheme.recordingGradient)
+                                .symbolEffect(.variableColor.iterative, options: reduceMotion ? .nonRepeating : .repeating)
+                            Text("0:12")
+                                .font(FlowTheme.numeric(13))
+                                .foregroundStyle(.white)
+                            Spacer(minLength: 0)
+                            Image(systemName: "stop.fill")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                        .padding(.horizontal, FlowTheme.space16)
+                    }
+                Text("DYNAMIC\nISLAND")
+                    .font(FlowTheme.fieldLabel(10))
+                    .tracking(0.8)
+                    .foregroundStyle(.secondary)
+            }
+
+            LinearGradient(
+                colors: [FlowTheme.accent.opacity(0.5), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(width: 1, height: 28)
+
+            GlassEffectContainer(spacing: FlowTheme.space12) {
+                HStack(spacing: FlowTheme.space12) {
+                    systemNode("button.vertical.left.press.fill", "Action")
+                    systemNode("lock.fill", "Lock")
+                    systemNode("switch.2", "Control")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, FlowTheme.space24)
+        .flowCard()
+    }
+
+    private func systemNode(_ symbol: String, _ label: String) -> some View {
+        VStack(spacing: FlowTheme.space8) {
+            Image(systemName: symbol)
+                .font(.title3.weight(.semibold))
+                .frame(width: 52, height: 52)
+                .flowGlass(interactive: true)
+            Text(label)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct TrustRow: View {
+    let icon: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: FlowTheme.space12) {
+            Image(systemName: icon)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(FlowTheme.accent)
+                .frame(width: 36, height: 36)
+                .background(FlowTheme.accent.opacity(0.10), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(FlowTheme.space16)
+    }
 }
 
 private struct StaggeredReveal<Content: View>: View {
@@ -245,7 +438,7 @@ private struct StaggeredReveal<Content: View>: View {
     var body: some View {
         content
             .opacity(revealed ? 1 : 0)
-            .offset(y: revealed || reduceMotion ? 0 : 12)
-            .animation(.smooth(duration: 0.4).delay(revealed ? delay : 0), value: revealed)
+            .offset(y: revealed || reduceMotion ? 0 : 10)
+            .animation(.smooth(duration: 0.38).delay(revealed ? delay : 0), value: revealed)
     }
 }

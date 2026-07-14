@@ -27,7 +27,7 @@ final class ActionPerformer {
         case .reminder(let title, let due):
             return await addReminder(title: title, due: due)
         case .message(let body):
-            return open(scheme: "sms:&body=", payload: body, failure: "Couldn't open Messages")
+            return await open(scheme: "sms:&body=", payload: body, failure: "Couldn't open Messages")
         case .email(let subject, let body):
             var components = URLComponents()
             components.scheme = "mailto"
@@ -40,7 +40,9 @@ final class ActionPerformer {
             guard let url = components.url else {
                 return .failed("No mail app configured")
             }
-            await UIApplication.shared.open(url)
+            guard await UIApplication.shared.open(url) else {
+                return .failed("No mail app configured")
+            }
             return .openedApp
         }
     }
@@ -98,7 +100,7 @@ final class ActionPerformer {
     }
 
     /// `sms:` predates URL components — the body rides after a bare `&`.
-    private func open(scheme: String, payload: String, failure: String) -> Outcome {
+    private func open(scheme: String, payload: String, failure: String) async -> Outcome {
         // Strict encoding: a literal &, = or ? inside the dictated text would
         // otherwise terminate the body parameter.
         var allowed = CharacterSet.urlQueryAllowed
@@ -107,7 +109,9 @@ final class ActionPerformer {
         guard let url = URL(string: scheme + encoded) else {
             return .failed(failure)
         }
-        UIApplication.shared.open(url)
+        guard await UIApplication.shared.open(url) else {
+            return .failed(failure)
+        }
         return .openedApp
     }
 }

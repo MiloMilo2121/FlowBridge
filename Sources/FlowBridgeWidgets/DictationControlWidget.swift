@@ -11,10 +11,10 @@ struct DictationControlWidget: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: Self.kind) {
             ControlWidgetButton(action: StartDictationIntent()) {
-                Label("Dictate", systemImage: "waveform")
+                Label("Speak", systemImage: "waveform.path")
             }
         }
         .displayName("FlowBridge Dictation")
-        .description("Start dictating with one tap.")
+        .description("Start the live voice bridge with one tap.")
     }
 }

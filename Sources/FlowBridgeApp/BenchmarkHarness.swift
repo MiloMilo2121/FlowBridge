@@ -90,7 +90,7 @@ enum BenchmarkHarness {
         let clock = ContinuousClock()
 
         for benchmarkCase in cases {
-            let duration = AudioFileDurationReader.duration(of: benchmarkCase.audioURL) ?? 0
+            let duration = await AudioFileDurationReader.duration(of: benchmarkCase.audioURL) ?? 0
             let recording = RecordedAudio(url: benchmarkCase.audioURL, duration: duration)
 
             let start = clock.now

@@ -512,11 +512,26 @@ actor WhisperEngine: TranscriptionEngine {
         }
 
         let modelFolder = try WhisperModelLocator.folder(for: variant)
-        let compute = ModelComputeOptions(
-            melCompute: .cpuAndGPU,
-            audioEncoderCompute: .cpuAndNeuralEngine,
-            textDecoderCompute: .cpuAndNeuralEngine
-        )
+        let compute: ModelComputeOptions
+        switch variant {
+        case .bundled:
+            compute = ModelComputeOptions(
+                melCompute: .cpuAndGPU,
+                audioEncoderCompute: .cpuAndNeuralEngine,
+                textDecoderCompute: .cpuAndNeuralEngine
+            )
+        case .precision:
+            // On this device the sideloaded large-v3-turbo decodes to EMPTY
+            // on the Neural Engine — fresh weights and a forced ANE recompile
+            // both failed, while the same code path runs the bundled model
+            // fine. GPU is the escape hatch: slower per pass, but it bypasses
+            // whatever the ANE mis-compiles on the 632MB encoder/decoder.
+            compute = ModelComputeOptions(
+                melCompute: .cpuAndGPU,
+                audioEncoderCompute: .cpuAndGPU,
+                textDecoderCompute: .cpuAndGPU
+            )
+        }
 
         let config = WhisperKitConfig(
             modelFolder: modelFolder.path,

@@ -46,20 +46,28 @@ private struct SpeakLockView: View {
                 Button(intent: StartDictationIntent()) {
                     ZStack {
                         AccessoryWidgetBackground()
-                        Image(systemName: "mic.fill")
-                            .font(.title3.weight(.semibold))
+                        FlowWaveShape(
+                            levels: [0.12, 0.34, 0.85, 0.42, 0.16],
+                            controlPoints: 7
+                        )
+                        .fill(.tint)
+                        .frame(width: 34, height: 22)
                     }
                 }
                 .buttonStyle(.plain)
             default:
                 Button(intent: StartDictationIntent()) {
                     HStack(spacing: 8) {
-                        Image(systemName: "waveform")
-                            .font(.title3.weight(.semibold))
+                        FlowWaveShape(
+                            levels: [0.1, 0.28, 0.78, 0.46, 0.16],
+                            controlPoints: 7
+                        )
+                        .fill(.tint)
+                        .frame(width: 34, height: 20)
                         VStack(alignment: .leading, spacing: 0) {
                             Text("Speak")
                                 .font(.headline)
-                            Text("FlowBridge")
+                            Text("Opens the live bridge")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -70,6 +78,7 @@ private struct SpeakLockView: View {
             }
         }
         .containerBackground(for: .widget) { Color.clear }
+        .widgetAccentable()
         .accessibilityLabel("Start dictation")
     }
 }

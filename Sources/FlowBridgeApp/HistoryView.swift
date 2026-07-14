@@ -12,6 +12,13 @@ struct HistoryView: View {
     @State private var tokens: [HistoryToken] = []
     @State private var suggestedTokens = HistoryToken.allCases
     @State private var renameTarget: TranscriptHistoryStore.Entry?
+    @State private var selectedEntry: TranscriptHistoryStore.Entry?
+
+    private struct HistoryGroup: Identifiable {
+        let id: String
+        let title: String
+        let entries: [TranscriptHistoryStore.Entry]
+    }
 
     enum HistoryToken: String, Identifiable, CaseIterable {
         case pinned = "Pinned"
@@ -89,6 +96,13 @@ struct HistoryView: View {
                 .presentationBackground(.thinMaterial)
                 .presentationCornerRadius(FlowTheme.radiusSheet)
             }
+            .sheet(item: $selectedEntry) { entry in
+                HistoryDetailView(entry: entry)
+                    .presentationDetents([.medium, .large])
+                    .presentationBackground(.thinMaterial)
+                    .presentationCornerRadius(FlowTheme.radiusSheet)
+                    .presentationDragIndicator(.visible)
+            }
         }
     }
 
@@ -96,6 +110,12 @@ struct HistoryView: View {
 
     private var list: some View {
         List {
+            Section {
+                historyHeader
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 12, trailing: 20))
+            }
+
             if isBrowsing && !pinned.isEmpty {
                 Section {
                     ForEach(pinned) { entry in
@@ -105,13 +125,23 @@ struct HistoryView: View {
                     Text("Pinned").flowEyebrow()
                 }
             }
-            Section {
-                ForEach(isBrowsing ? recent : filteredEntries) { entry in
-                    row(for: entry)
+            if isBrowsing {
+                ForEach(historyGroups) { group in
+                    Section {
+                        ForEach(group.entries) { entry in
+                            row(for: entry)
+                        }
+                    } header: {
+                        Text(group.title).flowEyebrow()
+                    }
                 }
-            } header: {
-                if isBrowsing && !pinned.isEmpty {
-                    Text("Recent").flowEyebrow()
+            } else {
+                Section {
+                    ForEach(filteredEntries) { entry in
+                        row(for: entry)
+                    }
+                } header: {
+                    Text("Matches").flowEyebrow()
                 }
             }
         }
@@ -141,6 +171,50 @@ struct HistoryView: View {
         filteredEntries.filter { !$0.isPinned }
     }
 
+    private var historyGroups: [HistoryGroup] {
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfToday = calendar.startOfDay(for: now)
+        let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) ?? startOfToday
+        let startOfWeek = calendar.date(byAdding: .day, value: -7, to: startOfToday) ?? startOfYesterday
+
+        let candidates: [(String, String, (Date) -> Bool)] = [
+            ("today", "Today", { $0 >= startOfToday }),
+            ("yesterday", "Yesterday", { $0 >= startOfYesterday && $0 < startOfToday }),
+            ("week", "Previous 7 days", { $0 >= startOfWeek && $0 < startOfYesterday }),
+            ("earlier", "Earlier", { $0 < startOfWeek }),
+        ]
+
+        return candidates.compactMap { id, title, matches in
+            let grouped = recent.filter { matches($0.record.createdAt) }
+            return grouped.isEmpty ? nil : HistoryGroup(id: id, title: title, entries: grouped)
+        }
+    }
+
+    private var historyHeader: some View {
+        HStack(spacing: FlowTheme.space16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("LOCAL VOICE TRAIL")
+                    .font(FlowTheme.fieldLabel(10))
+                    .tracking(1)
+                    .foregroundStyle(FlowTheme.accent)
+                Text("\(entries.count) dictations")
+                    .font(.title3.weight(.semibold))
+                Text("Search, reuse, or follow what each voice note became.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "waveform.path.ecg")
+                .font(.title2.weight(.medium))
+                .foregroundStyle(FlowTheme.accentGradient)
+                .frame(width: 52, height: 52)
+                .flowGlass()
+        }
+        .padding(FlowTheme.space16)
+        .flowCard()
+    }
+
     private var emptyState: some View {
         ContentUnavailableView {
             Label {
@@ -161,47 +235,55 @@ struct HistoryView: View {
     // MARK: - Row
 
     private func row(for entry: TranscriptHistoryStore.Entry) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: FlowTheme.space8) {
-                if entry.isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.caption2)
-                        .foregroundStyle(FlowTheme.accent)
+        Button {
+            selectedEntry = entry
+        } label: {
+            HStack(alignment: .top, spacing: FlowTheme.space12) {
+                VStack(spacing: 3) {
+                    Circle()
+                        .fill(entry.isPinned ? FlowTheme.accent : FlowTheme.accent.opacity(0.38))
+                        .frame(width: entry.isPinned ? 10 : 8, height: entry.isPinned ? 10 : 8)
+                    Rectangle()
+                        .fill(FlowTheme.accent.opacity(0.12))
+                        .frame(width: 1, height: 58)
                 }
-                Text(entry.record.createdAt, format: .dateTime.day().month().hour().minute())
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(wordCount(of: entry)) words")
-                    .font(FlowTheme.numeric(11, weight: .medium))
-                    .padding(.horizontal, FlowTheme.space8)
-                    .padding(.vertical, 2)
-                    .background(.quaternary, in: Capsule(style: .continuous))
-                Text(entry.record.audioDuration.formatted(.number.precision(.fractionLength(0))) + "s")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: FlowTheme.space8) {
+                        if entry.isPinned {
+                            Image(systemName: "pin.fill")
+                                .font(.caption2)
+                                .foregroundStyle(FlowTheme.accent)
+                        }
+                        Text(entry.record.createdAt, format: .dateTime.hour().minute())
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Text("\(wordCount(of: entry)) words")
+                            .font(FlowTheme.numeric(10, weight: .medium))
+                            .foregroundStyle(.tertiary)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    Text(SpeakerLabelStyler.attributed(entry.record.text))
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(3)
+                    if let action = entry.record.actionTaken {
+                        Label(action, systemImage: "arrow.turn.down.right")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(FlowTheme.accent)
+                    }
+                }
             }
-            Text(SpeakerLabelStyler.attributed(entry.record.text))
-                .font(.body)
-                .lineLimit(3)
-            // Voice → action trail: what this dictation became beyond text.
-            if let action = entry.record.actionTaken {
-                Label(action, systemImage: "arrow.turn.down.right")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(FlowTheme.accent)
-            }
+            .padding(.vertical, FlowTheme.space8)
         }
-        .padding(FlowTheme.space16)
-        .flowCard(radius: FlowTheme.radiusRow)
-        .overlay {
-            if entry.isPinned {
-                RoundedRectangle(cornerRadius: FlowTheme.radiusRow, style: .continuous)
-                    .strokeBorder(FlowTheme.accent.opacity(0.35), lineWidth: 1)
-            }
-        }
+        .buttonStyle(.plain)
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
         .contentShape(Rectangle())
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
@@ -280,6 +362,91 @@ struct HistoryView: View {
     private func reload() async {
         guard let store = coordinator.history else { return }
         entries = query.isEmpty ? await store.all() : await store.search(query)
+    }
+}
+
+private struct HistoryDetailView: View {
+    let entry: TranscriptHistoryStore.Entry
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: FlowTheme.space20) {
+                    HStack(spacing: FlowTheme.space12) {
+                        Image(systemName: "waveform")
+                            .foregroundStyle(FlowTheme.accentGradient)
+                            .frame(width: 44, height: 44)
+                            .flowGlass()
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.record.createdAt, format: .dateTime.day().month().year().hour().minute())
+                                .font(.subheadline.weight(.semibold))
+                            Text("\(wordCount) words · \(Int(entry.record.audioDuration.rounded())) seconds")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Text(SpeakerLabelStyler.attributed(entry.record.text))
+                        .font(FlowTheme.hero(22))
+                        .lineSpacing(4)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(FlowTheme.space20)
+                        .flowCard()
+
+                    if let action = entry.record.actionTaken {
+                        Label(action, systemImage: "arrow.turn.down.right.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(FlowTheme.accent)
+                    }
+
+                    HStack(spacing: FlowTheme.space12) {
+                        Button {
+                            UIPasteboard.general.string = entry.record.text
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.clipboard")
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 48)
+                        }
+                        .buttonStyle(.glassProminent)
+                        .tint(FlowTheme.accent)
+
+                        ShareLink(item: entry.record.text) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 48)
+                        }
+                        .buttonStyle(.glass)
+                    }
+
+                    if let raw = entry.record.rawText, raw != entry.record.text {
+                        DisclosureGroup("Verbatim version") {
+                            Text(raw)
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .padding(.top, FlowTheme.space8)
+                        }
+                        .padding(FlowTheme.space16)
+                        .flowCard(radius: FlowTheme.radiusRow)
+                    }
+                }
+                .padding(FlowTheme.space20)
+            }
+            .background(RoomBackground())
+            .navigationTitle("Dictation")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var wordCount: Int {
+        entry.record.text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
     }
 }
 

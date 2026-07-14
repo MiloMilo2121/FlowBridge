@@ -15,6 +15,13 @@ enum FlowMotion {
     static let drift: Animation = .smooth(duration: 1.6)
     /// Ticker/stat roll.
     static let tick: Animation = .smooth(duration: 0.8)
+    /// One geometry from invitation -> listening -> transcript rail.
+    /// Slightly slower than a button response so the eye can follow it.
+    static let fieldMorph: Animation = .spring(duration: 0.48, bounce: 0.06)
+    /// Controls fuse and separate inside one GlassEffectContainer.
+    static let glassMorph: Animation = .spring(duration: 0.34, bounce: 0.08)
+    /// A transcript has weight; it settles instead of bouncing.
+    static let settle: Animation = .spring(duration: 0.42, bounce: 0.02)
 }
 
 /// One clock for the stop→reveal→tick choreography: every element of the

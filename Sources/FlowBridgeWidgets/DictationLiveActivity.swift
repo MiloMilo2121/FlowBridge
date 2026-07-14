@@ -9,8 +9,8 @@ import WidgetKit
 /// history, pushed by the app's island tick (4Hz burst at start, then 2Hz,
 /// change-gated so silence costs nothing). Between updates the island stays
 /// alive on budget-free primitives: `Text(timerInterval:)` and repeating
-/// `symbolEffect`s. Phase narrative: red live wave → violet frozen wave
-/// while polishing → green check with "N words · Ns" → auto-dismiss.
+/// `symbolEffect`s. Phase narrative: coral voice → decode blue → refine gold
+/// → delivered mint. It mirrors the in-app field without spending updates.
 struct DictationLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: DictationActivityAttributes.self) { context in
@@ -39,7 +39,7 @@ struct DictationLiveActivity: Widget {
             } minimal: {
                 MinimalGlyph(state: context.state)
             }
-            .keylineTint(FlowBridgeTheme.flowViolet)
+            .keylineTint(PhaseStyle.color(for: context.state))
         }
         // One implementation, four surfaces: the small family relays the
         // activity to the Apple Watch Smart Stack and CarPlay for free.
@@ -108,16 +108,27 @@ private struct CapRing: View {
 // MARK: - Phase styling
 
 private enum PhaseStyle {
-    static func waveTint(for phase: DictationActivityAttributes.ContentState.Phase) -> AnyShapeStyle {
-        switch phase {
+    static func waveTint(for state: DictationActivityAttributes.ContentState) -> AnyShapeStyle {
+        switch state.phase {
         case .recording:
             return AnyShapeStyle(FlowBridgeTheme.recordingGradient)
         case .transcribing:
-            return AnyShapeStyle(FlowBridgeTheme.accentGradient)
+            return state.refining
+                ? AnyShapeStyle(FlowBridgeTheme.refiningGradient)
+                : AnyShapeStyle(FlowBridgeTheme.decodingGradient)
         case .ready:
-            return AnyShapeStyle(Color.green.gradient)
+            return AnyShapeStyle(FlowBridgeTheme.deliveredGradient)
         case .failed:
             return AnyShapeStyle(Color.orange.gradient)
+        }
+    }
+
+    static func color(for state: DictationActivityAttributes.ContentState) -> Color {
+        switch state.phase {
+        case .recording: return FlowBridgeTheme.recordingWarm
+        case .transcribing: return state.refining ? FlowBridgeTheme.refiningGold : FlowBridgeTheme.processingBlue
+        case .ready: return FlowBridgeTheme.deliveredMint
+        case .failed: return .orange
         }
     }
 }
@@ -134,36 +145,75 @@ private struct EngineBadgeGlyph: View {
     }
 }
 
-/// The ready-window: one tap re-polishes the delivered text with a tone and
-/// refreshes the clipboard — a better version for the message you're about
-/// to paste, without opening the app.
-private struct VariantsRow: View {
+/// One useful post-delivery action. Intent classification replaces the
+/// generic concise fallback as soon as it lands, without growing a row of
+/// competing micro-buttons inside the island.
+private struct ReadyAction: View {
     let state: DictationActivityAttributes.ContentState
 
     var body: some View {
-        HStack(spacing: 6) {
-            if let note = state.toneNote {
-                Text(note)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.green)
-                    .lineLimit(1)
-            } else {
-                SummaryLine(state: state)
+        if let note = state.toneNote {
+            Label(note, systemImage: "checkmark.circle.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.green)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let kind = state.suggestedActionKind {
+            Button(intent: PerformSuggestedActionIntent()) {
+                HStack(spacing: 8) {
+                    Image(systemName: kind.symbol)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(state.suggestedActionTitle ?? kind.fallbackTitle)
+                            .font(.subheadline.weight(.semibold))
+                        if let detail = state.suggestedActionDetail, !detail.isEmpty {
+                            Text(detail)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption.weight(.bold))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Spacer(minLength: 4)
-            variantButton("Formal", raw: "formal")
-            variantButton("Casual", raw: "casual")
-            variantButton("Tighter", raw: "concise")
+            .buttonStyle(.glassProminent)
+            .tint(FlowBridgeTheme.flowViolet)
+        } else if state.variantsAvailable {
+            HStack(spacing: 8) {
+                SummaryLine(state: state)
+                Spacer(minLength: 4)
+                Button(intent: ApplyToneIntent(tone: "concise")) {
+                    Label("Tighter", systemImage: "text.badge.minus")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.glass)
+                .tint(FlowBridgeTheme.flowViolet)
+            }
+        } else {
+            SummaryLine(state: state)
+        }
+    }
+}
+
+private extension DictationActivityAttributes.ContentState.SuggestedActionKind {
+    var symbol: String {
+        switch self {
+        case .calendar: return "calendar.badge.plus"
+        case .reminder: return "checklist"
+        case .message: return "message.fill"
+        case .email: return "envelope.fill"
         }
     }
 
-    private func variantButton(_ label: String, raw: String) -> some View {
-        Button(intent: ApplyToneIntent(tone: raw)) {
-            Text(label)
-                .font(.caption2.weight(.medium))
+    var fallbackTitle: String {
+        switch self {
+        case .calendar: return "Add event"
+        case .reminder: return "Add reminder"
+        case .message: return "Open Messages"
+        case .email: return "Open Mail"
         }
-        .buttonStyle(.bordered)
-        .tint(FlowBridgeTheme.flowViolet)
     }
 }
 
@@ -185,17 +235,17 @@ private struct CompactLeading: View {
                 levels: state.levels,
                 controlPoints: 6,
                 height: 14,
-                tint: PhaseStyle.waveTint(for: .recording)
+                tint: PhaseStyle.waveTint(for: state)
             )
             .frame(width: 26)
             .opacity(isStale ? 0.35 : 1)
         case .transcribing:
             Image(systemName: "ellipsis")
                 .symbolEffect(.variableColor.iterative, options: .repeating)
-                .foregroundStyle(FlowBridgeTheme.flowViolet)
+                .foregroundStyle(PhaseStyle.color(for: state))
         case .ready:
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(FlowBridgeTheme.deliveredMint)
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
                 .foregroundStyle(.orange)
@@ -236,10 +286,10 @@ private struct MinimalGlyph: View {
         case .transcribing:
             Image(systemName: "ellipsis")
                 .symbolEffect(.variableColor.iterative, options: .repeating)
-                .foregroundStyle(FlowBridgeTheme.flowViolet)
+                .foregroundStyle(PhaseStyle.color(for: state))
         case .ready:
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(FlowBridgeTheme.deliveredMint)
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
                 .foregroundStyle(.orange)
@@ -260,7 +310,7 @@ private struct ExpandedLeading: View {
                 levels: state.levels,
                 controlPoints: 7,
                 height: 30,
-                tint: PhaseStyle.waveTint(for: .recording)
+                tint: PhaseStyle.waveTint(for: state)
             )
             .opacity(isStale ? 0.35 : 1)
             .transition(.scale(scale: 0.85).combined(with: .opacity))
@@ -268,11 +318,11 @@ private struct ExpandedLeading: View {
             Image(systemName: "ellipsis")
                 .font(.title2)
                 .symbolEffect(.variableColor.iterative, options: .repeating)
-                .foregroundStyle(FlowBridgeTheme.flowViolet)
+                .foregroundStyle(PhaseStyle.color(for: state))
         case .ready:
             Image(systemName: "checkmark.circle.fill")
                 .font(.title2)
-                .foregroundStyle(.green)
+                .foregroundStyle(FlowBridgeTheme.deliveredMint)
                 .symbolEffect(.bounce, value: state.phase)
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
@@ -345,7 +395,7 @@ private struct ExpandedBottom: View {
                         levels: state.levels,
                         controlPoints: 24,
                         height: 26,
-                        tint: PhaseStyle.waveTint(for: .recording)
+                        tint: PhaseStyle.waveTint(for: state)
                     )
                     .frame(maxWidth: .infinity)
                     .opacity(state.pausedAt != nil ? 0.45 : 1)
@@ -353,46 +403,34 @@ private struct ExpandedBottom: View {
 
                     if state.pausedAt != nil {
                         Button(intent: ResumeDictationIntent()) {
-                            Image(systemName: "play.fill")
+                            Label("Resume", systemImage: "play.fill")
                                 .font(.headline)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.glassProminent)
                         .tint(.green)
-                    } else if state.engineBadge == .local {
-                        // Cloud realtime can't pause cleanly — button hidden.
-                        Button(intent: PauseDictationIntent()) {
-                            Image(systemName: "pause.fill")
+                    } else {
+                        Button(intent: StopDictationIntent()) {
+                            Label("Finish", systemImage: "stop.fill")
                                 .font(.headline)
                         }
-                        .buttonStyle(.bordered)
-                        .tint(FlowBridgeTheme.flowViolet)
+                        .buttonStyle(.glassProminent)
+                        .tint(.red)
                     }
-
-                    Button(intent: StopDictationIntent()) {
-                        Label("Stop", systemImage: "stop.fill")
-                            .font(.headline)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
                 }
                 .animation(.snappy(duration: 0.38, extraBounce: 0.12), value: state.phase)
             }
         case .transcribing:
-            // The wave freezes at its last real levels and turns violet:
-            // same organism, new phase.
+            // The wave freezes at its last real levels, then advances from
+            // decode blue to refine gold: same organism, new phase.
             LiveWave(
                 levels: state.levels,
                 controlPoints: 24,
                 height: 26,
-                tint: PhaseStyle.waveTint(for: .transcribing)
+                tint: PhaseStyle.waveTint(for: state)
             )
             .frame(maxWidth: .infinity)
         case .ready:
-            if state.variantsAvailable {
-                VariantsRow(state: state)
-            } else {
-                SummaryLine(state: state)
-            }
+            ReadyAction(state: state)
         case .failed:
             EmptyView()
         }
@@ -466,7 +504,7 @@ private struct TranscriptHero: View {
         }
         switch state.phase {
         case .recording: return "Listening…"
-        case .transcribing: return "Polishing…"
+        case .transcribing: return state.refining ? "Refining your voice…" : "Hearing the words…"
         case .ready: return "Copied to clipboard"
         case .failed: return "Something went wrong"
         }
@@ -530,7 +568,7 @@ private struct FullLockView: View {
                     levels: state.levels,
                     controlPoints: 7,
                     height: 16,
-                    tint: PhaseStyle.waveTint(for: state.phase)
+                    tint: PhaseStyle.waveTint(for: state)
                 )
                 .frame(width: 44)
                 .opacity(isStale && state.phase == .recording ? 0.35 : 1)
@@ -559,39 +597,28 @@ private struct FullLockView: View {
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.glassProminent)
                         .tint(.green)
-                    } else if state.engineBadge == .local {
-                        Button(intent: PauseDictationIntent()) {
-                            Label("Pause", systemImage: "pause.fill")
+                    } else {
+                        Button(intent: StopDictationIntent()) {
+                            Label("Finish", systemImage: "stop.fill")
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                        .tint(FlowBridgeTheme.flowViolet)
+                        .buttonStyle(.glassProminent)
+                        .tint(.red)
                     }
-                    Button(intent: StopDictationIntent()) {
-                        Label("Stop", systemImage: "stop.fill")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
                 }
             }
             if state.phase == .ready {
-                if state.variantsAvailable {
-                    VariantsRow(state: state)
-                } else {
-                    SummaryLine(state: state)
-                }
+                ReadyAction(state: state)
             }
         }
         .padding(16)
         // nil keeps the system material: StandBy night-mode red-shift and
         // wallpaper tinting stay correct.
         .activityBackgroundTint(nil)
-        .activitySystemActionForegroundColor(FlowBridgeTheme.flowViolet)
+        .activitySystemActionForegroundColor(PhaseStyle.color(for: state))
     }
 }
 
@@ -605,7 +632,7 @@ private struct WatchView: View {
                     levels: state.levels,
                     controlPoints: 5,
                     height: 12,
-                    tint: PhaseStyle.waveTint(for: state.phase)
+                    tint: PhaseStyle.waveTint(for: state)
                 )
                 .frame(width: 36)
                 Spacer()
@@ -691,6 +718,18 @@ private extension DictationActivityAttributes.ContentState {
         recordedSeconds: 31,
         variantsAvailable: true
     )
+    static let previewSuggestedAction = DictationActivityAttributes.ContentState(
+        phase: .ready,
+        transcriptPreview: "Pranzo con Luca domani alle 13.",
+        startedAt: Date(timeIntervalSinceNow: -33),
+        levels: DictationActivityAttributes.ContentState.restingLevels,
+        wordCount: 7,
+        recordedSeconds: 12,
+        variantsAvailable: true,
+        suggestedActionKind: .calendar,
+        suggestedActionTitle: "Add event",
+        suggestedActionDetail: "Lunch with Luca"
+    )
     static let previewFailed = DictationActivityAttributes.ContentState(
         phase: .failed,
         transcriptPreview: "Nothing heard — the microphone stayed silent.",
@@ -709,6 +748,7 @@ private extension DictationActivityAttributes.ContentState {
     DictationActivityAttributes.ContentState.previewRefining
     DictationActivityAttributes.ContentState.previewPaused
     DictationActivityAttributes.ContentState.previewVariants
+    DictationActivityAttributes.ContentState.previewSuggestedAction
     DictationActivityAttributes.ContentState.previewReady
     DictationActivityAttributes.ContentState.previewFailed
 }

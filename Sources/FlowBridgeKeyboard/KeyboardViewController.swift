@@ -2,9 +2,11 @@ import FlowBridgeShared
 import UIKit
 
 final class KeyboardViewController: UIInputViewController {
+    private let eyebrowLabel = UILabel()
     private let previewLabel = UILabel()
     private let insertButton = UIButton(type: .system)
     private let liveButton = UIButton(type: .system)
+    private var renderedPreview: String?
     private var liveTimer: Timer?
     private var darwinObserver: DarwinNotificationObserver?
     private var liveModeEnabled = true
@@ -33,85 +35,156 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func buildInterface() {
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .clear
+
+        let background = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        background.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(background)
+
+        eyebrowLabel.font = .preferredFont(forTextStyle: .caption1)
+        eyebrowLabel.adjustsFontForContentSizeCategory = true
+        eyebrowLabel.textColor = .secondaryLabel
+        eyebrowLabel.text = "FLOWBRIDGE · LIVE INSERT"
+
+        let previewSurface = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
+        previewSurface.layer.cornerCurve = .continuous
+        previewSurface.layer.cornerRadius = 16
+        previewSurface.layer.borderWidth = 1 / traitCollection.displayScale
+        previewSurface.layer.borderColor = UIColor.separator.withAlphaComponent(0.3).cgColor
 
         previewLabel.font = .preferredFont(forTextStyle: .callout)
-        previewLabel.textColor = .secondaryLabel
+        previewLabel.adjustsFontForContentSizeCategory = true
+        previewLabel.textColor = .label
         previewLabel.numberOfLines = 2
         previewLabel.lineBreakMode = .byTruncatingTail
+        previewLabel.translatesAutoresizingMaskIntoConstraints = false
+        previewSurface.contentView.addSubview(previewLabel)
 
-        insertButton.setImage(UIImage(systemName: "text.insert"), for: .normal)
-        insertButton.setTitle(" Insert", for: .normal)
-        insertButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
+        NSLayoutConstraint.activate([
+            previewLabel.leadingAnchor.constraint(equalTo: previewSurface.contentView.leadingAnchor, constant: 14),
+            previewLabel.trailingAnchor.constraint(equalTo: previewSurface.contentView.trailingAnchor, constant: -14),
+            previewLabel.topAnchor.constraint(equalTo: previewSurface.contentView.topAnchor, constant: 10),
+            previewLabel.bottomAnchor.constraint(equalTo: previewSurface.contentView.bottomAnchor, constant: -10),
+            previewSurface.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
+        ])
+
+        var insertConfig = UIButton.Configuration.prominentGlass()
+        insertConfig.image = UIImage(systemName: "text.insert")
+        insertConfig.title = "Insert"
+        insertConfig.imagePadding = 7
+        insertConfig.baseBackgroundColor = .flowViolet
+        insertConfig.baseForegroundColor = .white
+        insertButton.configuration = insertConfig
         insertButton.addTarget(self, action: #selector(insertLatestTranscript), for: .touchUpInside)
 
         let sendButton = UIButton(type: .system)
-        sendButton.setImage(UIImage(systemName: "arrow.turn.down.left"), for: .normal)
+        sendButton.configuration = glassConfiguration(symbol: "arrow.up.circle.fill", tint: .flowViolet)
         sendButton.addTarget(self, action: #selector(insertLatestTranscriptAndReturn), for: .touchUpInside)
-        sendButton.widthAnchor.constraint(equalToConstant: 54).isActive = true
+        sendButton.accessibilityLabel = "Insert and send"
 
-        liveButton.setImage(UIImage(systemName: "waveform.circle.fill"), for: .normal)
+        liveButton.configuration = glassConfiguration(symbol: "waveform.circle.fill", tint: .flowViolet)
         liveButton.addTarget(self, action: #selector(toggleLiveMode), for: .touchUpInside)
+        liveButton.accessibilityLabel = "Toggle live insertion"
 
         let deleteButton = UIButton(type: .system)
-        deleteButton.setImage(UIImage(systemName: "delete.left"), for: .normal)
+        deleteButton.configuration = glassConfiguration(symbol: "delete.left")
         deleteButton.addTarget(self, action: #selector(deleteBackward), for: .touchUpInside)
+        deleteButton.accessibilityLabel = "Delete backward"
 
         let nextKeyboardButton = UIButton(type: .system)
-        nextKeyboardButton.setImage(UIImage(systemName: "globe"), for: .normal)
+        nextKeyboardButton.configuration = glassConfiguration(symbol: "globe")
         nextKeyboardButton.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
+        nextKeyboardButton.accessibilityLabel = "Next keyboard"
 
-        let buttonRow = UIStackView(arrangedSubviews: [nextKeyboardButton, liveButton, insertButton, sendButton, deleteButton])
+        let buttonRow = UIStackView(arrangedSubviews: [
+            nextKeyboardButton,
+            liveButton,
+            insertButton,
+            sendButton,
+            deleteButton,
+        ])
         buttonRow.axis = .horizontal
         buttonRow.alignment = .fill
         buttonRow.distribution = .fill
-        buttonRow.spacing = 10
+        buttonRow.spacing = 8
 
-        nextKeyboardButton.widthAnchor.constraint(equalToConstant: 54).isActive = true
-        liveButton.widthAnchor.constraint(equalToConstant: 54).isActive = true
-        deleteButton.widthAnchor.constraint(equalToConstant: 54).isActive = true
+        for button in [nextKeyboardButton, liveButton, sendButton, deleteButton] {
+            button.widthAnchor.constraint(equalToConstant: 50).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        }
 
-        let stack = UIStackView(arrangedSubviews: [previewLabel, buttonRow])
+        let stack = UIStackView(arrangedSubviews: [eyebrowLabel, previewSurface, buttonRow])
         stack.axis = .vertical
-        stack.spacing = 10
+        stack.setCustomSpacing(6, after: eyebrowLabel)
+        stack.setCustomSpacing(10, after: previewSurface)
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
 
         NSLayoutConstraint.activate([
+            background.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            background.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            background.topAnchor.constraint(equalTo: view.topAnchor),
+            background.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 10),
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
             stack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -10),
-            insertButton.heightAnchor.constraint(equalToConstant: 44)
+            insertButton.heightAnchor.constraint(equalToConstant: 48),
         ])
+    }
+
+    private func glassConfiguration(symbol: String, tint: UIColor = .label) -> UIButton.Configuration {
+        var configuration = UIButton.Configuration.glass()
+        configuration.image = UIImage(systemName: symbol)
+        configuration.baseForegroundColor = tint
+        return configuration
     }
 
     private func refresh() {
         let record = TranscriptStore.latest()
         let live = LiveTranscriptStore.latest()
-        previewLabel.text = live?.previewText.isEmpty == false ? live?.previewText : record?.text
+        let nextPreview = live?.previewText.isEmpty == false ? live?.previewText : record?.text
+        let display = nextPreview ?? "Speak from the Action Button. Your words will appear here."
+
+        if renderedPreview != display {
+            renderedPreview = display
+            UIView.transition(
+                with: previewLabel,
+                duration: UIAccessibility.isReduceMotionEnabled ? 0 : 0.20,
+                options: [.transitionCrossDissolve, .allowAnimatedContent]
+            ) {
+                self.previewLabel.text = display
+                self.previewLabel.textColor = nextPreview == nil ? .secondaryLabel : .label
+            }
+        }
+
         insertButton.isEnabled = record?.text.isEmpty == false
-        liveButton.tintColor = liveModeEnabled ? .systemBlue : .secondaryLabel
+        liveButton.configuration = glassConfiguration(
+            symbol: liveModeEnabled ? "waveform.circle.fill" : "waveform.circle",
+            tint: liveModeEnabled ? .flowViolet : .secondaryLabel
+        )
+        liveButton.accessibilityValue = liveModeEnabled ? "On" : "Off"
     }
 
     @objc private func insertLatestTranscript() {
         refresh()
         guard let text = TranscriptStore.latest()?.text, !text.isEmpty else { return }
         textDocumentProxy.insertText(text)
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
     }
 
-    /// Insert the transcript and hit return — in most chat apps the return
-    /// key sends, so one tap goes from clipboard to sent message.
+    /// Insert the transcript and hit return. In chat fields the return key
+    /// generally sends, so one tap completes the whole bridge.
     @objc private func insertLatestTranscriptAndReturn() {
         refresh()
         guard let text = TranscriptStore.latest()?.text, !text.isEmpty else { return }
         textDocumentProxy.insertText(text)
         textDocumentProxy.insertText("\n")
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
-    /// Tone from the active field's traits (public API; keyboards cannot see
-    /// the host app's identity): a "send" return key is a chat box → casual;
-    /// an email-address field belongs to a mail flow → formal.
+    /// Tone from public field traits: a send field is casual; an email field
+    /// is formal. The keyboard never inspects the host app's identity.
     private func publishToneHint() {
         let profile: ToneProfile
         if textDocumentProxy.returnKeyType == .send {
@@ -126,6 +199,7 @@ final class KeyboardViewController: UIInputViewController {
 
     @objc private func toggleLiveMode() {
         liveModeEnabled.toggle()
+        UISelectionFeedbackGenerator().selectionChanged()
         refresh()
     }
 
@@ -133,11 +207,8 @@ final class KeyboardViewController: UIInputViewController {
         textDocumentProxy.deleteBackward()
     }
 
-    /// Live updates are push-based: the app posts a Darwin notification after
-    /// every snapshot write and the keyboard reloads on delivery. A timer
-    /// remains as the fallback path — at the legacy 250ms cadence when the
-    /// compatibility flag is on, otherwise as a slow safety refresh that
-    /// covers a missed notification without burning CPU.
+    /// Push notifications drive normal updates; the timer is only a slow
+    /// safety net for a coalesced Darwin notification.
     private func startLiveUpdates() {
         darwinObserver = DarwinNotificationObserver(
             name: FlowBridgeConstants.liveTranscriptDidChangeDarwinName
@@ -153,7 +224,9 @@ final class KeyboardViewController: UIInputViewController {
 
         liveTimer?.invalidate()
         liveTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.applyLiveSnapshotIfNeeded()
+            Task { @MainActor [weak self] in
+                self?.applyLiveSnapshotIfNeeded()
+            }
         }
     }
 
@@ -180,22 +253,17 @@ final class KeyboardViewController: UIInputViewController {
 
         let nextText = snapshot.text
         guard nextText != lastInsertedText else {
-            if snapshot.isFinal {
-                completedSessionID = snapshot.sessionID
-            }
+            if snapshot.isFinal { completedSessionID = snapshot.sessionID }
             return
         }
 
         applyIncrementalDiff(from: lastInsertedText, to: nextText)
         lastInsertedText = nextText
 
-        if snapshot.isFinal {
-            completedSessionID = snapshot.sessionID
-        }
+        if snapshot.isFinal { completedSessionID = snapshot.sessionID }
     }
 
-    /// Replaces only the unstable tail instead of delete-all/reinsert: the
-    /// committed prefix never flickers and long dictations stay smooth.
+    /// Replace only the unstable suffix; the committed prefix never flickers.
     private func applyIncrementalDiff(from old: String, to new: String) {
         let oldChars = Array(old)
         let newChars = Array(new)
@@ -214,4 +282,8 @@ final class KeyboardViewController: UIInputViewController {
             textDocumentProxy.insertText(String(newChars[commonPrefix...]))
         }
     }
+}
+
+private extension UIColor {
+    static let flowViolet = UIColor(red: 0.486, green: 0.424, blue: 1.0, alpha: 1)
 }

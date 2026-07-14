@@ -16,13 +16,13 @@ import Foundation
 /// system always executes the intents in the app process, where
 /// `DictationCommandHub` has handlers registered.
 ///
-/// `ForegroundContinuableIntent` is unavailable in app extensions, so the
-/// widget build (which only needs the type to exist for its buttons) gets
-/// the conformance and its foreground fallback conditioned out. The intent
-/// always runs in the app process regardless.
+/// iOS 26's dynamic foreground mode replaces the older conditional
+/// `ForegroundContinuableIntent` conformance and compiles consistently in the
+/// app and widget targets. The intent still executes in the app process.
 struct StartDictationIntent: AudioRecordingIntent {
     static let title: LocalizedStringResource = "Start Dictation"
     static let description = IntentDescription("Start FlowBridge dictation in the background, with live progress in the Dynamic Island.")
+    static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
 
     @MainActor
     func perform() async throws -> some IntentResult {
@@ -30,26 +30,18 @@ struct StartDictationIntent: AudioRecordingIntent {
             try await DictationCommandHub.shared.requestStart()
             return .result()
         } catch {
-            #if FLOWBRIDGE_EXTENSION
-            // Unreachable at runtime (the app process runs this intent), but
-            // the extension build cannot see requestToContinueInForeground.
-            throw error
-            #else
             // Background start is not possible right now (first run, missing
             // permission, audio-session failure): open the app and let the
             // foreground pipeline take over.
-            try await requestToContinueInForeground()
+            guard systemContext.currentMode.canContinueInForeground else {
+                throw error
+            }
+            try await continueInForeground()
             await DictationCommandHub.shared.requestToggle()
             return .result()
-            #endif
         }
     }
 }
-
-// The foreground-continuation path exists only in the app, not the extension.
-#if !FLOWBRIDGE_EXTENSION
-extension StartDictationIntent: ForegroundContinuableIntent {}
-#endif
 
 /// Stops the active dictation. Wired to the Live Activity's stop button and
 /// exposed to Shortcuts. Runs in the app process (`LiveActivityIntent`),
@@ -57,7 +49,7 @@ extension StartDictationIntent: ForegroundContinuableIntent {}
 struct PauseDictationIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Pause Dictation"
     static let description = IntentDescription("Pause the active FlowBridge dictation without ending it.")
-    static let openAppWhenRun = false
+    static let supportedModes: IntentModes = [.background]
 
     func perform() async throws -> some IntentResult {
         await DictationCommandHub.shared.requestPause()
@@ -68,7 +60,7 @@ struct PauseDictationIntent: LiveActivityIntent {
 struct ResumeDictationIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Resume Dictation"
     static let description = IntentDescription("Resume the paused FlowBridge dictation.")
-    static let openAppWhenRun = false
+    static let supportedModes: IntentModes = [.background]
 
     func perform() async throws -> some IntentResult {
         await DictationCommandHub.shared.requestResume()
@@ -82,7 +74,7 @@ struct ResumeDictationIntent: LiveActivityIntent {
 struct ApplyToneIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Copy Tone Variant"
     static let description = IntentDescription("Copy a re-polished variant of the last transcript.")
-    static let openAppWhenRun = false
+    static let supportedModes: IntentModes = [.background]
 
     @Parameter(title: "Tone")
     var tone: String
@@ -101,10 +93,24 @@ struct ApplyToneIntent: LiveActivityIntent {
     }
 }
 
+/// Executes the one action the delivered dictation clearly implies. The
+/// Activity carries only its label; the app process owns the structured
+/// Calendar/Reminder/Message/Mail payload.
+struct PerformSuggestedActionIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Perform Suggested Action"
+    static let description = IntentDescription("Perform the action suggested by the latest FlowBridge dictation.")
+    static let supportedModes: IntentModes = [.background]
+
+    func perform() async throws -> some IntentResult {
+        await DictationCommandHub.shared.requestPerformSuggestedAction()
+        return .result()
+    }
+}
+
 struct StopDictationIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Stop Dictation"
     static let description = IntentDescription("Stop the active FlowBridge dictation and deliver the transcript.")
-    static let openAppWhenRun = false
+    static let supportedModes: IntentModes = [.background]
 
     @MainActor
     func perform() async throws -> some IntentResult {
