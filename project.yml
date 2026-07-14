@@ -79,6 +79,10 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSMicrophoneUsageDescription: FlowBridge records speech locally and transcribes it on this device.
+        # AI Action Bar: write-only calendar (the app never reads the agenda)
+        # and reminders, requested only when the user taps a suggestion.
+        NSCalendarsWriteOnlyAccessUsageDescription: FlowBridge adds calendar events you dictate — only when you tap the suggestion.
+        NSRemindersFullAccessUsageDescription: FlowBridge creates reminders you dictate — only when you tap the suggestion.
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
         # Without this key iOS treats the app as legacy and renders it

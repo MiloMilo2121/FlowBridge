@@ -57,6 +57,12 @@ final class FlowBridgeCoordinator: ObservableObject {
     /// new day (drives the streak celebration).
     @Published private(set) var streakDays: Int = 0
     @Published private(set) var isNewStreakDay: Bool = false
+    /// One-tap action detected in the delivered text ("tomorrow lunch with
+    /// Luca" → Calendar Event). Nil for plain dictations.
+    @Published private(set) var suggestedAction: SuggestedAction?
+    /// Transient "Added to Calendar"-style confirmation after a performed
+    /// action, in the slot the suggestion chip occupied.
+    @Published private(set) var actionConfirmation: String?
 
     private let recorder = FlowBridgeRecorder()
     /// Engines are cached per preference and resolved at session start, so
@@ -77,6 +83,8 @@ final class FlowBridgeCoordinator: ObservableObject {
     private var pendingCommandStore: PendingCommandStore?
     private var elapsedTask: Task<Void, Never>?
     private var maxDurationTask: Task<Void, Never>?
+    private var suggestionTask: Task<Void, Never>?
+    private var confirmationDismissTask: Task<Void, Never>?
     private var islandTask: Task<Void, Never>?
     private var lastSentIslandState: DictationActivityAttributes.ContentState?
     /// Silence guard: the loudest level seen this session, and whether we've
@@ -361,6 +369,12 @@ final class FlowBridgeCoordinator: ObservableObject {
             polishReveal = nil
             liveTranscript = nil
             vocabularySuggestions = []
+            suggestionTask?.cancel()
+            suggestionTask = nil
+            confirmationDismissTask?.cancel()
+            confirmationDismissTask = nil
+            suggestedAction = nil
+            actionConfirmation = nil
             currentSessionID = sessionID
             lastSeenSnapshotSequence = 0
             sessionPeakLevel = 0
@@ -636,6 +650,43 @@ final class FlowBridgeCoordinator: ObservableObject {
         timeSavedMinutes = statsStore?.stats().timeSavedMinutes ?? timeSavedMinutes
         vocabularySuggestions = VocabularySuggester.suggestions(from: finalRecord.rawText ?? finalRecord.text)
         HapticPlayer.transcriptReady()
+
+        // Intent detection rides after delivery: the text is already on the
+        // clipboard whatever happens here. This take's text, not the
+        // session-appended merge — the spoken command is the recent one.
+        let deliveredText = finalRecord.text
+        suggestionTask?.cancel()
+        suggestionTask = Task { [weak self] in
+            let suggestion = await IntentClassifier.classify(deliveredText)
+            guard !Task.isCancelled, let suggestion else { return }
+            FBLog.log("actions: suggesting \(suggestion.label)")
+            self?.suggestedAction = suggestion
+        }
+    }
+
+    func performSuggestedAction() async {
+        guard let action = suggestedAction else { return }
+        let outcome = await ActionPerformer.shared.perform(action)
+        suggestedAction = nil
+        switch outcome {
+        case .done(let message):
+            HapticPlayer.transcriptReady()
+            actionConfirmation = message
+            confirmationDismissTask?.cancel()
+            confirmationDismissTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                self?.actionConfirmation = nil
+            }
+        case .openedApp:
+            break
+        case .failed(let message):
+            statusMessage = message
+        }
+    }
+
+    func dismissSuggestedAction() {
+        suggestedAction = nil
     }
 
     private func polishTurns(_ turns: [SpeakerTranscriptFormatter.Turn], tone: ToneProfile) async -> String {

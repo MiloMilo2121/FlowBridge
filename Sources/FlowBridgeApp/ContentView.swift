@@ -219,8 +219,12 @@ struct ContentView: View {
             record: coordinator.lastTranscript,
             reveal: coordinator.polishReveal,
             vocabularySuggestions: coordinator.vocabularySuggestions,
+            suggestedAction: coordinator.suggestedAction,
+            actionConfirmation: coordinator.actionConfirmation,
             onAddSuggestion: { coordinator.addVocabularySuggestion($0) },
             onDismissSuggestion: { coordinator.dismissVocabularySuggestion($0) },
+            onPerformAction: { Task { await coordinator.performSuggestedAction() } },
+            onDismissAction: { coordinator.dismissSuggestedAction() },
             onCopy: { Task { await coordinator.copyLastTranscript() } }
         )
     }

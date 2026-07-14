@@ -13,8 +13,12 @@ struct TranscriptStageView: View {
     let record: TranscriptRecord?
     let reveal: FlowBridgeCoordinator.PolishReveal?
     var vocabularySuggestions: [String] = []
+    var suggestedAction: SuggestedAction?
+    var actionConfirmation: String?
     var onAddSuggestion: (String) -> Void = { _ in }
     var onDismissSuggestion: (String) -> Void = { _ in }
+    var onPerformAction: () -> Void = {}
+    var onDismissAction: () -> Void = {}
     var onCopy: (() -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -54,8 +58,12 @@ struct TranscriptStageView: View {
                     record: record,
                     reveal: reveal,
                     vocabularySuggestions: vocabularySuggestions,
+                    suggestedAction: suggestedAction,
+                    actionConfirmation: actionConfirmation,
                     onAddSuggestion: onAddSuggestion,
                     onDismissSuggestion: onDismissSuggestion,
+                    onPerformAction: onPerformAction,
+                    onDismissAction: onDismissAction,
                     onCopy: onCopy
                 )
             }

@@ -9,8 +9,12 @@ struct TranscriptPanelView: View {
     let record: TranscriptRecord?
     let reveal: FlowBridgeCoordinator.PolishReveal?
     var vocabularySuggestions: [String] = []
+    var suggestedAction: SuggestedAction?
+    var actionConfirmation: String?
     var onAddSuggestion: (String) -> Void = { _ in }
     var onDismissSuggestion: (String) -> Void = { _ in }
+    var onPerformAction: () -> Void = {}
+    var onDismissAction: () -> Void = {}
     var onCopy: (() -> Void)?
 
     @State private var showRaw = false
@@ -78,6 +82,15 @@ struct TranscriptPanelView: View {
                 .transition(.opacity.combined(with: .offset(y: 6)))
             }
 
+            // The action the dictation implies, one tap away — the payoff
+            // that makes the transcript a step instead of the product.
+            ContextActionBar(
+                suggestion: suggestedAction,
+                confirmation: actionConfirmation,
+                onPerform: onPerformAction,
+                onDismiss: onDismissAction
+            )
+
             if !vocabularySuggestions.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: FlowTheme.space8) {
@@ -91,6 +104,8 @@ struct TranscriptPanelView: View {
         }
         // Card ownership lives in TranscriptStageView: the panel is content.
         .animation(FlowMotion.state, value: vocabularySuggestions)
+        .animation(FlowMotion.state, value: suggestedAction)
+        .animation(FlowMotion.state, value: actionConfirmation)
         .onChange(of: reveal) { _, newReveal in
             runReveal(newReveal)
         }

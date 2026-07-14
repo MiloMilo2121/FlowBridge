@@ -31,8 +31,12 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>FlowBridge adds calendar events you dictate — only when you tap the suggestion.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>FlowBridge records speech locally and transcribes it on this device.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>FlowBridge creates reminders you dictate — only when you tap the suggestion.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
