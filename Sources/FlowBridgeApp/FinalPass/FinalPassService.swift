@@ -42,7 +42,14 @@ enum FinalPassMode: String, CaseIterable {
 /// fallback; the delivered text can only get better, never lost.
 @MainActor
 final class FinalPassService {
-    private var precisionEngine: WhisperEngine?
+    private var engines: [WhisperModelVariant: WhisperEngine] = [:]
+
+    private func engine(for variant: WhisperModelVariant) -> WhisperEngine {
+        if let engine = engines[variant] { return engine }
+        let engine = WhisperEngine(variant: variant)
+        engines[variant] = engine
+        return engine
+    }
 
     /// Returns the refined text, or `fallback` untouched when the pass is
     /// off, ineligible, or failed. Cleans up the session audio file unless
@@ -100,28 +107,46 @@ final class FinalPassService {
     }
 
     private func localRefine(url: URL, duration: TimeInterval, speakers: Bool) async -> String? {
-        let engine: WhisperEngine
-        if let precisionEngine {
-            engine = precisionEngine
-        } else {
-            let variant: WhisperModelVariant = WhisperModelLocator.precisionFolderIfInstalled() != nil ? .precision : .bundled
-            engine = WhisperEngine(variant: variant)
-            precisionEngine = engine
+        // Segments are engine-independent, so diarize once up front and share
+        // the result across model attempts. Serializing diarizer and Whisper
+        // also keeps them from contending for the Neural Engine.
+        var segments: [SpeakerTranscriptFormatter.Segment] = []
+        if speakers, LocalDiarizer.isAvailable {
+            segments = (try? await LocalDiarizer.shared.diarize(url: url)) ?? []
+        } else if speakers {
+            FBLog.log("finalpass: speakers on but diarization models not bundled")
         }
 
+        let preferred: WhisperModelVariant = WhisperModelLocator.precisionFolderIfInstalled() != nil ? .precision : .bundled
+        if let text = await localAttempt(variant: preferred, url: url, duration: duration, segments: segments) {
+            return text
+        }
+
+        // A sideloaded precision model can be broken in ways the bundled one
+        // never is (bad ANE compile, corrupt weights) — it then decodes to
+        // empty on every take. The bundled model is the known-good floor:
+        // retry there rather than dropping to the streamed text.
+        guard preferred == .precision else { return nil }
+        FBLog.log("finalpass: precision produced nothing, retrying with bundled model")
+        await engines[.precision]?.unload()
+        return await localAttempt(variant: .bundled, url: url, duration: duration, segments: segments)
+    }
+
+    private func localAttempt(
+        variant: WhisperModelVariant,
+        url: URL,
+        duration: TimeInterval,
+        segments: [SpeakerTranscriptFormatter.Segment]
+    ) async -> String? {
+        let engine = engine(for: variant)
         let recording = RecordedAudio(url: url, duration: duration)
 
-        if speakers, LocalDiarizer.isAvailable {
-            FBLog.log("finalpass: local diarized pass (\(Int(duration))s audio)")
-            // Diarizer (ANE) and Whisper run concurrently over the same WAV;
-            // words meet segments at their midpoints. Any failure degrades
-            // to the flat precision text — never a lost dictation.
-            async let segmentsTask = LocalDiarizer.shared.diarize(url: url)
-            async let wordsTask = engine.transcribeWithWords(recording: recording)
-            let segments = (try? await segmentsTask) ?? []
-            let transcription = try? await wordsTask
-            if let transcription {
-                if !segments.isEmpty, !transcription.words.isEmpty {
+        if !segments.isEmpty {
+            FBLog.log("finalpass: local diarized pass (\(Int(duration))s audio, \(variant))")
+            // Words meet segments at their midpoints. Any failure degrades to
+            // the flat text — never a lost dictation.
+            if let transcription = try? await engine.transcribeWithWords(recording: recording) {
+                if !transcription.words.isEmpty {
                     let labeled = SpeakerTranscriptFormatter.labeledText(
                         words: SpeakerTranscriptFormatter.assign(words: transcription.words, to: segments)
                     )
@@ -133,11 +158,9 @@ final class FinalPassService {
                 return transcription.text
             }
             FBLog.log("finalpass: word-level pass failed, falling back to plain pass")
-        } else if speakers {
-            FBLog.log("finalpass: speakers on but diarization models not bundled")
         }
 
-        FBLog.log("finalpass: local pass (\(Int(duration))s audio)")
+        FBLog.log("finalpass: local pass (\(Int(duration))s audio, \(variant))")
         let started = Date()
         let record = try? await engine.transcribe(recording: recording, source: .microphone)
         FBLog.log("finalpass: local \(record == nil ? "failed" : "ok \(record!.text.count)ch") in \(Int(Date().timeIntervalSince(started)))s")
