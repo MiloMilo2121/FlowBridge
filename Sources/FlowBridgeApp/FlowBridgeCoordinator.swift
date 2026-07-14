@@ -114,6 +114,9 @@ final class FlowBridgeCoordinator: ObservableObject {
     /// Engines are cached per preference and resolved at session start, so
     /// the Settings picker applies from the next dictation — no app relaunch.
     private var engineCache: [EnginePreference: any TranscriptionEngine] = [:]
+    /// Permission and model warmup both suspend. This gate closes the window
+    /// where a rapid UI + Action Button pair could launch two audio starts.
+    private var recordingStartGate = AsyncOperationGate()
     private var activeEnginePreference = EnginePreference.current
     private var transcriber: any TranscriptionEngine {
         cachedEngine(for: activeEnginePreference)
@@ -317,7 +320,15 @@ final class FlowBridgeCoordinator: ObservableObject {
     /// stops background audio otherwise). Throws when the background path is
     /// not viable so the intent can fall back to opening the app.
     func startBackgroundDictation() async throws {
-        if case .recording = state { return }
+        if recordingStartGate.isEntered { return }
+        switch state {
+        case .recording, .warming:
+            return
+        case .transcribing:
+            throw FlowBridgeError.alreadyRecording
+        case .idle, .ready, .failed:
+            break
+        }
         guard await recorder.hasGrantedPermission() else {
             throw FlowBridgeError.microphonePermissionDenied
         }
@@ -420,6 +431,20 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     private func startRecording(requestPermission: Bool = true) async {
+        guard recordingStartGate.enterIfAvailable() else {
+            FBLog.log("start: duplicate request ignored")
+            return
+        }
+        defer { recordingStartGate.leave() }
+
+        switch state {
+        case .idle, .ready, .failed:
+            break
+        case .warming, .recording, .transcribing:
+            FBLog.log("start: ignored while state=\(state)")
+            return
+        }
+
         do {
             if requestPermission {
                 guard await recorder.requestPermission() else {

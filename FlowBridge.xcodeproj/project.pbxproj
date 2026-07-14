@@ -21,6 +21,7 @@
 		0FB15AAF49CA04BEC6F7EC1E /* SpeakerTranscriptFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C54F4ACBFB9259E147D10978 /* SpeakerTranscriptFormatterTests.swift */; };
 		149F7D31E87FFAC860C6D73A /* FlowBridgeWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C3376497876B786552C9DAF /* FlowBridgeWidgetsBundle.swift */; };
 		18E35542607A9D79EFEF45DB /* LiveTranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F31CBD5CEB730A68D9A4CA4 /* LiveTranscriptView.swift */; };
+		1D6438DB0E02F44249E45E58 /* AsyncLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E709B843330A44C7F47E9D4 /* AsyncLifecycle.swift */; };
 		221F2651F56146C26642D27D /* AudioFileDurationReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 675BDFD16C278E4C6834CE04 /* AudioFileDurationReader.swift */; };
 		23C517C51D5E249DD8879ADF /* HapticPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9FF73C8B5B764406DF50EF0 /* HapticPlayer.swift */; };
 		2C28275EA977E840147E0392 /* FlowBridgeKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 748711B42A512CA9A05AA1AC /* FlowBridgeKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -100,6 +101,7 @@
 		D81DF238E6E32E10F372D3B3 /* TranscriptPolisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD254DDA27ABED52D80A81F0 /* TranscriptPolisher.swift */; };
 		DA7E2C96F15E6F415BA74090 /* CloudScribeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19C0FA693309D325CBE3172 /* CloudScribeClient.swift */; };
 		DAB66618C44EE1C8CFA3E83E /* WhisperModels in Resources */ = {isa = PBXBuildFile; fileRef = 0C22ABA974FC16EC771CFC34 /* WhisperModels */; };
+		DFAAAA62AB1300D483080055 /* AsyncLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 728C6A7CBAFE8A0819EFD8BF /* AsyncLifecycleTests.swift */; };
 		E6D4FFBB36D53CF49FB78B71 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FC38FD292248ABAC08C9CE1 /* AppDelegate.swift */; };
 		E8A88E8B08D11A406320A4A3 /* CloudCredentialsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E718DFC0A2981C16F17BFBE /* CloudCredentialsStore.swift */; };
 		F34DA90AFBC3967418CDE403 /* FlowTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1D06F4ADAED4A199D9BA818 /* FlowTheme.swift */; };
@@ -244,6 +246,7 @@
 		5578CABA44085834319AB537 /* CloudGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudGate.swift; sourceTree = "<group>"; };
 		586C890DC73D5BFC6A7355BE /* SpeakLockWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakLockWidget.swift; sourceTree = "<group>"; };
 		58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = FlowBridgeShared.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		5E709B843330A44C7F47E9D4 /* AsyncLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncLifecycle.swift; sourceTree = "<group>"; };
 		5E718DFC0A2981C16F17BFBE /* CloudCredentialsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudCredentialsStore.swift; sourceTree = "<group>"; };
 		5FAD3D893A0D8E20126D8149 /* SpeakerTranscriptFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerTranscriptFormatter.swift; sourceTree = "<group>"; };
 		64715A622B6B8DB9C2621BE5 /* FlowBridgeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeCoordinator.swift; sourceTree = "<group>"; };
@@ -254,6 +257,7 @@
 		6F07CAAEC61878D1E73D4054 /* OrbView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrbView.swift; sourceTree = "<group>"; };
 		7139AC499C7615B48FFB09BC /* FlowBridgeTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeTheme.swift; sourceTree = "<group>"; };
 		71D4860BCEF16B814FB4613E /* CloudScribeRealtimeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudScribeRealtimeEngine.swift; sourceTree = "<group>"; };
+		728C6A7CBAFE8A0819EFD8BF /* AsyncLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncLifecycleTests.swift; sourceTree = "<group>"; };
 		748711B42A512CA9A05AA1AC /* FlowBridgeKeyboard.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = FlowBridgeKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		74D2726B6533203B057035C1 /* Benchmark */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Benchmark; path = Resources/Benchmark; sourceTree = SOURCE_ROOT; };
 		75585582B711A04DA59F231A /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -481,6 +485,7 @@
 		B9B4CB0F6CB47AC4EA802C74 /* FlowBridgeSharedTests */ = {
 			isa = PBXGroup;
 			children = (
+				728C6A7CBAFE8A0819EFD8BF /* AsyncLifecycleTests.swift */,
 				46153FC5A6417E9EEDBBDCE1 /* AudioSafetyBufferTests.swift */,
 				C90A9C39F8202AA4D8D87D6E /* DictationDailyStatsTests.swift */,
 				B54A746A43497CB353DB7071 /* DictationTextNormalizerTests.swift */,
@@ -508,6 +513,7 @@
 		C07ED503AAE916086EA4C880 /* FlowBridgeShared */ = {
 			isa = PBXGroup;
 			children = (
+				5E709B843330A44C7F47E9D4 /* AsyncLifecycle.swift */,
 				D9FCB7173B4C2474162C05C6 /* AudioSafetyBuffer.swift */,
 				5578CABA44085834319AB537 /* CloudGate.swift */,
 				C92AC93BA661C8358A14C9E6 /* DarwinNotifier.swift */,
@@ -825,6 +831,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1D6438DB0E02F44249E45E58 /* AsyncLifecycle.swift in Sources */,
 				A4A02AACCB81EE23CC7B56E5 /* AudioSafetyBuffer.swift in Sources */,
 				697E740D4747EF049178D365 /* CloudGate.swift in Sources */,
 				0E4B77221AD7F3E263122A21 /* DarwinNotifier.swift in Sources */,
@@ -930,6 +937,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DFAAAA62AB1300D483080055 /* AsyncLifecycleTests.swift in Sources */,
 				B0417E4A75F0C23C84C86D39 /* AudioSafetyBufferTests.swift in Sources */,
 				CCB6AF304FE2CCCA8E254A58 /* DictationDailyStatsTests.swift in Sources */,
 				448DA9F4C7777DF83979FBDA /* DictationTextNormalizerTests.swift in Sources */,

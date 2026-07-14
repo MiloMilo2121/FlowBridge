@@ -13,6 +13,10 @@ actor WhisperEngine: TranscriptionEngine {
     private var unloadTask: Task<Void, Never>?
     private var streamTranscriber: AudioStreamTranscriber?
     private var streamTask: Task<Void, Never>?
+    /// `model()` suspends while Core ML warms. Without a gate, a second Action
+    /// Button/UI request can re-enter this actor and create another transcriber
+    /// over the same microphone before the first request installs its task.
+    private var streamStartGate = AsyncOperationGate()
     private var liveSessionID: UUID?
     private var safetyBuffer: AudioSafetyBuffer?
     private var safetyFlushTask: Task<Void, Never>?
@@ -140,6 +144,11 @@ actor WhisperEngine: TranscriptionEngine {
     }
 
     func startLiveTranscription(sessionID: UUID) async throws {
+        guard streamStartGate.enterIfAvailable() else {
+            throw FlowBridgeError.alreadyRecording
+        }
+        defer { streamStartGate.leave() }
+
         guard streamTask == nil else {
             throw FlowBridgeError.alreadyRecording
         }
@@ -231,6 +240,10 @@ actor WhisperEngine: TranscriptionEngine {
                 FBLog.log("whisper: stream starting")
                 try await streamTranscriber.startStreamTranscription()
                 FBLog.log("whisper: stream ended cleanly")
+            } catch where Task.isCancelled || error is CancellationError {
+                // An intentional stop can race the task's first hop into
+                // WhisperKit. Cancellation is teardown, not a stream failure.
+                FBLog.log("whisper: stream cancelled")
             } catch {
                 FBLog.log("whisper STREAM ERROR: \(error)")
                 let message = DictationTextNormalizer.normalize(error.localizedDescription)
@@ -256,11 +269,7 @@ actor WhisperEngine: TranscriptionEngine {
             throw FlowBridgeError.notRecording
         }
 
-        await streamTranscriber?.stopStreamTranscription()
-        streamTask?.cancel()
-        streamTask = nil
-        streamTranscriber = nil
-        liveSessionID = nil
+        await quiesceLiveStream()
         removeBuiltInMicPin()
         stopMetering()
 
@@ -332,17 +341,32 @@ actor WhisperEngine: TranscriptionEngine {
         // An unload during a live session is an interruption (memory pressure,
         // teardown): keep the safety file so the dictation can be recovered.
         await stopSafetyFlush(keepFileForRecovery: liveSessionID != nil)
-        await streamTranscriber?.stopStreamTranscription()
-        streamTask?.cancel()
-        streamTask = nil
-        streamTranscriber = nil
-        liveSessionID = nil
+        await quiesceLiveStream()
         // Always release the session (even when no model is loaded): a stuck
         // active session is exactly what starves the mic on the next start.
         Self.releaseAudioSession("unload")
         guard let whisperKit else { return }
         await whisperKit.unloadModels()
         self.whisperKit = nil
+    }
+
+    /// Fully drains the streaming task before releasing the audio session.
+    /// `Task.cancel()` is cooperative: without awaiting `value`, a very fast
+    /// stop can return before WhisperKit's start task installs its tap, leaving
+    /// that tap alive to crash the next session with an AVAudioEngine abort.
+    private func quiesceLiveStream() async {
+        await streamTranscriber?.stopStreamTranscription()
+        let task = streamTask
+        await TaskQuiescer.cancelAndWait(task)
+
+        // Idempotent in WhisperKit. This second stop closes the stop-before-
+        // start race where the first call saw no engine, then the cancelled
+        // task installed one before it reached its cancellation point.
+        whisperKit?.audioProcessor.stopRecording()
+
+        streamTask = nil
+        streamTranscriber = nil
+        liveSessionID = nil
     }
 
     /// Re-pins the built-in mic whenever the route changes (WhisperKit's own
