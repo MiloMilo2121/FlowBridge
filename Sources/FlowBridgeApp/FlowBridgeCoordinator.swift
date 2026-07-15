@@ -80,6 +80,10 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     @Published private(set) var state: State = .idle
+    /// Dictate delivers text only. Act delivers the same text first, then
+    /// looks for one explicit system action. Persisted across launches and
+    /// switchable from the app or Dynamic Island.
+    @Published private(set) var voiceMode: VoiceMode = .current
     /// Set while the live session is paused (engine mic gated, timers
     /// frozen). Recording state is preserved underneath.
     @Published private(set) var pausedAt: Date?
@@ -139,6 +143,9 @@ final class FlowBridgeCoordinator: ObservableObject {
     /// History id of the take the current suggestion was computed from, so a
     /// performed action can be stamped on the right record.
     private var suggestionRecordID: UUID?
+    /// The individual take (not a session-appended merge) that Act mode may
+    /// interpret after delivery.
+    private var lastActionCandidateText: String?
     private var islandTask: Task<Void, Never>?
     private var lastSentIslandState: DictationActivityAttributes.ContentState?
     /// Silence guard: the loudest level seen this session, and whether we've
@@ -252,6 +259,14 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
         DictationCommandHub.shared.applyToneHandler = { [weak self] raw in
             await self?.applyToneVariant(raw)
+        }
+        DictationCommandHub.shared.setVoiceModeHandler = { [weak self] mode in
+            await self?.setVoiceMode(mode)
+        }
+        DictationCommandHub.shared.toggleVoiceModeHandler = { [weak self] in
+            guard let self else { return }
+            let next: VoiceMode = self.voiceMode == .act ? .dictate : .act
+            await self.setVoiceMode(next)
         }
         DictationCommandHub.shared.performSuggestedActionHandler = { [weak self] in
             await self?.performSuggestedAction()
@@ -428,6 +443,38 @@ final class FlowBridgeCoordinator: ObservableObject {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
+    /// Changes only the interpretation lens, never the recognition pipeline.
+    /// It is therefore safe to switch mid-recording from the Dynamic Island.
+    func setVoiceMode(_ mode: VoiceMode) async {
+        guard voiceMode != mode else { return }
+        voiceMode = mode
+        mode.save()
+        FBLog.log("voice mode: \(mode.rawValue)")
+        UISelectionFeedbackGenerator().selectionChanged()
+
+        if mode == .dictate {
+            suggestionTask?.cancel()
+            suggestionTask = nil
+            suggestedAction = nil
+            activityController.clearSuggestedAction()
+        }
+
+        if case .recording(let startedAt) = state {
+            if pausedAt == nil {
+                pushIslandUpdate(startedAt: startedAt)
+            } else {
+                pushPausedIslandState(startedAt: startedAt)
+            }
+        } else if case .ready = state {
+            activityController.setAssistantMode(mode == .act)
+            if mode == .act,
+               let text = lastActionCandidateText,
+               let recordID = suggestionRecordID {
+                scheduleActionDiscovery(text: text, recordID: recordID)
+            }
+        }
+    }
+
     func unloadModel() async {
         await transcriber.unload()
         statusMessage = "Model unloaded"
@@ -492,7 +539,11 @@ final class FlowBridgeCoordinator: ObservableObject {
             // The Live Activity goes up before the engine warms: the island
             // responds to the trigger instantly, and background starts via
             // AudioRecordingIntent require a visible activity to keep audio.
-            activityController.start(sessionID: sessionID, startedAt: startedAt)
+            activityController.start(
+                sessionID: sessionID,
+                startedAt: startedAt,
+                assistantMode: voiceMode == .act
+            )
             let engine = await resolveEngine()
             FBLog.log("start: warming, engine=\(type(of: engine)) session=\(sessionID.uuidString.prefix(8))")
             var usedLocalFallback = false
@@ -583,7 +634,8 @@ final class FlowBridgeCoordinator: ObservableObject {
             // watch the polish trim the fillers.
             wordCount: liveText.isEmpty ? nil : liveText.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count,
             capWarning: remaining <= 60,
-            engineBadge: currentEngineBadge
+            engineBadge: currentEngineBadge,
+            assistantMode: voiceMode == .act
         )
         guard contentState != lastSentIslandState else { return }
         lastSentIslandState = contentState
@@ -647,7 +699,8 @@ final class FlowBridgeCoordinator: ObservableObject {
                     startedAt: recordingStartedAt,
                     levels: AudioLevelMeter.shared.barSnapshot(),
                     recordedSeconds: Int(duration.rounded()),
-                    engineBadge: currentEngineBadge
+                    engineBadge: currentEngineBadge,
+                    assistantMode: voiceMode == .act
                 )
             )
 
@@ -667,7 +720,8 @@ final class FlowBridgeCoordinator: ObservableObject {
                         levels: AudioLevelMeter.shared.barSnapshot(),
                         recordedSeconds: Int(duration.rounded()),
                         engineBadge: finalPassBadge,
-                        refining: true
+                        refining: true,
+                        assistantMode: voiceMode == .act
                     )
                 )
                 let refined = await finalPass.refine(
@@ -790,7 +844,8 @@ final class FlowBridgeCoordinator: ObservableObject {
             startedAt: recordingStartedAt,
             wordCount: finalRecord.text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count,
             recordedSeconds: Int(duration.rounded()),
-            variantsAvailable: refinementAvailable
+            variantsAvailable: refinementAvailable,
+            assistantMode: voiceMode == .act
         )
         if let outcome {
             streakDays = outcome.streakDays
@@ -800,18 +855,31 @@ final class FlowBridgeCoordinator: ObservableObject {
         vocabularySuggestions = VocabularySuggester.suggestions(from: finalRecord.rawText ?? finalRecord.text)
         HapticPlayer.transcriptReady()
 
-        // Intent detection rides after delivery: the text is already on the
-        // clipboard whatever happens here. This take's text, not the
-        // session-appended merge — the spoken command is the recent one.
-        let deliveredText = finalRecord.text
+        // Keep the individual take (not the session-appended merge) ready for
+        // Act mode. Dictate mode stops here and never loads the assistant.
+        lastActionCandidateText = finalRecord.text
         suggestionRecordID = finalRecord.id
+        if voiceMode == .act {
+            scheduleActionDiscovery(text: finalRecord.text, recordID: finalRecord.id)
+        }
+    }
+
+    /// Intent detection rides strictly after delivery: the text is already
+    /// on the clipboard and in History whatever the optional model does.
+    private func scheduleActionDiscovery(text: String, recordID: UUID) {
+        guard voiceMode == .act else { return }
+        suggestedAction = nil
         suggestionTask?.cancel()
         suggestionTask = Task { [weak self] in
-            let suggestion = await IntentClassifier.shared.classify(deliveredText)
-            guard !Task.isCancelled, let suggestion else { return }
+            let suggestion = await IntentClassifier.shared.classify(text)
+            guard !Task.isCancelled,
+                  let self,
+                  self.voiceMode == .act,
+                  self.suggestionRecordID == recordID,
+                  let suggestion else { return }
             FBLog.log("actions: suggesting \(suggestion.label)")
-            self?.suggestedAction = suggestion
-            self?.activityController.offerSuggestedAction(
+            self.suggestedAction = suggestion
+            self.activityController.offerSuggestedAction(
                 kind: suggestion.activityKind,
                 title: suggestion.activityTitle,
                 detail: suggestion.detail
@@ -1105,6 +1173,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             startedAt: startedAt,
             levels: DictationActivityAttributes.ContentState.restingLevels,
             engineBadge: currentEngineBadge,
+            assistantMode: voiceMode == .act,
             pausedAt: pausedAt
         )
         lastSentIslandState = contentState

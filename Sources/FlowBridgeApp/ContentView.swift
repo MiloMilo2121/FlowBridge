@@ -26,6 +26,8 @@ struct ContentView: View {
                     VStack(spacing: FlowTheme.space16) {
                         flowRail
 
+                        voiceModeLens
+
                         voiceSurface
 
                         errorStrip
@@ -151,6 +153,7 @@ struct ContentView: View {
                 pausedAt: coordinator.pausedAt,
                 statusMessage: coordinator.errorPresentation == nil ? coordinator.statusMessage : nil,
                 processingStage: coordinator.processingStage,
+                voiceMode: coordinator.voiceMode,
                 ignitionPulse: ignitionPulse,
                 readyPulse: readyPulse,
                 failPulse: failPulse
@@ -236,6 +239,61 @@ struct ContentView: View {
         }
         .frame(minHeight: 48)
         .animation(FlowMotion.state, value: isRecording)
+    }
+
+    /// A persistent intent lens, not another settings picker. Dictate is a
+    /// zero-inference text path; Act keeps the exact same capture loop and
+    /// adds one optional action only after the words are already safe.
+    private var voiceModeLens: some View {
+        VStack(spacing: FlowTheme.space8) {
+            GlassEffectContainer(spacing: FlowTheme.space8) {
+                HStack(spacing: FlowTheme.space8) {
+                    voiceModeButton(.dictate)
+                    voiceModeButton(.act)
+                }
+            }
+
+            Text(coordinator.voiceMode.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .contentTransition(.interpolate)
+                .animation(FlowMotion.state, value: coordinator.voiceMode)
+        }
+        .opacity(modeSwitchEnabled ? 1 : 0.48)
+    }
+
+    @ViewBuilder
+    private func voiceModeButton(_ mode: VoiceMode) -> some View {
+        let selected = coordinator.voiceMode == mode
+        let label = Label(mode.title, systemImage: mode.symbol)
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+
+        if selected {
+            Button {
+                Task { await coordinator.setVoiceMode(mode) }
+            } label: {
+                label
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.capsule)
+            .tint(mode.tint)
+            .glassEffectID("mode-active-\(mode.rawValue)", in: glassNamespace)
+            .disabled(!modeSwitchEnabled)
+            .accessibilityHint(mode.detail)
+        } else {
+            Button {
+                Task { await coordinator.setVoiceMode(mode) }
+            } label: {
+                label
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
+            .glassEffectID("mode-\(mode.rawValue)", in: glassNamespace)
+            .disabled(!modeSwitchEnabled)
+            .accessibilityHint(mode.detail)
+        }
     }
 
     // MARK: - Control layer
@@ -359,6 +417,13 @@ struct ContentView: View {
         isRecording && coordinator.canPauseCurrentSession
     }
 
+    private var modeSwitchEnabled: Bool {
+        switch coordinator.state {
+        case .warming, .transcribing: return false
+        case .idle, .recording, .ready, .failed: return true
+        }
+    }
+
     private var chromeOpacity: Double {
         isRecording ? 0.28 : 1
     }
@@ -396,6 +461,36 @@ struct ContentView: View {
             processingStage: coordinator.processingStage,
             pausedAt: coordinator.pausedAt
         )
+    }
+}
+
+private extension VoiceMode {
+    var title: String {
+        switch self {
+        case .dictate: return "Dictate"
+        case .act: return "Act"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .dictate: return "text.quote"
+        case .act: return "sparkles"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .dictate: return "Just your words. No action is inferred."
+        case .act: return "Text first, then one suggested action."
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .dictate: return FlowTheme.accent
+        case .act: return FlowTheme.decoding
+        }
     }
 }
 

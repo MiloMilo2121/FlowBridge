@@ -47,6 +47,16 @@ struct FlowBridgeShortcutsProvider: AppShortcutsProvider {
         )
 
         AppShortcut(
+            intent: StartAssistantIntent(),
+            phrases: [
+                "Act with \(.applicationName)",
+                "Start a \(.applicationName) voice action"
+            ],
+            shortTitle: "Voice Action",
+            systemImageName: "sparkles"
+        )
+
+        AppShortcut(
             intent: TranscribeQueuedAudioIntent(),
             phrases: [
                 "Transcribe with \(.applicationName)"
@@ -56,4 +66,3 @@ struct FlowBridgeShortcutsProvider: AppShortcutsProvider {
         )
     }
 }
-

@@ -11,6 +11,7 @@ struct LivingVoiceField: View {
     var pausedAt: Date?
     var statusMessage: String?
     var processingStage: FlowBridgeCoordinator.ProcessingStage?
+    var voiceMode: VoiceMode = .dictate
     var ignitionPulse = 0
     var readyPulse = 0
     var failPulse = 0
@@ -96,7 +97,7 @@ struct LivingVoiceField: View {
                     .contentTransition(.numericText(value: elapsed))
                     .foregroundStyle(pausedAt == nil ? AnyShapeStyle(.primary) : AnyShapeStyle(voicePhase.primary))
             } else {
-                Text("VOICE → TEXT")
+                Text(voiceMode == .act ? "VOICE → ACTION" : "VOICE → TEXT")
                     .font(FlowTheme.fieldLabel(10))
                     .tracking(0.9)
                     .foregroundStyle(.tertiary)
@@ -138,12 +139,21 @@ struct LivingVoiceField: View {
         if let statusMessage, !statusMessage.isEmpty {
             return statusMessage
         }
+        if voiceMode == .act {
+            switch state {
+            case .idle, .ready, .failed:
+                return "Say what should happen. Your transcript is delivered first."
+            case .warming, .recording, .transcribing:
+                break
+            }
+        }
         return voicePhase.defaultDetail
     }
 
     private var accessibilityLabel: String {
         switch state {
-        case .idle, .ready, .failed: return "Start dictation"
+        case .idle, .ready, .failed:
+            return voiceMode == .act ? "Start voice action" : "Start dictation"
         case .warming: return "Preparing dictation"
         case .recording where pausedAt != nil: return "Dictation paused"
         case .recording: return "Dictation recording"

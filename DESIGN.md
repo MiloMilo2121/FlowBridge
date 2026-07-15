@@ -56,6 +56,12 @@ journey instead of watching an orb, a card, and a button swap places.
 
 - The Dynamic Island shows one essential action per phase: finish while live,
   resume while paused, and the detected contextual action when delivered.
+- The intent lens has two honest modes. **Dictate** performs no assistant
+  inference. **Act** delivers the same transcript first, then proposes at most
+  one system action. The lens may switch mid-take because capture never changes.
+- In the expanded Island, the compact Text/Act lens is secondary to Finish.
+  After delivery, ignoring Refine always means "keep verbatim"; a detected
+  contextual action replaces Refine instead of adding another competing row.
 - Compact and minimal presentations prioritize live state and elapsed time.
 - Lock Screen, widgets, Action Button and keyboard reuse the membrane glyph,
   state colors and short verbs. They do not reproduce the full app layout.

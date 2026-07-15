@@ -89,6 +89,9 @@ public enum FlowBridgeConstants {
     public static let toneHintMaxAgeSeconds: TimeInterval = 600
     /// UserDefaults key: apply spoken punctuation/newline commands.
     public static let voiceCommandsEnabledKey = "voiceCommandsEnabled"
+    /// UserDefaults key: whether a take stays pure dictation or is also
+    /// interpreted for one explicit post-delivery system action.
+    public static let voiceModeKey = "voiceMode"
     /// UserDefaults key: window (seconds) in which a new dictation is
     /// appended to the previous one. 0 disables session append.
     public static let sessionAppendWindowKey = "sessionAppendWindow"
@@ -116,6 +119,30 @@ public enum FlowBridgeConstants {
     /// Interrupted recordings shorter than this are discarded instead of
     /// recovered: below ~1s there is no usable speech.
     public static let safetyBufferMinimumRecoverySeconds: TimeInterval = 1.0
+}
+
+/// The user's intent lens for the next take. Both modes always deliver the
+/// transcript first; `.act` additionally looks for one safe, explicit action
+/// after delivery. Kept shared so App Intents, the app, and Dynamic Island
+/// speak the same small contract.
+public enum VoiceMode: String, Codable, CaseIterable, Sendable {
+    case dictate
+    case act
+
+    public static var current: VoiceMode {
+        guard let defaults = try? SharedContainer.userDefaults() else { return .dictate }
+        return current(defaults: defaults)
+    }
+
+    public static func current(defaults: UserDefaults) -> VoiceMode {
+        defaults.string(forKey: FlowBridgeConstants.voiceModeKey)
+            .flatMap(VoiceMode.init(rawValue:)) ?? .dictate
+    }
+
+    public func save(defaults: UserDefaults? = nil) {
+        let target = defaults ?? (try? SharedContainer.userDefaults())
+        target?.set(rawValue, forKey: FlowBridgeConstants.voiceModeKey)
+    }
 }
 
 /// A model-role plan independent of WhisperKit, Core ML, and the UI. Keeping

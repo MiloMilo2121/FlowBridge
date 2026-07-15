@@ -64,6 +64,10 @@ public struct DictationActivityAttributes: ActivityAttributes, Sendable {
         public var variantsAvailable: Bool
         /// Confirmation after the ready-window action completes.
         public var toneNote: String?
+        /// Optional for migration safety: activities created by an older app
+        /// decode as Dictate. True means the delivered text will also be
+        /// interpreted for a contextual action.
+        public var assistantMode: Bool?
         /// Set while paused: freezes the island timer via
         /// `Text(timerInterval:pauseTime:)`.
         public var pausedAt: Date?
@@ -85,6 +89,7 @@ public struct DictationActivityAttributes: ActivityAttributes, Sendable {
             refining: Bool = false,
             variantsAvailable: Bool = false,
             toneNote: String? = nil,
+            assistantMode: Bool = false,
             pausedAt: Date? = nil,
             suggestedActionKind: SuggestedActionKind? = nil,
             suggestedActionTitle: String? = nil,
@@ -101,6 +106,7 @@ public struct DictationActivityAttributes: ActivityAttributes, Sendable {
             self.refining = refining
             self.variantsAvailable = variantsAvailable
             self.toneNote = toneNote
+            self.assistantMode = assistantMode
             self.pausedAt = pausedAt
             self.suggestedActionKind = suggestedActionKind
             self.suggestedActionTitle = suggestedActionTitle.map { String($0.prefix(44)) }

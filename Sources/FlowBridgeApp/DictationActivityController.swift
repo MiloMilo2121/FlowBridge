@@ -44,7 +44,7 @@ final class DictationActivityController {
         }
     }
 
-    func start(sessionID: UUID, startedAt: Date) {
+    func start(sessionID: UUID, startedAt: Date, assistantMode: Bool) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         endAllActivities()
         readyState = nil
@@ -53,7 +53,8 @@ final class DictationActivityController {
             phase: .recording,
             transcriptPreview: "",
             startedAt: startedAt,
-            levels: DictationActivityAttributes.ContentState.restingLevels
+            levels: DictationActivityAttributes.ContentState.restingLevels,
+            assistantMode: assistantMode
         )
         activity = try? Activity.request(
             attributes: DictationActivityAttributes(
@@ -74,7 +75,8 @@ final class DictationActivityController {
         startedAt: Date,
         wordCount: Int?,
         recordedSeconds: Int?,
-        variantsAvailable: Bool
+        variantsAvailable: Bool,
+        assistantMode: Bool
     ) {
         guard let activity else { return }
         let state = DictationActivityAttributes.ContentState(
@@ -84,8 +86,27 @@ final class DictationActivityController {
             levels: DictationActivityAttributes.ContentState.restingLevels,
             wordCount: wordCount,
             recordedSeconds: recordedSeconds,
-            variantsAvailable: variantsAvailable
+            variantsAvailable: variantsAvailable,
+            assistantMode: assistantMode
         )
+        readyState = state
+        enqueue {
+            await activity.update(ActivityContent(state: state, staleDate: nil))
+        }
+        scheduleWindowEnd(finalState: state)
+    }
+
+    /// Updates the ready-window lens immediately when the user switches
+    /// modes in the app. Dictate clears any stale assistant offer; Act keeps
+    /// the generic Refine fallback visible until classification lands.
+    func setAssistantMode(_ enabled: Bool) {
+        guard let activity, var state = readyState else { return }
+        state.assistantMode = enabled
+        if !enabled {
+            state.suggestedActionKind = nil
+            state.suggestedActionTitle = nil
+            state.suggestedActionDetail = nil
+        }
         readyState = state
         enqueue {
             await activity.update(ActivityContent(state: state, staleDate: nil))

@@ -366,7 +366,9 @@ private struct ExpandedTrailing: View {
     private var microLabel: String {
         switch state.phase {
         case .recording where state.pausedAt != nil: return "PAUSED"
-        case .recording: return state.capWarning ? "ENDING SOON" : "REC"
+        case .recording:
+            if state.capWarning { return "ENDING SOON" }
+            return state.assistantMode == true ? "ACT · REC" : "DICTATE · REC"
         case .transcribing: return state.refining ? "REFINING" : "TRANSCRIBING"
         case .ready: return "DONE"
         case .failed: return "FAILED"
@@ -400,6 +402,22 @@ private struct ExpandedBottom: View {
                     .frame(maxWidth: .infinity)
                     .opacity(state.pausedAt != nil ? 0.45 : 1)
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
+
+                    Button(intent: ToggleVoiceModeIntent()) {
+                        Label(
+                            state.assistantMode == true ? "Act" : "Text",
+                            systemImage: state.assistantMode == true ? "sparkles" : "text.quote"
+                        )
+                        .font(.subheadline.weight(.semibold))
+                        .contentTransition(.symbolEffect(.replace))
+                    }
+                    .buttonStyle(.glass)
+                    .tint(state.assistantMode == true
+                        ? FlowBridgeTheme.processingBlue
+                        : FlowBridgeTheme.flowViolet)
+                    .accessibilityLabel(state.assistantMode == true
+                        ? "Act mode. Switch to plain dictation"
+                        : "Dictate mode. Switch to assistant actions")
 
                     if state.pausedAt != nil {
                         Button(intent: ResumeDictationIntent()) {
@@ -503,7 +521,8 @@ private struct TranscriptHero: View {
             return state.transcriptPreview
         }
         switch state.phase {
-        case .recording: return "Listening…"
+        case .recording:
+            return state.assistantMode == true ? "Tell me what should happen…" : "Listening…"
         case .transcribing: return state.refining ? "Refining your voice…" : "Hearing the words…"
         case .ready: return "Copied to clipboard"
         case .failed: return "Something went wrong"
@@ -574,6 +593,12 @@ private struct FullLockView: View {
                 .opacity(isStale && state.phase == .recording ? 0.35 : 1)
                 Text("FlowBridge")
                     .font(.headline)
+                if state.assistantMode == true {
+                    Label("ACT", systemImage: "sparkles")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(FlowBridgeTheme.processingBlue)
+                        .transition(.scale.combined(with: .opacity))
+                }
                 Spacer()
                 if state.phase == .recording {
                     if state.capWarning {

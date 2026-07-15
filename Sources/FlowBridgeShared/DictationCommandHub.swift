@@ -21,6 +21,10 @@ public final class DictationCommandHub {
     /// Re-polishes the delivered transcript with a tone (raw ToneProfile
     /// value) and refreshes clipboard + island.
     public var applyToneHandler: ((String) async -> Void)?
+    /// Switches whether the current/next take is text-only or may propose a
+    /// post-delivery action. Used by the in-app lens and Live Activity.
+    public var setVoiceModeHandler: ((VoiceMode) async -> Void)?
+    public var toggleVoiceModeHandler: (() async -> Void)?
     /// Performs the single contextual action currently shown in the ready
     /// Live Activity. No persistence fallback: the offer only exists while
     /// the serving app process owns that ready window.
@@ -72,6 +76,25 @@ public final class DictationCommandHub {
         // No pending-store fallback: the variants window only exists while
         // the app process is alive to serve it.
         await applyToneHandler?(rawTone)
+    }
+
+    public func requestSetVoiceMode(_ mode: VoiceMode) async {
+        if let setVoiceModeHandler {
+            await setVoiceModeHandler(mode)
+        } else {
+            // Persistence is enough for a later app-process start; no
+            // pending-command queue is needed for a preference-sized change.
+            mode.save()
+        }
+    }
+
+    public func requestToggleVoiceMode() async {
+        if let toggleVoiceModeHandler {
+            await toggleVoiceModeHandler()
+        } else {
+            let next: VoiceMode = VoiceMode.current == .act ? .dictate : .act
+            next.save()
+        }
     }
 
     public func requestPerformSuggestedAction() async {

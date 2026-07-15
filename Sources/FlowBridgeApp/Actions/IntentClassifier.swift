@@ -93,6 +93,7 @@ actor IntentClassifier {
 
     /// Beyond this length it's prose being dictated, not a command.
     private static let maxWords = 120
+    private static let responseBudget: Duration = .seconds(8)
 
 #if canImport(FoundationModels)
     private var session: LanguageModelSession?
@@ -127,15 +128,32 @@ actor IntentClassifier {
 
         let activeSession = session ?? LanguageModelSession(instructions: Self.instructions)
         session = nil
-        let classification: Classification
-        do {
-            let response = try await activeSession.respond(
-                to: trimmed,
-                generating: Classification.self,
-                options: GenerationOptions(sampling: .greedy)
-            )
-            classification = response.content
-        } catch {
+        FBLog.log("actions: classify begin (budget=8s)")
+        let inference = Task<ParsedClassification?, Never> {
+            do {
+                let response = try await activeSession.respond(
+                    to: trimmed,
+                    generating: Classification.self,
+                    options: GenerationOptions(sampling: .greedy)
+                )
+                return ParsedClassification(
+                    category: response.content.category,
+                    title: response.content.title,
+                    content: response.content.content
+                )
+            } catch {
+                return nil
+            }
+        }
+        let outcome = await TaskDeadline.value(
+            from: inference,
+            fallback: nil,
+            after: Self.responseBudget
+        )
+        guard let classification = outcome.value else {
+            FBLog.log(outcome.timedOut
+                ? "actions: classify timed out"
+                : "actions: classify unavailable")
             return nil
         }
 
@@ -189,6 +207,12 @@ actor IntentClassifier {
     }
 
 #if canImport(FoundationModels)
+    private struct ParsedClassification: Sendable {
+        let category: String
+        let title: String
+        let content: String
+    }
+
     // Not `private`: the @Generable macro expands to an extension that can't
     // see a private nested type.
     @Generable

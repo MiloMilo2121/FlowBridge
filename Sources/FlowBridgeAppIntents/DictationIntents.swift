@@ -43,6 +43,31 @@ struct StartDictationIntent: AudioRecordingIntent {
     }
 }
 
+/// Direct assistant entry point for Shortcuts, the Action Button, and Siri.
+/// It still delivers verbatim text first; the only difference is that the
+/// ready window may offer one concrete app action.
+struct StartAssistantIntent: AudioRecordingIntent {
+    static let title: LocalizedStringResource = "Start Voice Action"
+    static let description = IntentDescription("Start FlowBridge in Act mode and suggest one action after transcription.")
+    static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        await DictationCommandHub.shared.requestSetVoiceMode(.act)
+        do {
+            try await DictationCommandHub.shared.requestStart()
+            return .result()
+        } catch {
+            guard systemContext.currentMode.canContinueInForeground else {
+                throw error
+            }
+            try await continueInForeground()
+            await DictationCommandHub.shared.requestToggle()
+            return .result()
+        }
+    }
+}
+
 /// Stops the active dictation. Wired to the Live Activity's stop button and
 /// exposed to Shortcuts. Runs in the app process (`LiveActivityIntent`),
 /// where the recorder and the audio session live.
@@ -88,6 +113,20 @@ struct ApplyToneIntent: LiveActivityIntent {
 
     func perform() async throws -> some IntentResult {
         await DictationCommandHub.shared.requestApplyTone(tone)
+        return .result()
+    }
+}
+
+/// Compact mode lens inside the expanded Dynamic Island. Switching is safe
+/// mid-take because recognition never changes; only optional post-delivery
+/// interpretation is enabled or disabled.
+struct ToggleVoiceModeIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Toggle Dictate or Act"
+    static let description = IntentDescription("Switch this FlowBridge take between plain dictation and assistant action mode.")
+    static let supportedModes: IntentModes = [.background]
+
+    func perform() async throws -> some IntentResult {
+        await DictationCommandHub.shared.requestToggleVoiceMode()
         return .result()
     }
 }

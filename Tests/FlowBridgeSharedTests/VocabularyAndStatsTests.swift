@@ -116,3 +116,15 @@ final class ToneContextStoreTests: XCTestCase {
         return defaults
     }
 }
+
+final class VoiceModeTests: XCTestCase {
+    func testDefaultsToDictateAndPersistsAct() {
+        let suite = "VoiceModeTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+
+        XCTAssertEqual(VoiceMode.current(defaults: defaults), .dictate)
+        VoiceMode.act.save(defaults: defaults)
+        XCTAssertEqual(VoiceMode.current(defaults: defaults), .act)
+    }
+}
