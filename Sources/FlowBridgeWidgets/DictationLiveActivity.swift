@@ -146,7 +146,7 @@ private struct EngineBadgeGlyph: View {
 }
 
 /// One useful post-delivery action. Intent classification replaces the
-/// generic concise fallback as soon as it lands, without growing a row of
+/// generic refinement fallback as soon as it lands, without growing a row of
 /// competing micro-buttons inside the island.
 private struct ReadyAction: View {
     let state: DictationActivityAttributes.ContentState
@@ -184,8 +184,8 @@ private struct ReadyAction: View {
             HStack(spacing: 8) {
                 SummaryLine(state: state)
                 Spacer(minLength: 4)
-                Button(intent: ApplyToneIntent(tone: "concise")) {
-                    Label("Tighter", systemImage: "text.badge.minus")
+                Button(intent: ApplyToneIntent(tone: "neutral")) {
+                    Label("Refine", systemImage: "wand.and.sparkles")
                         .font(.subheadline.weight(.semibold))
                 }
                 .buttonStyle(.glass)
@@ -679,7 +679,7 @@ private extension DictationActivityAttributes.ContentState {
     )
     static let previewTranscribing = DictationActivityAttributes.ContentState(
         phase: .transcribing,
-        transcriptPreview: "il testo appena dettato in attesa del polish on-device",
+        transcriptPreview: "il testo appena dettato, già pronto da usare",
         startedAt: Date(timeIntervalSinceNow: -31),
         levels: quietLevels,
         recordedSeconds: 31

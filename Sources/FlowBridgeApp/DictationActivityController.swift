@@ -73,7 +73,8 @@ final class DictationActivityController {
         transcriptPreview: String,
         startedAt: Date,
         wordCount: Int?,
-        recordedSeconds: Int?
+        recordedSeconds: Int?,
+        variantsAvailable: Bool
     ) {
         guard let activity else { return }
         let state = DictationActivityAttributes.ContentState(
@@ -83,7 +84,7 @@ final class DictationActivityController {
             levels: DictationActivityAttributes.ContentState.restingLevels,
             wordCount: wordCount,
             recordedSeconds: recordedSeconds,
-            variantsAvailable: true
+            variantsAvailable: variantsAvailable
         )
         readyState = state
         enqueue {
@@ -112,7 +113,7 @@ final class DictationActivityController {
     }
 
     /// Intent classification finishes after delivery. Replace the generic
-    /// "Tighter" fallback with the useful real-world action in-place.
+    /// "Refine" fallback with the useful real-world action in-place.
     func offerSuggestedAction(
         kind: DictationActivityAttributes.ContentState.SuggestedActionKind,
         title: String,

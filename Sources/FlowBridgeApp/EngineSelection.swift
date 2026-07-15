@@ -16,7 +16,7 @@ enum EnginePreference: String, CaseIterable {
     var displayName: String {
         switch self {
         case .whisper: return "Whisper (bundled)"
-        case .whisperPrecision: return "Whisper Precision"
+        case .whisperPrecision: return "Whisper Enhanced"
         case .appleSpeech: return "Apple Speech"
         case .cloudRealtime: return "ElevenLabs Realtime (cloud)"
         }
@@ -89,10 +89,12 @@ enum EngineFactory {
         case .whisper:
             return WhisperEngine()
         case .whisperPrecision:
-            if WhisperModelLocator.precisionFolderIfInstalled() != nil {
+            switch LocalWhisperRuntimePlan.liveModel(precisionRequested: true) {
+            case .bundled:
+                return WhisperEngine()
+            case .precision:
                 return WhisperEngine(variant: .precision)
             }
-            return WhisperEngine()
         case .appleSpeech:
             return AppleSpeechEngine(locale: DictationLanguage.current.speechLocale ?? .current)
         case .cloudRealtime:

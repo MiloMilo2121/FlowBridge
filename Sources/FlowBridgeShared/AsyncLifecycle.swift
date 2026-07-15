@@ -31,3 +31,48 @@ public enum TaskQuiescer {
         await task.value
     }
 }
+
+/// Returns a fallback at a hard deadline even when the work ignores
+/// cancellation. Structured task groups wait for every child before leaving
+/// scope, so they cannot protect a user-facing delivery path from a stuck
+/// framework call; this deliberately races unstructured producers instead.
+public enum TaskDeadline {
+    public struct Outcome<Value: Sendable>: Sendable {
+        public let value: Value
+        public let timedOut: Bool
+
+        public init(value: Value, timedOut: Bool) {
+            self.value = value
+            self.timedOut = timedOut
+        }
+    }
+
+    public static func value<Value: Sendable>(
+        from work: Task<Value, Never>,
+        fallback: Value,
+        after budget: Duration
+    ) async -> Outcome<Value> {
+        let stream = AsyncStream<Outcome<Value>> { continuation in
+            Task {
+                continuation.yield(Outcome(value: await work.value, timedOut: false))
+                continuation.finish()
+            }
+            Task {
+                do {
+                    try await Task.sleep(for: budget)
+                } catch {
+                    return
+                }
+                continuation.yield(Outcome(value: fallback, timedOut: true))
+                continuation.finish()
+            }
+        }
+
+        var iterator = stream.makeAsyncIterator()
+        let outcome = await iterator.next() ?? Outcome(value: fallback, timedOut: true)
+        if outcome.timedOut {
+            work.cancel()
+        }
+        return outcome
+    }
+}

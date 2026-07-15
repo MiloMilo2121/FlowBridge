@@ -34,11 +34,13 @@ final class FlowBridgeCoordinator: ObservableObject {
         enum Recovery: Equatable {
             case openSettings
             case tryAgain
+            case recoverInterrupted
 
             var title: String {
                 switch self {
                 case .openSettings: return "Open Settings"
                 case .tryAgain: return "Try Again"
+                case .recoverInterrupted: return "Recover Audio"
                 }
             }
         }
@@ -188,6 +190,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         pendingCommandStore = try? PendingCommandStore()
         lastTranscript = await transcriptStore?.latest()
         refreshStatsSummary()
+
         registerSystemIntegration()
         // A crash mid-recording leaves an orphaned Live Activity that this
         // process no longer tracks; kill it before recovery narrates its own
@@ -465,8 +468,14 @@ final class FlowBridgeCoordinator: ObservableObject {
             polishReveal = nil
             liveTranscript = nil
             vocabularySuggestions = []
-            suggestionTask?.cancel()
+            // A previous take may still be classifying in Foundation Models.
+            // Cancellation is cooperative, so drain it and drop every idle
+            // language-model session before loading a speech model.
+            let pendingSuggestion = suggestionTask
             suggestionTask = nil
+            await TaskQuiescer.cancelAndWait(pendingSuggestion)
+            await IntentClassifier.shared.releaseSession()
+            await polisher.releaseSession()
             confirmationDismissTask?.cancel()
             confirmationDismissTask = nil
             suggestedAction = nil
@@ -506,13 +515,9 @@ final class FlowBridgeCoordinator: ObservableObject {
             startIslandTick(startedAt: startedAt)
             recordingFeedback.start()
             HapticPlayer.listeningStarted()
-            // Prewarm off the session-start memory peak: the polisher LLM
-            // and the just-loaded Whisper model shouldn't spike together.
-            Task {
-                try? await Task.sleep(for: .seconds(3))
-                await polisher.prewarm()
-                await IntentClassifier.shared.prewarm()
-            }
+            // Do not prewarm Foundation Models during a live take. The
+            // speech model owns the memory envelope until stop, then hands it
+            // off explicitly to final-pass and cleanup models.
         } catch {
             FBLog.log("start FAILED: \(error)")
             currentSessionID = nil
@@ -647,7 +652,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             )
 
             processingStage = .decodingSpeech
-            var record = try await transcriber.stopLiveTranscription(duration: duration)
+            var record = try await stopLiveTranscriptionAndReleaseEngine(duration: duration)
             FBLog.log("stop: engine returned \(record.text.count)ch")
 
             if let sessionID {
@@ -665,7 +670,12 @@ final class FlowBridgeCoordinator: ObservableObject {
                         refining: true
                     )
                 )
-                let refined = await finalPass.refine(sessionID: sessionID, duration: duration, fallback: record.text)
+                let refined = await finalPass.refine(
+                    sessionID: sessionID,
+                    duration: duration,
+                    fallback: record.text,
+                    forceLocalRefinement: activeEnginePreference == .whisperPrecision
+                )
                 if refined != record.text {
                     record = TranscriptRecord(
                         text: refined,
@@ -685,7 +695,12 @@ final class FlowBridgeCoordinator: ObservableObject {
             if case FlowBridgeError.emptyTranscript = error, let sessionID {
                 processingStage = .decodingSpeech
                 statusMessage = "Recovering audio…"
-                let rescued = await finalPass.refine(sessionID: sessionID, duration: duration, fallback: "")
+                let rescued = await finalPass.refine(
+                    sessionID: sessionID,
+                    duration: duration,
+                    fallback: "",
+                    forceLocalRefinement: activeEnginePreference == .whisperPrecision
+                )
                 if !rescued.isEmpty {
                     FBLog.log("stop: rescued \(rescued.count)ch via final pass")
                     let record = TranscriptRecord(
@@ -711,29 +726,40 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
     }
 
+    /// Stops hardware and then releases the live recognizer on both success
+    /// and failure. The next stage may load diarization, a precision pass, or
+    /// Foundation Models; none may overlap the live model in memory.
+    private func stopLiveTranscriptionAndReleaseEngine(duration: TimeInterval) async throws -> TranscriptRecord {
+        let engine = transcriber
+        do {
+            let record = try await engine.stopLiveTranscription(duration: duration)
+            await engine.unload()
+            FBLog.log("stop: live model released before refinement")
+            return record
+        } catch {
+            await engine.unload()
+            FBLog.log("stop: live model released after decode failure")
+            throw error
+        }
+    }
+
     /// Everything between "we have the take's text" and "the user has it":
-    /// spoken commands, polish, history, stats, session append, clipboard,
-    /// reveal, island summary, haptics.
+    /// deterministic spoken commands, history, stats, session append,
+    /// clipboard, island summary, haptics.
+    ///
+    /// Foundation Models deliberately does not run on this critical path.
+    /// iOS may suspend an app immediately after a background stop; waiting
+    /// for optional generative cleanup here could strand a valid transcript
+    /// in the transcribing state. The verbatim take is delivered first and
+    /// refinement remains an explicit, reversible post-delivery action.
     private func deliver(_ record: TranscriptRecord, duration: TimeInterval, startedAt recordingStartedAt: Date) async throws {
-        // Deterministic spoken commands first ("punto", "a capo", …),
-        // then the on-device polish with the current tone target. The
-        // engine's verbatim text always survives in rawText.
-        processingStage = .refiningText
+        // Spoken commands ("punto", "a capo", …) are deterministic and
+        // safe to apply synchronously. Labeled multi-speaker transcripts are
+        // left verbatim so their structure cannot be altered accidentally.
         var workingText = record.text
-        let tone = toneStore?.currentTone() ?? .neutral
-        if let turns = SpeakerTranscriptFormatter.turns(in: workingText) {
-            // A labeled conversation: each turn is polished separately so
-            // the labels survive by construction; spoken commands don't
-            // apply to multi-voice audio. Very long exchanges skip the
-            // polish — the diarized verbatim already reads well.
-            if turns.count <= FlowBridgeConstants.speakerPolishMaxTurns {
-                workingText = await polishTurns(turns, tone: tone)
-            }
-        } else {
-            if Self.voiceCommandsEnabled {
-                workingText = VoiceCommandProcessor.apply(to: workingText)
-            }
-            workingText = await polisher.polish(workingText, tone: tone)
+        if SpeakerTranscriptFormatter.turns(in: workingText) == nil,
+           Self.voiceCommandsEnabled {
+            workingText = VoiceCommandProcessor.apply(to: workingText)
         }
         let finalRecord = workingText == record.text ? record : record.polished(workingText)
 
@@ -754,14 +780,17 @@ final class FlowBridgeCoordinator: ObservableObject {
         processingStage = nil
         state = .ready
         statusMessage = delivered.id == finalRecord.id ? "Clipboard updated" : "Appended to previous dictation"
+        FBLog.log("delivery: ready (\(finalRecord.text.count)ch); refinement is optional")
         // The island summary describes the take just recorded — with
         // session append, the merged word count would contradict the
         // recorded seconds.
+        let refinementAvailable = await polisher.isEnabled
         activityController.deliverInteractive(
             transcriptPreview: delivered.text,
             startedAt: recordingStartedAt,
             wordCount: finalRecord.text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count,
-            recordedSeconds: Int(duration.rounded())
+            recordedSeconds: Int(duration.rounded()),
+            variantsAvailable: refinementAvailable
         )
         if let outcome {
             streakDays = outcome.streakDays
@@ -805,7 +834,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             actionConfirmation = message
             activityController.noteActionCompleted(message)
             // The Flow trail: History shows what this dictation became.
-            try? await historyStore?.setAction(action.label, id: recordID)
+            try? await historyStore?.setAction(message, id: recordID)
             confirmationDismissTask?.cancel()
             confirmationDismissTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(3))
@@ -813,8 +842,8 @@ final class FlowBridgeCoordinator: ObservableObject {
                 self?.actionConfirmation = nil
             }
         case .openedApp:
-            activityController.noteActionCompleted("Opened \(action.label)")
-            try? await historyStore?.setAction(action.label, id: recordID)
+            activityController.noteActionCompleted(action.handoffHistoryLabel)
+            try? await historyStore?.setAction(action.handoffHistoryLabel, id: recordID)
         case .failed(let message):
             statusMessage = message
             activityController.noteActionFailed()
@@ -824,14 +853,6 @@ final class FlowBridgeCoordinator: ObservableObject {
     func dismissSuggestedAction() {
         suggestedAction = nil
         activityController.clearSuggestedAction()
-    }
-
-    private func polishTurns(_ turns: [SpeakerTranscriptFormatter.Turn], tone: ToneProfile) async -> String {
-        var polished: [SpeakerTranscriptFormatter.Turn] = []
-        for turn in turns {
-            polished.append(.init(label: turn.label, text: await polisher.polish(turn.text, tone: tone)))
-        }
-        return SpeakerTranscriptFormatter.compose(turns: polished)
     }
 
     func addVocabularySuggestion(_ term: String) {
@@ -917,16 +938,42 @@ final class FlowBridgeCoordinator: ObservableObject {
         for recording in pending {
             guard recording.duration >= FlowBridgeConstants.safetyBufferMinimumRecoverySeconds else {
                 AudioSafetyBuffer.remove(recording)
+                InterruptedRecoveryGuard.clear(recording.url)
                 continue
+            }
+
+            // A SIGKILL cannot run cleanup. The durable sidecar means the
+            // next launch offers a deliberate retry instead of loading the
+            // same model forever and making the app appear unable to open.
+            guard !InterruptedRecoveryGuard.hasAttempted(recording.url) else {
+                presentInterruptedRecovery(
+                    "Your interrupted recording is safe. Recover it when the phone has memory available."
+                )
+                return
+            }
+
+            do {
+                try InterruptedRecoveryGuard.markAttempted(recording.url)
+            } catch {
+                FBLog.log("recovery: could not persist attempt guard (\(error))")
+                presentInterruptedRecovery(
+                    "Your interrupted recording is safe, but recovery could not start yet."
+                )
+                return
             }
 
             state = .transcribing
             statusMessage = "Recovering interrupted dictation"
+            FBLog.log("recovery: bundled safe pass for \(recording.url.lastPathComponent)")
+
+            // Never recover with the user's Precision streaming preference.
+            // The bundled model is the known-good, lower-peak rescue path.
+            let recoveryEngine = WhisperEngine(variant: .bundled)
 
             do {
                 let audio = RecordedAudio(url: recording.url, duration: recording.duration)
-                let engine = await resolveEngine()
-                let record = try await engine.transcribe(recording: audio, source: .recovered)
+                let record = try await recoveryEngine.transcribe(recording: audio, source: .recovered)
+                await recoveryEngine.unload()
                 try await transcriptStore?.save(record)
                 lastTranscript = record
                 UIPasteboard.general.string = record.text
@@ -934,12 +981,43 @@ final class FlowBridgeCoordinator: ObservableObject {
                 statusMessage = "Recovered interrupted dictation"
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             } catch {
-                state = .idle
-                statusMessage = "Interrupted dictation could not be recovered"
+                await recoveryEngine.unload()
+                FBLog.log("recovery FAILED, audio retained: \(error)")
+                presentInterruptedRecovery(
+                    "The first recovery attempt did not finish. Your audio is still safe; tap to try again."
+                )
+                return
             }
 
             AudioSafetyBuffer.remove(recording)
+            InterruptedRecoveryGuard.clear(recording.url)
         }
+    }
+
+    /// Explicit retry from the recovery card. Clearing the marker is a user
+    /// decision; the recovery method immediately recreates it before loading
+    /// a model, so another system kill still cannot create a boot loop.
+    func retryInterruptedDictation() async {
+        guard let directory = try? AudioSafetyBuffer.defaultDirectory() else { return }
+        for recording in AudioSafetyBuffer.pendingRecordings(in: directory) {
+            InterruptedRecoveryGuard.clear(recording.url)
+        }
+        errorPresentation = nil
+        statusMessage = nil
+        state = .idle
+        await recoverInterruptedDictationIfNeeded()
+    }
+
+    private func presentInterruptedRecovery(_ message: String) {
+        let title = "Recording kept safe"
+        state = .failed(message)
+        statusMessage = nil
+        errorPresentation = FlowErrorPresentation(
+            title: title,
+            message: message,
+            symbol: "waveform.badge.exclamationmark",
+            recovery: .recoverInterrupted
+        )
     }
 
     private func stopIfRecording() async {
@@ -958,6 +1036,9 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     private var finalPassBadge: DictationActivityAttributes.ContentState.EngineBadge? {
+        if activeEnginePreference == .whisperPrecision {
+            return .local
+        }
         switch FinalPassMode.current {
         case .off: return nil
         case .localPrecision: return .local
@@ -1071,31 +1152,52 @@ final class FlowBridgeCoordinator: ObservableObject {
               let base = lastTranscript?.text,
               !base.isEmpty else { return }
         FBLog.log("variant: \(rawTone)")
-        let variant: String
-        if let turns = SpeakerTranscriptFormatter.turns(in: base) {
-            // Labeled conversation: per-turn, same rule as delivery.
-            variant = turns.count <= FlowBridgeConstants.speakerPolishMaxTurns
-                ? await polishTurns(turns, tone: tone)
-                : base
-        } else {
-            variant = await polisher.polish(base, tone: tone)
+        let variantWork = Task { [polisher] in
+            if let turns = SpeakerTranscriptFormatter.turns(in: base) {
+                // Labeled conversation: per-turn, same rule as delivery.
+                guard turns.count <= FlowBridgeConstants.speakerPolishMaxTurns else { return base }
+                var polished: [SpeakerTranscriptFormatter.Turn] = []
+                for turn in turns {
+                    guard !Task.isCancelled else { return base }
+                    polished.append(.init(
+                        label: turn.label,
+                        text: await polisher.polish(turn.text, tone: tone)
+                    ))
+                }
+                return SpeakerTranscriptFormatter.compose(turns: polished)
+            }
+            return await polisher.polish(base, tone: tone)
         }
+        let outcome = await TaskDeadline.value(
+            from: variantWork,
+            fallback: base,
+            after: .seconds(8)
+        )
+        let variant = outcome.value
         UIPasteboard.general.string = variant
-        statusMessage = "\(tone.displayName) copied"
+        let variantName = tone == .neutral ? "Refined" : tone.displayName
+        statusMessage = outcome.timedOut ? "Verbatim copied — refine took too long" : "\(variantName) copied"
         HapticPlayer.transcriptReady()
-        activityController.noteVariantApplied("\(tone.displayName) copied ✓", preview: variant)
+        activityController.noteVariantApplied(
+            outcome.timedOut ? "Verbatim copied ✓" : "\(variantName) copied ✓",
+            preview: variant
+        )
     }
 
     private func handleMemoryWarning() async {
         FBLog.log("memory warning, state=\(state)")
+        let pendingSuggestion = suggestionTask
+        suggestionTask = nil
+        await TaskQuiescer.cancelAndWait(pendingSuggestion)
+        await IntentClassifier.shared.releaseSession()
+        await polisher.releaseSession()
         switch state {
         case .idle, .ready, .failed:
             await transcriber.unload()
         case .warming, .recording, .transcribing:
-            // Loading the model spikes memory exactly here, so iOS often
-            // warns mid-start. Unloading now would kill the session we just
-            // opened (the V1 bug): keep it — the OS reclaims by force if it
-            // truly must.
+            // Never tear down the model that owns an active operation. The
+            // optional language-model work above is safe to cancel; the core
+            // recognizer is released at the explicit stage handoff.
             break
         }
     }

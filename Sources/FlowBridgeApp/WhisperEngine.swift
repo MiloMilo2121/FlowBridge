@@ -67,7 +67,9 @@ actor WhisperEngine: TranscriptionEngine {
 
         let results: [TranscriptionResult]
         do {
+            FBLog.log("whisper: \(variant) offline decode starting (\(Int(recording.duration))s)")
             results = try await kit.transcribe(audioPath: recording.url.path, decodeOptions: options)
+            FBLog.log("whisper: \(variant) offline decode completed (\(results.count) result(s))")
         } catch {
             throw FlowBridgeError.transcriptionFailed(error.localizedDescription)
         }
@@ -545,15 +547,15 @@ actor WhisperEngine: TranscriptionEngine {
                 textDecoderCompute: .cpuAndNeuralEngine
             )
         case .precision:
-            // On this device the sideloaded large-v3-turbo decodes to EMPTY
-            // on the Neural Engine — fresh weights and a forced ANE recompile
-            // both failed, while the same code path runs the bundled model
-            // fine. GPU is the escape hatch: slower per pass, but it bypasses
-            // whatever the ANE mis-compiles on the 632MB encoder/decoder.
+            guard PrecisionRuntimePolicy.installedArtifactValidated else {
+                throw FlowBridgeError.transcriptionFailed(
+                    "The installed Precision model is quarantined after failing physical-device validation."
+                )
+            }
             compute = ModelComputeOptions(
                 melCompute: .cpuAndGPU,
-                audioEncoderCompute: .cpuAndGPU,
-                textDecoderCompute: .cpuAndGPU
+                audioEncoderCompute: .cpuAndNeuralEngine,
+                textDecoderCompute: .cpuAndNeuralEngine
             )
         }
 
@@ -571,7 +573,7 @@ actor WhisperEngine: TranscriptionEngine {
 
         let loadStart = Date()
         let kit = try await WhisperKit(config)
-        FBLog.log("whisper: model loaded in \(Int(Date().timeIntervalSince(loadStart)))s")
+        FBLog.log("whisper: \(variant) model loaded in \(Int(Date().timeIntervalSince(loadStart)))s")
         whisperKit = kit
         scheduleIdleUnload()
         return kit

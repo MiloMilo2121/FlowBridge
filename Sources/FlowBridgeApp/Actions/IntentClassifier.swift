@@ -52,6 +52,17 @@ enum SuggestedAction: Equatable, Sendable {
         }
     }
 
+    /// Message and Mail are hand-offs: FlowBridge can truthfully record that
+    /// it opened a filled composer, but cannot claim the user sent it.
+    var handoffHistoryLabel: String {
+        switch self {
+        case .message: return "Opened Messages"
+        case .email: return "Opened Mail"
+        case .calendarEvent: return "Opened Calendar"
+        case .reminder: return "Opened Reminders"
+        }
+    }
+
     /// The short human title shown next to the label ("Lunch with Luca").
     var detail: String {
         switch self {
@@ -73,11 +84,10 @@ enum SuggestedAction: Equatable, Sendable {
 /// 2. Runs after delivery, cancellable, off the critical path.
 /// 3. On-device only, like the polisher — no text leaves the phone.
 ///
-/// Session lifecycle mirrors `TranscriptPolisher`: `prewarm()` (called
-/// alongside the polisher's, at recording start) loads one session ahead of
-/// time; `classify` consumes and clears it so the next take prewarms fresh
-/// — reusing one session across takes would grow its conversation history
-/// forever, since each `respond` call adds to it.
+/// Session lifecycle mirrors `TranscriptPolisher`: any optional warmup is
+/// idle-only, and `classify` consumes and clears it. Reusing one session
+/// across takes would grow its conversation history forever, since each
+/// `respond` call adds to it.
 actor IntentClassifier {
     static let shared = IntentClassifier()
 
@@ -94,8 +104,13 @@ actor IntentClassifier {
         }
         session?.prewarm()
     }
+
+    func releaseSession() {
+        session = nil
+    }
 #else
     func prewarm() {}
+    func releaseSession() {}
 #endif
 
     func classify(_ text: String, now: Date = Date()) async -> SuggestedAction? {

@@ -1,7 +1,7 @@
 import FlowBridgeShared
 import SwiftUI
 
-/// Few controls, all local: engine, polish, tone, spoken commands, session
+/// Few controls, all local: engine, refined variants, tone, spoken commands, session
 /// append, personal vocabulary, and the "time given back" stats.
 struct SettingsView: View {
     @EnvironmentObject private var coordinator: FlowBridgeCoordinator
@@ -55,7 +55,7 @@ struct SettingsView: View {
                         settingsLink(
                             symbol: "text.badge.checkmark",
                             title: "Writing",
-                            detail: polishEnabled ? "Cleanup on · \(defaultTone.displayName)" : "Verbatim only"
+                            detail: polishEnabled ? "Refine available · \(defaultTone.displayName)" : "Verbatim only"
                         )
                     }
                 } header: {
@@ -266,7 +266,7 @@ struct SettingsView: View {
         } header: {
             Text("Transcription").flowEyebrow()
         } footer: {
-            Text(engineFooter + " Pinning the language noticeably improves accuracy; auto-detect struggles on short phrases. The final pass re-transcribes the whole recording once you stop — a moment slower, distinctly more accurate. Speaker detection labels who said what when more than one voice is heard; it runs in the final pass, and quietly uses the on-device Precision pass when the final pass is off.")
+            Text(engineFooter + " Pinning the language noticeably improves accuracy; auto-detect struggles on short phrases. The final pass re-transcribes the whole recording once you stop — a moment slower, distinctly more accurate. Speaker detection labels who said what when more than one voice is heard and runs in that same on-device pass.")
         }
     }
 
@@ -311,9 +311,10 @@ struct SettingsView: View {
         case .whisper:
             return "The bundled Whisper model. Everything runs on this iPhone." + note
         case .whisperPrecision:
-            return (WhisperModelLocator.precisionFolderIfInstalled() == nil
-                ? "No Precision model installed — the bundled model is used. Install one under Application Support/PrecisionModel."
-                : "Higher-accuracy Whisper model, still fully on-device.") + note
+            if PrecisionRuntimePolicy.isQuarantined {
+                return "Enhanced uses the reliable bundled model live, then a full-recording pass after Stop. The installed Large model is safely quarantined because this Core ML build exceeded iOS memory on GPU and decoded empty on CPU/Neural Engine." + note
+            }
+            return "Enhanced uses the reliable bundled model live, then a full-recording on-device pass after Stop." + note
         case .appleSpeech:
             return "Apple's on-device speech model (iOS 26). Fastest, and your vocabulary biases it too." + note
         case .cloudRealtime:
@@ -323,7 +324,7 @@ struct SettingsView: View {
 
     private var polishSection: some View {
         Section {
-            Toggle("Polish transcripts", isOn: $polishEnabled)
+            Toggle("Refined variants", isOn: $polishEnabled)
                 .onChange(of: polishEnabled) { _, newValue in
                     let defaults = try? SharedContainer.userDefaults()
                     defaults?.set(newValue, forKey: FlowBridgeConstants.polishEnabledKey)
@@ -339,7 +340,7 @@ struct SettingsView: View {
         } header: {
             Text("Cleanup").flowEyebrow()
         } footer: {
-            Text("Fillers out, punctuation fixed — by Apple's on-device model. The verbatim transcript is always kept. The keyboard adapts the tone to the field you're writing in; this is the fallback.")
+            Text("Every dictation is delivered verbatim first. Refine is an optional one-tap variant powered by Apple's on-device model, so the original is never delayed or lost. The keyboard adapts tone to the field; this is the fallback.")
         }
     }
 
@@ -512,6 +513,8 @@ struct SettingsView: View {
 struct VocabularyEditorView: View {
     @State private var terms: [String] = []
     @State private var newTerm = ""
+    @State private var editingTerm: String?
+    @State private var editedTerm = ""
 
     var body: some View {
         List {
@@ -526,12 +529,26 @@ struct VocabularyEditorView: View {
                     .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             } footer: {
-                Text("Up to \(VocabularyStore.maxTerms) terms. They bias recognition and guide the polisher.")
+                Text("Up to \(VocabularyStore.maxTerms) terms. They bias recognition and guide optional refined variants.")
             }
 
             Section {
                 ForEach(terms, id: \.self) { term in
-                    Text(term)
+                    HStack(spacing: FlowTheme.space12) {
+                        Text(term)
+                            .textSelection(.enabled)
+                        Spacer(minLength: 0)
+                        Button {
+                            editingTerm = term
+                            editedTerm = term
+                        } label: {
+                            Image(systemName: "pencil")
+                                .frame(width: 32, height: 32)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(FlowTheme.accent)
+                        .accessibilityLabel("Edit \(term)")
+                    }
                 }
                 .onDelete { offsets in
                     let store = try? VocabularyStore()
@@ -540,11 +557,32 @@ struct VocabularyEditorView: View {
                     }
                     reload()
                 }
+            } header: {
+                HStack {
+                    Text("Saved").flowEyebrow()
+                    Spacer()
+                    Text("\(terms.count)/\(VocabularyStore.maxTerms)")
+                        .font(FlowTheme.numeric(11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .navigationTitle("My vocabulary")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: reload)
+        .alert("Edit term", isPresented: editAlertPresented) {
+            TextField("Name or term", text: $editedTerm)
+                .autocorrectionDisabled()
+            Button("Cancel", role: .cancel) {
+                editingTerm = nil
+            }
+            Button("Save") {
+                saveEdit()
+            }
+            .disabled(editedTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text("The new spelling will bias your next dictation.")
+        }
     }
 
     private func addTerm() {
@@ -556,5 +594,23 @@ struct VocabularyEditorView: View {
 
     private func reload() {
         terms = (try? VocabularyStore())?.terms() ?? []
+    }
+
+    private var editAlertPresented: Binding<Bool> {
+        Binding(
+            get: { editingTerm != nil },
+            set: { isPresented in
+                if !isPresented { editingTerm = nil }
+            }
+        )
+    }
+
+    private func saveEdit() {
+        guard let editingTerm else { return }
+        let store = try? VocabularyStore()
+        try? store?.replace(editingTerm, with: editedTerm)
+        self.editingTerm = nil
+        editedTerm = ""
+        reload()
     }
 }

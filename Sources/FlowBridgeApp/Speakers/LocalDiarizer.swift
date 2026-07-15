@@ -33,6 +33,10 @@ actor LocalDiarizer {
     /// ("1", "2", …); the formatter renumbers them by first appearance.
     func diarize(url: URL) throws -> [SpeakerTranscriptFormatter.Segment] {
         let manager = try loadedManager()
+        // The speaker models and Whisper are never resident together. Keep a
+        // strong local reference for this pass, then release the actor cache
+        // before the precision transcription model is loaded.
+        defer { self.manager = nil }
         let started = Date()
         let samples = try AudioConverter().resampleAudioFile(url)
         let result = try manager.performCompleteDiarization(samples)
@@ -46,6 +50,10 @@ actor LocalDiarizer {
                 speaker: $0.speakerId
             )
         }
+    }
+
+    func unload() {
+        manager = nil
     }
 
     private func loadedManager() throws -> DiarizerManager {
@@ -69,5 +77,7 @@ actor LocalDiarizer {
     func diarize(url: URL) throws -> [SpeakerTranscriptFormatter.Segment] {
         throw FlowBridgeError.transcriptionFailed("FluidAudio is not part of this build.")
     }
+
+    func unload() {}
 #endif
 }

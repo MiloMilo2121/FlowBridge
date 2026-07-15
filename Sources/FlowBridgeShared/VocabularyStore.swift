@@ -43,6 +43,29 @@ public final class VocabularyStore: @unchecked Sendable {
         try save(current)
     }
 
+    /// Renames one saved term without changing its position in the user's
+    /// vocabulary. Renaming to an existing term merges the duplicate rather
+    /// than leaving two spellings that would compete in the recognition bias.
+    public func replace(_ original: String, with replacement: String) throws {
+        let trimmed = replacement.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        var current = terms()
+        guard let originalIndex = current.firstIndex(where: {
+            $0.caseInsensitiveCompare(original) == .orderedSame
+        }) else { return }
+
+        if current.indices.contains(where: {
+            $0 != originalIndex && current[$0].caseInsensitiveCompare(trimmed) == .orderedSame
+        }) {
+            current.remove(at: originalIndex)
+            // Preserve the existing canonical spelling.
+        } else {
+            current[originalIndex] = trimmed
+        }
+        try save(current)
+    }
+
     public func replaceAll(_ terms: [String]) throws {
         let cleaned = terms
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }

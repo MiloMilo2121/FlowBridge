@@ -12,7 +12,7 @@ enum FinalPassMode: String, CaseIterable {
     var displayName: String {
         switch self {
         case .off: return "Off"
-        case .localPrecision: return "On-device Precision"
+        case .localPrecision: return "On-device Enhanced"
         case .cloudScribe: return "ElevenLabs cloud"
         }
     }
@@ -58,7 +58,12 @@ final class FinalPassService {
     /// Returns the refined text, or `fallback` untouched when the pass is
     /// off, ineligible, or failed. Cleans up the session audio file unless
     /// it must survive for next-launch recovery.
-    func refine(sessionID: UUID, duration: TimeInterval, fallback: String) async -> String {
+    func refine(
+        sessionID: UUID,
+        duration: TimeInterval,
+        fallback: String,
+        forceLocalRefinement: Bool = false
+    ) async -> String {
         guard let url = Self.safetyFileURL(sessionID: sessionID),
               FileManager.default.fileExists(atPath: url.path) else {
             return fallback
@@ -66,9 +71,14 @@ final class FinalPassService {
 
         var mode = FinalPassMode.current
         let speakers = SpeakerDetection.isEnabled
-        // Diarization lives in the final pass: with the pass off it quietly
-        // borrows the on-device Precision pass (the Settings footer says so).
-        if speakers && mode == .off {
+        // Enhanced streaming and diarization both need the complete recording
+        // pass even when the standalone Final Pass picker is Off.
+        if mode == .off,
+           LocalWhisperRuntimePlan.shouldRunLocalFinalPass(
+               configured: false,
+               precisionRequested: forceLocalRefinement,
+               speakerDetection: speakers
+           ) {
             mode = .localPrecision
         }
         let eligible = duration >= FlowBridgeConstants.safetyBufferMinimumRecoverySeconds
@@ -96,7 +106,19 @@ final class FinalPassService {
         if !(text.isEmpty && duration >= FlowBridgeConstants.safetyBufferMinimumRecoverySeconds) {
             try? FileManager.default.removeItem(at: url)
         }
+        // A Foundation Models polish may run immediately after this method.
+        // Release every Core ML transcription model first instead of keeping
+        // a second engine cache alive for the next take.
+        await unloadEngines()
         return text
+    }
+
+    private func unloadEngines() async {
+        let loaded = Array(engines.values)
+        engines.removeAll()
+        for engine in loaded {
+            await engine.unload()
+        }
     }
 
     private func cloudRefine(url: URL, duration: TimeInterval, speakers: Bool) async -> String? {
@@ -117,11 +139,18 @@ final class FinalPassService {
         var segments: [SpeakerTranscriptFormatter.Segment] = []
         if speakers, LocalDiarizer.isAvailable {
             segments = (try? await LocalDiarizer.shared.diarize(url: url)) ?? []
+            // `diarize` also releases on every exit; this explicit call makes
+            // the handoff invariant visible and remains idempotent.
+            await LocalDiarizer.shared.unload()
         } else if speakers {
             FBLog.log("finalpass: speakers on but diarization models not bundled")
         }
 
-        var preferred: WhisperModelVariant = WhisperModelLocator.precisionFolderIfInstalled() != nil ? .precision : .bundled
+        let planned = LocalWhisperRuntimePlan.finalModel(
+            precisionInstalled: WhisperModelLocator.precisionFolderIfInstalled() != nil,
+            precisionValidated: PrecisionRuntimePolicy.installedArtifactValidated
+        )
+        var preferred: WhisperModelVariant = planned == .precision ? .precision : .bundled
         if preferred == .precision, precisionKnownBroken {
             preferred = .bundled
         }

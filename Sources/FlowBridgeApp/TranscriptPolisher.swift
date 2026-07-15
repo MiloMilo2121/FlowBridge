@@ -14,13 +14,15 @@ import FoundationModels
 /// 2. The polisher cleans, it does not rewrite: fillers out, punctuation and
 ///    capitalization fixed, words otherwise kept as spoken. Enforced by
 ///    instructions and greedy sampling.
-/// 3. `prewarm()` is called when recording starts so the model is hot by the
-///    time the user stops talking.
+/// 3. Foundation Models is never prewarmed while a speech model owns the
+///    microphone. Loading both model families together exceeds the device's
+///    safe memory envelope; the coordinator hands memory over at stop.
 ///
 /// NOTE: written against the documented iOS 26 FoundationModels API surface;
 /// validate against the SDK in Xcode before shipping.
 actor TranscriptPolisher {
     static let shared = TranscriptPolisher()
+    private static let responseBudget: Duration = .seconds(8)
 
     var isEnabled: Bool {
         let defaults = try? SharedContainer.userDefaults()
@@ -64,14 +66,21 @@ actor TranscriptPolisher {
         SystemLanguageModel.default.availability == .available
     }
 
-    /// Loads model weights ahead of the first request. Call when recording
-    /// starts; a no-op when the model is unavailable or polishing is off.
+    /// Optional idle-only warmup. Never call this while Whisper or the local
+    /// diarizer is resident; model families are intentionally serialized.
     func prewarm() {
         guard isEnabled, isAvailable else { return }
         if session == nil {
             session = LanguageModelSession(instructions: Self.instructions)
         }
         session?.prewarm()
+    }
+
+    /// Drops an unused prewarmed session before speech recognition begins or
+    /// when iOS reports pressure. An in-flight response remains actor-ordered
+    /// and completes before this executes, preventing a model overlap race.
+    func releaseSession() {
+        session = nil
     }
 
     private static func toneClause(for tone: ToneProfile) -> String {
@@ -103,23 +112,46 @@ actor TranscriptPolisher {
         }
         self.session = nil
 
-        do {
-            let response = try await session.respond(
-                to: Self.languageClause() + "\n\n" + text,
-                generating: PolishedTranscript.self,
-                options: GenerationOptions(sampling: .greedy)
-            )
-            let cleaned = response.content.cleanedText.trimmingCharacters(in: .whitespacesAndNewlines)
-            return cleaned.isEmpty ? text : cleaned
-        } catch {
-            // Guardrail false positives, context overflow, model not ready:
-            // the dictation always survives as-is.
-            return text
+        let maximumTokens = min(
+            2_048,
+            max(128, text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count * 3)
+        )
+        FBLog.log("polish: begin (\(text.count)ch, budget=8s)")
+        let generation = Task<String, Never> {
+            do {
+                let response = try await session.respond(
+                    to: Self.languageClause() + "\n\n" + text,
+                    generating: PolishedTranscript.self,
+                    options: GenerationOptions(
+                        sampling: .greedy,
+                        maximumResponseTokens: maximumTokens
+                    )
+                )
+                let cleaned = response.content.cleanedText.trimmingCharacters(in: .whitespacesAndNewlines)
+                return cleaned.isEmpty ? text : cleaned
+            } catch {
+                // Guardrail false positives, context overflow, model not
+                // ready, or cancellation: the dictation survives as-is.
+                return text
+            }
         }
+
+        let outcome = await TaskDeadline.value(
+            from: generation,
+            fallback: text,
+            after: Self.responseBudget
+        )
+        if outcome.timedOut {
+            FBLog.log("polish: timed out, keeping verbatim")
+        } else {
+            FBLog.log("polish: completed (\(outcome.value.count)ch)")
+        }
+        return outcome.value
     }
 #else
     var isAvailable: Bool { false }
     func prewarm() {}
+    func releaseSession() {}
     func polish(_ text: String, tone: ToneProfile = .neutral) async -> String { text }
 #endif
 }

@@ -62,3 +62,17 @@ enum WhisperModelLocator {
         return FileManager.default.fileExists(atPath: url.appendingPathComponent("tokenizer.json").path)
     }
 }
+
+/// Circuit breaker for optional model artifacts. The installed 626 MB
+/// large-v3-turbo package was tested on physical hardware across GPU, CPU,
+/// Neural Engine, and split encoder/decoder profiles. GPU reached the iOS
+/// per-process memory limit; every non-GPU profile decoded only special
+/// tokens. Keep the artifact installed, but never execute it until a
+/// replacement package passes the same fixture on a real device.
+enum PrecisionRuntimePolicy {
+    static let installedArtifactValidated = false
+
+    static var isQuarantined: Bool {
+        WhisperModelLocator.precisionFolderIfInstalled() != nil && !installedArtifactValidated
+    }
+}

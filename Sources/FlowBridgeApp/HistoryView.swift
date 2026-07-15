@@ -26,6 +26,7 @@ struct HistoryView: View {
         case week = "This week"
         case recovered = "Recovered"
         case polished = "Polished"
+        case actions = "Actions"
 
         var id: String { rawValue }
 
@@ -36,6 +37,7 @@ struct HistoryView: View {
             case .week: return "calendar"
             case .recovered: return "lifepreserver"
             case .polished: return "sparkles"
+            case .actions: return "checkmark.seal"
             }
         }
 
@@ -51,6 +53,8 @@ struct HistoryView: View {
                 return entry.record.source == .recovered
             case .polished:
                 return entry.record.rawText != nil
+            case .actions:
+                return entry.record.actionTaken != nil
             }
         }
     }
@@ -272,7 +276,7 @@ struct HistoryView: View {
                         .multilineTextAlignment(.leading)
                         .lineLimit(3)
                     if let action = entry.record.actionTaken {
-                        Label(action, systemImage: "arrow.turn.down.right")
+                        Label(action, systemImage: "checkmark.seal.fill")
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(FlowTheme.accent)
                     }
@@ -396,9 +400,20 @@ private struct HistoryDetailView: View {
                         .flowCard()
 
                     if let action = entry.record.actionTaken {
-                        Label(action, systemImage: "arrow.turn.down.right.circle.fill")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(FlowTheme.accent)
+                        VStack(alignment: .leading, spacing: FlowTheme.space8) {
+                            Text("ACTION TRAIL")
+                                .font(FlowTheme.fieldLabel(10))
+                                .tracking(1)
+                                .foregroundStyle(FlowTheme.accent)
+                            Label(action, systemImage: "checkmark.seal.fill")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Performed from this dictation")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(FlowTheme.space16)
+                        .flowCard(radius: FlowTheme.radiusRow)
                     }
 
                     HStack(spacing: FlowTheme.space12) {

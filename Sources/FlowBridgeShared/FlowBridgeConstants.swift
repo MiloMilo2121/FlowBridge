@@ -26,7 +26,8 @@ public enum FlowBridgeConstants {
     /// Values: "auto", "it", "en". Pinning the language avoids per-chunk
     /// auto-detection — the main accuracy killer on short streaming windows.
     public static let dictationLanguageKey = "dictationLanguage"
-    /// UserDefaults key: run transcripts through the on-device polisher.
+    /// UserDefaults key: offer optional on-device refined variants after
+    /// the verbatim transcript has already been delivered.
     public static let polishEnabledKey = "polishTranscripts"
     /// UserDefaults key: after stop, re-transcribe the full session audio in
     /// one pass (streaming quality is bounded by chunked decoding; the
@@ -115,4 +116,38 @@ public enum FlowBridgeConstants {
     /// Interrupted recordings shorter than this are discarded instead of
     /// recovered: below ~1s there is no usable speech.
     public static let safetyBufferMinimumRecoverySeconds: TimeInterval = 1.0
+}
+
+/// A model-role plan independent of WhisperKit, Core ML, and the UI. Keeping
+/// this decision in the shared target makes the memory-safety invariant easy
+/// to regression-test: an optional heavyweight model is never a live-stream
+/// dependency, and it is only eligible for an offline pass after that exact
+/// artifact has passed physical-device validation.
+public enum LocalWhisperModelChoice: Equatable, Sendable {
+    case bundled
+    case precision
+}
+
+public enum LocalWhisperRuntimePlan {
+    public static func liveModel(precisionRequested: Bool) -> LocalWhisperModelChoice {
+        // The bundled model owns the microphone path even in Enhanced mode.
+        // Loading a 626 MB compressed model for streaming can create multi-GB
+        // inference buffers and makes a recording vulnerable to Jetsam.
+        .bundled
+    }
+
+    public static func finalModel(
+        precisionInstalled: Bool,
+        precisionValidated: Bool
+    ) -> LocalWhisperModelChoice {
+        precisionInstalled && precisionValidated ? .precision : .bundled
+    }
+
+    public static func shouldRunLocalFinalPass(
+        configured: Bool,
+        precisionRequested: Bool,
+        speakerDetection: Bool
+    ) -> Bool {
+        configured || precisionRequested || speakerDetection
+    }
 }

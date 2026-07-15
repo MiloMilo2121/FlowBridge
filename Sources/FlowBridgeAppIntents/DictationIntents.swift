@@ -68,12 +68,11 @@ struct ResumeDictationIntent: LiveActivityIntent {
     }
 }
 
-/// One tap in the island re-polishes the just-delivered transcript with a
-/// different tone and refreshes the clipboard — a better version for the
-/// message you're about to paste, without opening the app.
+/// One tap in the island optionally refines the already-delivered verbatim
+/// transcript and refreshes the clipboard. Delivery never waits for this.
 struct ApplyToneIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Copy Tone Variant"
-    static let description = IntentDescription("Copy a re-polished variant of the last transcript.")
+    static let description = IntentDescription("Optionally refine the last delivered transcript and copy the result.")
     static let supportedModes: IntentModes = [.background]
 
     @Parameter(title: "Tone")

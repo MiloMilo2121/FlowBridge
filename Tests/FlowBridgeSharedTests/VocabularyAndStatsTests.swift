@@ -23,6 +23,18 @@ final class VocabularyStoreTests: XCTestCase {
         XCTAssertEqual(store.promptBiasText(), "Glossary: Milanello, FlowBridge.")
     }
 
+    func testRenameAndRenameToExistingTerm() throws {
+        let store = try VocabularyStore(defaults: makeDefaults())
+        try store.add("Cawork")
+        try store.add("FlowBridge")
+
+        try store.replace("cawork", with: "  Cowork  ")
+        XCTAssertEqual(store.terms(), ["Cowork", "FlowBridge"])
+
+        try store.replace("Cowork", with: "flowbridge")
+        XCTAssertEqual(store.terms(), ["FlowBridge"])
+    }
+
     func testCapacityKeepsMostRecent() throws {
         let store = try VocabularyStore(defaults: makeDefaults())
         for index in 1...(VocabularyStore.maxTerms + 10) {

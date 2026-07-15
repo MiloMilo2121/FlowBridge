@@ -27,6 +27,7 @@
 		2C28275EA977E840147E0392 /* FlowBridgeKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 748711B42A512CA9A05AA1AC /* FlowBridgeKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2C47274F120E8031AF924D0F /* FlowBridgeConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA149C0EF32FD199CF8FE8DD /* FlowBridgeConstants.swift */; };
 		2CF22AC13D3C771DBEC0BCAA /* DictationIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C88713ACFE8BA339690319 /* DictationIntents.swift */; };
+		2D84CA725B6AA6FEDF71275E /* InterruptedRecoveryGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD50510E9629259BE8209430 /* InterruptedRecoveryGuard.swift */; };
 		34065D46BBC44137BFCBD942 /* WERCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F186F837B8831BF35BA77F /* WERCalculatorTests.swift */; };
 		36AB58AA4130E1B3AEBC991A /* WhisperModelLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D927B49FC7B55FC363961DF /* WhisperModelLocator.swift */; };
 		3763C30C3921BE3890693064 /* VoiceCommandProcessorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DA2B4042EE3EE3978B32A3B /* VoiceCommandProcessorTests.swift */; };
@@ -301,6 +302,7 @@
 		D9FCB7173B4C2474162C05C6 /* AudioSafetyBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSafetyBuffer.swift; sourceTree = "<group>"; };
 		D9FF73C8B5B764406DF50EF0 /* HapticPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticPlayer.swift; sourceTree = "<group>"; };
 		DD254DDA27ABED52D80A81F0 /* TranscriptPolisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPolisher.swift; sourceTree = "<group>"; };
+		DD50510E9629259BE8209430 /* InterruptedRecoveryGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterruptedRecoveryGuard.swift; sourceTree = "<group>"; };
 		DDABF6EFF85E608C7C90CA6F /* FlowWaveShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowWaveShape.swift; sourceTree = "<group>"; };
 		E19C0FA693309D325CBE3172 /* CloudScribeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudScribeClient.swift; sourceTree = "<group>"; };
 		E544C636FFC31B0B111A9306 /* WaveformBarsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarsView.swift; sourceTree = "<group>"; };
@@ -524,6 +526,7 @@
 				CA149C0EF32FD199CF8FE8DD /* FlowBridgeConstants.swift */,
 				9A4096FE560985EB14367364 /* FlowBridgeError.swift */,
 				7139AC499C7615B48FFB09BC /* FlowBridgeTheme.swift */,
+				DD50510E9629259BE8209430 /* InterruptedRecoveryGuard.swift */,
 				A92346DD44793FF6133012EB /* LiveTranscriptStore.swift */,
 				D2DF086A59984159DC095240 /* NetworkGuard.swift */,
 				1486D85A361FEE64331127F6 /* PendingCommandStore.swift */,
@@ -842,6 +845,7 @@
 				2C47274F120E8031AF924D0F /* FlowBridgeConstants.swift in Sources */,
 				BD9AD1178F3B6F47A9EAA812 /* FlowBridgeError.swift in Sources */,
 				AD0A1B871C7F946EAB86F205 /* FlowBridgeTheme.swift in Sources */,
+				2D84CA725B6AA6FEDF71275E /* InterruptedRecoveryGuard.swift in Sources */,
 				7AE15868C09DEC446AA8F018 /* LiveTranscriptStore.swift in Sources */,
 				0BB002587B4667A395F887CF /* NetworkGuard.swift in Sources */,
 				95BE94A5859002168A2BA040 /* PendingCommandStore.swift in Sources */,

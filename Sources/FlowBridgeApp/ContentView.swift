@@ -343,6 +343,8 @@ struct ContentView: View {
         case .tryAgain:
             coordinator.dismissError()
             Task { await coordinator.toggleRecording() }
+        case .recoverInterrupted:
+            Task { await coordinator.retryInterruptedDictation() }
         }
     }
 
