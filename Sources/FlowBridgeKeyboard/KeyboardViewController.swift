@@ -19,7 +19,7 @@ final class KeyboardViewController: UIInputViewController {
     /// finished transcript stays available via Insert and the clipboard.
     private var liveInsertAborted = false
 
-    deinit {
+    isolated deinit {
         liveTimer?.invalidate()
     }
 

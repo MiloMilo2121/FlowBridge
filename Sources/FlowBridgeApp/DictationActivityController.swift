@@ -43,8 +43,12 @@ final class DictationActivityController {
             transcriptPreview: transcriptPreview,
             startedAt: startedAt
         )
+        // ActivityKit's async surface is thread-safe by design; its types
+        // just lack Sendable annotations in this SDK.
+        nonisolated(unsafe) let handle = activity
+        nonisolated(unsafe) let content = ActivityContent(state: state, staleDate: nil)
         enqueue {
-            await activity.update(ActivityContent(state: state, staleDate: nil))
+            await handle.update(content)
         }
     }
 
@@ -58,9 +62,11 @@ final class DictationActivityController {
             transcriptPreview: transcriptPreview,
             startedAt: startedAt
         )
+        nonisolated(unsafe) let handle = activity
+        nonisolated(unsafe) let content = ActivityContent(state: state, staleDate: nil)
         enqueue {
-            await activity.end(
-                ActivityContent(state: state, staleDate: nil),
+            await handle.end(
+                content,
                 dismissalPolicy: .after(.now + FlowBridgeConstants.liveActivityIdleDismissSeconds)
             )
         }
@@ -69,15 +75,18 @@ final class DictationActivityController {
     func end(immediately: Bool) {
         guard let activity else { return }
         self.activity = nil
+        nonisolated(unsafe) let handle = activity
         enqueue {
-            await activity.end(nil, dismissalPolicy: immediately ? .immediate : .default)
+            await handle.end(nil, dismissalPolicy: immediately ? .immediate : .default)
         }
     }
 
     /// Appends `operation` after whatever is already queued, preserving order.
-    private func enqueue(_ operation: @escaping @Sendable () async -> Void) {
+    /// Main-actor closures, not @Sendable: the activity handle never leaves
+    /// this actor, so captures stay region-safe under strict concurrency.
+    private func enqueue(_ operation: @escaping @MainActor () async -> Void) {
         let previous = tail
-        tail = Task {
+        tail = Task { @MainActor in
             await previous.value
             await operation()
         }

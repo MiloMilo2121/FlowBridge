@@ -12,7 +12,10 @@ import MetricKit
 /// NOTE: MetricKit only produces payloads for users who share diagnostics
 /// with developers in the system settings; expect partial coverage.
 final class DiagnosticsCollector: NSObject, MXMetricManagerSubscriber {
-    static let shared = DiagnosticsCollector()
+    // Mutable state (`isStarted`) is only touched from the main thread
+    // (Settings toggles, app launch); MetricKit delivery callbacks only
+    // write files. Declared unchecked for the strict-concurrency checker.
+    static nonisolated(unsafe) let shared = DiagnosticsCollector()
 
     private var isStarted = false
 

@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var cloudEnabled = CloudGate.isCloudEngineEnabled
     @State private var cloudAPIKey = ""
     @State private var showCloudConsent = false
+    @State private var vocabularyCount = 0
 
     private let appendChoices: [(label: String, value: TimeInterval)] = [
         ("Off", 0), ("2 min", 120), ("5 min", 300), ("15 min", 900)
@@ -86,7 +87,9 @@ struct SettingsView: View {
 
     private var polishSection: some View {
         Section {
-            Toggle("Polish transcripts", isOn: $polishEnabled)
+            Toggle(isOn: $polishEnabled) {
+                ChipRow(glyph: .polish, title: "Polish transcripts")
+            }
                 .onChange(of: polishEnabled) { _, newValue in
                     let defaults = try? SharedContainer.userDefaults()
                     defaults?.set(newValue, forKey: FlowBridgeConstants.polishEnabledKey)
@@ -115,7 +118,9 @@ struct SettingsView: View {
 
     private var captureSection: some View {
         Section {
-            Toggle("Spoken commands", isOn: $voiceCommandsEnabled)
+            Toggle(isOn: $voiceCommandsEnabled) {
+                ChipRow(glyph: .commands, title: "Spoken commands", subtitle: "“punto” · “virgola” · “a capo”")
+            }
                 .onChange(of: voiceCommandsEnabled) { _, newValue in
                     let defaults = try? SharedContainer.userDefaults()
                     defaults?.set(newValue, forKey: FlowBridgeConstants.voiceCommandsEnabledKey)
@@ -141,7 +146,11 @@ struct SettingsView: View {
             NavigationLink {
                 VocabularyEditorView()
             } label: {
-                Label("My vocabulary", systemImage: "character.book.closed")
+                ChipRow(
+                    glyph: .vocab,
+                    title: "My vocabulary",
+                    subtitle: vocabularyCount > 0 ? "\(vocabularyCount) terms" : "Names, brands, jargon"
+                )
             }
         } footer: {
             Text("Names, brands, jargon — recognized the way you spell them. The feature system dictation doesn't have.")
@@ -167,7 +176,9 @@ struct SettingsView: View {
 
     private var cloudSection: some View {
         Section {
-            Toggle("Cloud engine (optional)", isOn: $cloudEnabled)
+            Toggle(isOn: $cloudEnabled) {
+                ChipRow(glyph: .language, tone: .orange, title: "Cloud engine (optional)")
+            }
                 .onChange(of: cloudEnabled) { _, newValue in
                     if newValue {
                         let consented = UserDefaults.standard.bool(forKey: FlowBridgeConstants.cloudConsentAcceptedKey)
@@ -219,8 +230,18 @@ struct SettingsView: View {
 
     private var privacySection: some View {
         Section {
-            LabeledContent("Audio & transcripts", value: cloudEnabled ? "On-device by default" : "On-device only")
-            LabeledContent("Network access on the audio path", value: cloudEnabled ? "One provider host, opt-in" : "None")
+            ChipRow(
+                glyph: .privacy,
+                tone: .green,
+                title: "Audio & transcripts",
+                subtitle: cloudEnabled ? "On-device by default" : "On-device only"
+            )
+            ChipRow(
+                glyph: .onDevice,
+                tone: .green,
+                title: "Network on the audio path",
+                subtitle: cloudEnabled ? "One provider host, opt-in" : "None — guard active, works in Airplane Mode"
+            )
         } header: {
             Text("Privacy")
         } footer: {
@@ -230,7 +251,9 @@ struct SettingsView: View {
 
     private var diagnosticsSection: some View {
         Section {
-            Toggle("Collect crash reports on this iPhone", isOn: $diagnosticsEnabled)
+            Toggle(isOn: $diagnosticsEnabled) {
+                ChipRow(glyph: .copy, title: "Collect crash reports", subtitle: "Stored on this iPhone only")
+            }
                 .onChange(of: diagnosticsEnabled) { _, newValue in
                     DiagnosticsCollector.isEnabled = newValue
                     if newValue {
@@ -244,7 +267,11 @@ struct SettingsView: View {
                 LabeledContent("Stored reports", value: "\(diagnosticReports.count)")
                 if let latest = diagnosticReports.first {
                     ShareLink(item: latest) {
-                        Label("Share latest report", systemImage: "square.and.arrow.up")
+                        HStack(spacing: 12) {
+                            LineaVivaIcon(.share)
+                                .frame(width: 20, height: 20)
+                            Text("Share latest report")
+                        }
                     }
                 }
                 Button("Delete all reports", role: .destructive) {
@@ -270,6 +297,7 @@ struct SettingsView: View {
         stats = coordinator.stats?.stats() ?? DictationStatsStore.Stats()
         diagnosticsEnabled = DiagnosticsCollector.isEnabled
         diagnosticReports = DiagnosticsCollector.reports()
+        vocabularyCount = (try? VocabularyStore())?.terms().count ?? 0
     }
 }
 

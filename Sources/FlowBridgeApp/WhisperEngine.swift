@@ -120,13 +120,24 @@ actor WhisperEngine: TranscriptionEngine {
             )
         }
 
+        // The pipeline components are handed to the stream-transcriber actor,
+        // which is their only concurrent user while the stream runs; our own
+        // reads (safety flush, input level) are documented best-effort. The
+        // strict checker cannot see that ownership contract.
+        nonisolated(unsafe) let audioEncoder = kit.audioEncoder
+        nonisolated(unsafe) let featureExtractor = kit.featureExtractor
+        nonisolated(unsafe) let segmentSeeker = kit.segmentSeeker
+        nonisolated(unsafe) let textDecoder = kit.textDecoder
+        nonisolated(unsafe) let sendableTokenizer = tokenizer
+        nonisolated(unsafe) let audioProcessor = kit.audioProcessor
+
         let streamTranscriber = AudioStreamTranscriber(
-            audioEncoder: kit.audioEncoder,
-            featureExtractor: kit.featureExtractor,
-            segmentSeeker: kit.segmentSeeker,
-            textDecoder: kit.textDecoder,
-            tokenizer: tokenizer,
-            audioProcessor: kit.audioProcessor,
+            audioEncoder: audioEncoder,
+            featureExtractor: featureExtractor,
+            segmentSeeker: segmentSeeker,
+            textDecoder: textDecoder,
+            tokenizer: sendableTokenizer,
+            audioProcessor: audioProcessor,
             decodingOptions: options,
             requiredSegmentsForConfirmation: 1,
             silenceThreshold: 0.25,
@@ -157,7 +168,7 @@ actor WhisperEngine: TranscriptionEngine {
             throw FlowBridgeError.notRecording
         }
 
-        streamTranscriber?.stopStreamTranscription()
+        await streamTranscriber?.stopStreamTranscription()
         streamTask?.cancel()
         streamTask = nil
         streamTranscriber = nil
@@ -189,13 +200,21 @@ actor WhisperEngine: TranscriptionEngine {
         )
     }
 
+    func currentInputLevel() -> Float {
+        // WhisperKit already computes per-buffer relative energy for its VAD;
+        // reading the last value costs nothing on the audio path.
+        guard liveSessionID != nil, let processor = whisperKit?.audioProcessor else { return 0 }
+        guard let energy = processor.relativeEnergy.last else { return 0 }
+        return max(0, min(1, energy))
+    }
+
     func unload() async {
         unloadTask?.cancel()
         unloadTask = nil
         // An unload during a live session is an interruption (memory pressure,
         // teardown): keep the safety file so the dictation can be recovered.
         await stopSafetyFlush(keepFileForRecovery: liveSessionID != nil)
-        streamTranscriber?.stopStreamTranscription()
+        await streamTranscriber?.stopStreamTranscription()
         streamTask?.cancel()
         streamTask = nil
         streamTranscriber = nil

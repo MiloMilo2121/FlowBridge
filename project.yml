@@ -26,6 +26,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.marcomilanello.flowbridge.shared
         APPLICATION_EXTENSION_API_ONLY: "YES"
+        GENERATE_INFOPLIST_FILE: "YES"
   FlowBridgeApp:
     type: application
     platform: iOS
@@ -67,6 +68,10 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.marcomilanello.flowbridge
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Marks code compiled into the app target (vs. the widget extension,
+        # which shares Sources/FlowBridgeAppIntents but must not see
+        # extension-unavailable API like ForegroundContinuableIntent).
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) FLOWBRIDGE_MAIN_APP"
   FlowBridgeKeyboard:
     type: app-extension
     platform: iOS

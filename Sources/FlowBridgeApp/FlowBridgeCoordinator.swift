@@ -22,6 +22,12 @@ final class FlowBridgeCoordinator: ObservableObject {
     @Published private(set) var lastTranscript: TranscriptRecord?
     @Published private(set) var statusMessage: String?
     @Published private(set) var recordingElapsed: TimeInterval?
+    /// Smoothed microphone energy (0…1) while recording; drives the mesh
+    /// waveform. Stays 0 for engines without a metering source.
+    @Published private(set) var inputLevel: Float = 0
+    /// Words as they stream, mirrored from the live snapshots the engine
+    /// already publishes for the Dynamic Island.
+    @Published private(set) var livePartial: String = ""
 
     // Starts as the bundled default; bootstrap swaps in the configured
     // engine (the factory is async: the Apple engine's locale check is).
@@ -36,6 +42,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     private var pendingCommandStore: PendingCommandStore?
     private var elapsedTask: Task<Void, Never>?
     private var maxDurationTask: Task<Void, Never>?
+    private var levelTask: Task<Void, Never>?
     private var memoryWarningObserver: NSObjectProtocol?
     private var commandObserver: DarwinNotificationObserver?
     private var liveSnapshotObserver: DarwinNotificationObserver?
@@ -58,9 +65,10 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
     }
 
-    deinit {
+    isolated deinit {
         elapsedTask?.cancel()
         maxDurationTask?.cancel()
+        levelTask?.cancel()
         if let memoryWarningObserver {
             NotificationCenter.default.removeObserver(memoryWarningObserver)
         }
@@ -246,6 +254,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             statusMessage = "Loading local engine"
             lastActivityPreview = ""
             lastActivityPushAt = .distantPast
+            livePartial = ""
             warmupToken = sessionID
             warmupStarted = true
             // The Live Activity goes up before the engine warms: the island
@@ -268,6 +277,7 @@ final class FlowBridgeCoordinator: ObservableObject {
                 : "Live bridge active"
             startElapsedTimer(from: startedAt)
             startMaxDurationTimer()
+            startLevelMeter()
             HapticPlayer.listeningStarted()
             UIAccessibility.post(notification: .announcement, argument: "Listening")
             Task { await polisher.prewarm() }
@@ -312,6 +322,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     private func abortWarmup() async {
         guard case .warming = state else { return }
         warmupToken = nil
+        stopLevelMeter()
         activityController.end(immediately: true)
         state = .idle
         statusMessage = "Dictation cancelled"
@@ -322,6 +333,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         elapsedTask?.cancel()
         maxDurationTask?.cancel()
         recordingElapsed = nil
+        stopLevelMeter()
         HapticPlayer.listeningStopped()
 
         let recordingStartedAt: Date
@@ -363,6 +375,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             lastTranscript = delivered
             UIPasteboard.general.string = delivered.text
             state = .ready
+            livePartial = ""
             statusMessage = delivered.id == finalRecord.id ? "Clipboard updated" : "Appended to previous dictation"
             activityController.finish(transcriptPreview: delivered.text, startedAt: recordingStartedAt)
             HapticPlayer.transcriptReady()
@@ -437,6 +450,10 @@ final class FlowBridgeCoordinator: ObservableObject {
     private func pushLiveSnapshotToActivity() {
         guard case .recording(let startedAt) = state, activityController.isActive else { return }
         guard let snapshot = LiveTranscriptStore.latest(), snapshot.isRecording else { return }
+
+        // The home transcript card streams every snapshot (main-actor set,
+        // no cross-process budget); only the island push below is throttled.
+        livePartial = snapshot.text
 
         // Engines can emit many snapshots per second; the island only needs
         // changed content at a human cadence. Dropped frames are fine — the
@@ -562,6 +579,28 @@ final class FlowBridgeCoordinator: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(250))
             }
         }
+    }
+
+    /// Polls the engine's metering at ~24Hz while recording. The render side
+    /// interpolates between samples, so this cadence reads as continuous
+    /// without hammering the main actor.
+    private func startLevelMeter() {
+        levelTask?.cancel()
+        levelTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let raw = await self.transcriber.currentInputLevel()
+                if Task.isCancelled { return }
+                self.inputLevel = self.inputLevel * 0.6 + raw * 0.4
+                try? await Task.sleep(for: .milliseconds(42))
+            }
+        }
+    }
+
+    private func stopLevelMeter() {
+        levelTask?.cancel()
+        levelTask = nil
+        inputLevel = 0
     }
 
     private func startMaxDurationTimer() {

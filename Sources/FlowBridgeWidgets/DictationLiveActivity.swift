@@ -3,13 +3,14 @@ import FlowBridgeShared
 import SwiftUI
 import WidgetKit
 
-/// The dictation session in the Dynamic Island and on the Lock Screen.
+/// The dictation session in the Dynamic Island and on the Lock Screen,
+/// in the Linea Viva language: orange is the live capture, violet is the
+/// "thinking" phase, green appears only for privacy/done, red only on Stop.
 ///
-/// One shape morphs through the phases (waveform → thinking dots → check):
-/// the compact view is waveform + self-updating timer (`Text(timerInterval:)`
-/// costs no update budget), the expanded view adds the streaming transcript
-/// preview and the Stop button (`StopDictationIntent` runs in the app
-/// process, where the audio session lives).
+/// ActivityKit constraints shape this deliberately: updates are throttled
+/// and payloads capped, so continuous motion comes from local symbol
+/// effects (never from pushed frames), and the timer is the system's
+/// self-updating `Text(timerInterval:)`, which costs no update budget.
 struct DictationLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: DictationActivityAttributes.self) { context in
@@ -22,9 +23,18 @@ struct DictationLiveActivity: Widget {
                         .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    TimerText(state: context.state)
-                        .font(.title3.monospacedDigit())
-                        .padding(.trailing, 4)
+                    HStack(spacing: 6) {
+                        if context.state.phase == .recording {
+                            Circle()
+                                .fill(FlowPalette.orange400)
+                                .frame(width: 5, height: 5)
+                                .shadow(color: FlowPalette.orange400.opacity(0.9), radius: 3)
+                        }
+                        TimerText(state: context.state)
+                            .font(.title3.weight(.medium).monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+                    .padding(.trailing, 4)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     TranscriptPreview(state: context.state, lineLimit: 2)
@@ -37,6 +47,7 @@ struct DictationLiveActivity: Widget {
             } compactTrailing: {
                 TimerText(state: context.state)
                     .font(.caption.monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.85))
                     .frame(maxWidth: 44)
             } minimal: {
                 PhaseSymbol(phase: context.state.phase)
@@ -63,17 +74,17 @@ private struct PhaseSymbol: View {
         case .recording:
             Image(systemName: "waveform")
                 .symbolEffect(.variableColor.iterative, options: reduceMotion ? .nonRepeating : .repeating)
-                .foregroundStyle(.red)
+                .foregroundStyle(FlowPalette.orange400)
         case .transcribing:
             Image(systemName: "ellipsis")
                 .symbolEffect(.variableColor.iterative, options: reduceMotion ? .nonRepeating : .repeating)
-                .foregroundStyle(.purple)
+                .foregroundStyle(FlowPalette.violet400)
         case .ready:
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(FlowPalette.green500)
         case .failed:
             Image(systemName: "exclamationmark.circle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(FlowPalette.orange400)
         }
     }
 
@@ -81,7 +92,7 @@ private struct PhaseSymbol: View {
         switch phase {
         case .recording: return "Recording"
         case .transcribing: return "Transcribing"
-        case .ready: return "Transcript ready"
+        case .ready: return "Transcript copied, on device"
         case .failed: return "Dictation failed"
         }
     }
@@ -105,22 +116,36 @@ private struct TranscriptPreview: View {
     var lineLimit = 2
 
     var body: some View {
-        Text(previewText)
-            .font(.callout)
+        transcriptText
             .lineLimit(lineLimit)
             .truncationMode(.head)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .foregroundStyle(state.transcriptPreview.isEmpty ? .secondary : .primary)
     }
 
-    private var previewText: String {
-        if !state.transcriptPreview.isEmpty {
-            return state.transcriptPreview
+    @ViewBuilder
+    private var transcriptText: some View {
+        if state.transcriptPreview.isEmpty {
+            Text(placeholder)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        } else if state.phase == .recording {
+            // Live words in the transcript voice (serif italic) with the
+            // design's orange caret closing the line.
+            (Text(state.transcriptPreview) + Text(" ▎").foregroundStyle(FlowPalette.orange400))
+                .font(.callout.italic())
+                .fontDesign(.serif)
+        } else {
+            Text(state.transcriptPreview)
+                .font(.callout.italic())
+                .fontDesign(.serif)
         }
+    }
+
+    private var placeholder: String {
         switch state.phase {
         case .recording: return "Listening…"
-        case .transcribing: return "Finishing up…"
-        case .ready: return "Transcript copied"
+        case .transcribing: return "Transcribing…"
+        case .ready: return "Copied · on-device"
         case .failed: return "Something went wrong"
         }
     }
@@ -132,12 +157,17 @@ private struct ExpandedControls: View {
     var body: some View {
         if state.phase == .recording {
             Button(intent: StopDictationIntent()) {
-                Label("Stop", systemImage: "stop.fill")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 8) {
+                    LineaVivaIcon(.stop)
+                        .frame(width: 14, height: 14)
+                    Text("Stop")
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.red)
+            .buttonBorderShape(.roundedRectangle(radius: 12))
+            .tint(FlowPalette.red500)
         }
     }
 }
@@ -147,11 +177,15 @@ private struct LockScreenView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                PhaseSymbol(phase: state.phase)
+            HStack(spacing: 8) {
+                LineaVivaIcon(.waveform)
+                    .foregroundStyle(FlowPalette.violet400)
+                    .frame(width: 15, height: 15)
                 Text("FlowBridge")
                     .font(.headline)
                 Spacer()
+                PhaseSymbol(phase: state.phase)
+                    .font(.subheadline)
                 TimerText(state: state)
                     .font(.subheadline.monospacedDigit())
             }
