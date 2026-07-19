@@ -139,6 +139,21 @@ public enum FlowPalette {
     }
 }
 
+/// UIKit-facing tokens for the keyboard extension (UIKit surface).
+public enum FlowPaletteUIKit {
+    public static let accent = dynamicColor(light: 0x7C66F2, dark: 0x8B77F6)
+    public static let keyboardBackground = dynamicColor(light: 0xDCDAE3, dark: 0x242230)
+    public static let key = dynamicColor(light: 0xFFFFFF, dark: 0x3A3844)
+
+    private static func dynamicColor(light: UInt32, dark: UInt32) -> UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(hex: dark, alpha: 1)
+                : UIColor(hex: light, alpha: 1)
+        }
+    }
+}
+
 private extension UIColor {
     convenience init(hex: UInt32, alpha: CGFloat) {
         self.init(

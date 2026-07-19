@@ -45,15 +45,21 @@ private struct HomeWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button(intent: StartDictationIntent()) {
-                Label("Dictate", systemImage: "mic.fill")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 7) {
+                    LineaVivaIcon(.dictate)
+                        .frame(width: 17, height: 17)
+                    Text("Dictate")
+                }
+                .font(.headline)
+                .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
+            .tint(FlowPalette.violet500)
 
             if family == .systemMedium {
                 Text(entry.transcript ?? "No dictations yet.")
-                    .font(.caption)
+                    .font(.caption.italic())
+                    .fontDesign(entry.transcript == nil ? .default : .serif)
                     .lineLimit(3)
                     .foregroundStyle(entry.transcript == nil ? .secondary : .primary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

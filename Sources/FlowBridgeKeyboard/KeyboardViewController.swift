@@ -51,9 +51,15 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func buildInterface() {
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = FlowPaletteUIKit.keyboardBackground
 
-        previewLabel.font = .preferredFont(forTextStyle: .callout)
+        // The transcript voice: serif italic, matching the app and island.
+        let calloutDescriptor = UIFont.preferredFont(forTextStyle: .callout).fontDescriptor
+        let serifItalic = calloutDescriptor
+            .withDesign(.serif)?
+            .withSymbolicTraits(.traitItalic)
+        previewLabel.font = serifItalic.map { UIFont(descriptor: $0, size: 0) }
+            ?? .preferredFont(forTextStyle: .callout)
         previewLabel.textColor = .secondaryLabel
         previewLabel.numberOfLines = 2
         previewLabel.lineBreakMode = .byTruncatingTail
@@ -90,6 +96,19 @@ final class KeyboardViewController: UIInputViewController {
         buttonRow.distribution = .fill
         buttonRow.spacing = 10
 
+        // Key chips: 12pt radius on the key fill; the primary Insert key
+        // carries the brand accent (design: violet = primary action).
+        for key in [nextKeyboardButton, liveButton, sendButton, deleteButton] {
+            key.backgroundColor = FlowPaletteUIKit.key
+            key.layer.cornerRadius = 12
+            key.layer.cornerCurve = .continuous
+            key.tintColor = .label
+        }
+        insertButton.backgroundColor = FlowPaletteUIKit.accent
+        insertButton.layer.cornerRadius = 12
+        insertButton.layer.cornerCurve = .continuous
+        insertButton.tintColor = .white
+
         nextKeyboardButton.widthAnchor.constraint(equalToConstant: 54).isActive = true
         liveButton.widthAnchor.constraint(equalToConstant: 54).isActive = true
         deleteButton.widthAnchor.constraint(equalToConstant: 54).isActive = true
@@ -114,7 +133,7 @@ final class KeyboardViewController: UIInputViewController {
         let liveSnapshot = live ?? LiveTranscriptStore.latest()
         previewLabel.text = liveSnapshot?.previewText.isEmpty == false ? liveSnapshot?.previewText : record?.text
         insertButton.isEnabled = record?.text.isEmpty == false
-        liveButton.tintColor = liveModeEnabled ? .systemBlue : .secondaryLabel
+        liveButton.tintColor = liveModeEnabled ? FlowPaletteUIKit.accent : .secondaryLabel
     }
 
     @objc private func insertLatestTranscript() {

@@ -18,12 +18,15 @@ struct OnboardingView: View {
             keyboardScene.tag(2)
         }
         .tabViewStyle(.page)
+        .background { AuroraBackground() }
         .interactiveDismissDisabled()
     }
 
     private var speakScene: some View {
         scene(
-            symbol: "waveform.circle.fill",
+            glyph: .dictate,
+            eyebrow: "On-device · Private",
+            eyebrowTone: .privacy,
             title: "Speak.",
             message: "FlowBridge turns your voice into clean text, entirely on this iPhone. No cloud, no account. Try it: allow the microphone and say something."
         ) {
@@ -33,16 +36,21 @@ struct OnboardingView: View {
                     withAnimation { page = 1 }
                 }
             } label: {
-                Label(microphoneGranted ? "Microphone ready" : "Allow microphone", systemImage: "mic.fill")
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 10) {
+                    LineaVivaIcon(.dictate)
+                        .frame(width: 20, height: 20)
+                    Text(microphoneGranted ? "Microphone ready" : "Allow microphone")
+                }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(FlowCTAButtonStyle())
         }
     }
 
     private var triggerScene: some View {
         scene(
-            symbol: "button.vertical.left.press.fill",
+            glyph: .waveform,
+            eyebrow: "Zero friction",
+            eyebrowTone: .accent,
             title: "Your button.",
             message: "Map the Action Button to FlowBridge and dictation starts with one press — without opening the app, with live progress in the Dynamic Island. Settings → Action Button → Controls → FlowBridge Dictation. No Action Button? Back Tap or the Lock Screen control work the same way."
         ) {
@@ -50,16 +58,17 @@ struct OnboardingView: View {
                 withAnimation { page = 2 }
             } label: {
                 Text("Done — next")
-                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(FlowCTAButtonStyle())
         }
     }
 
     private var keyboardScene: some View {
         scene(
-            symbol: "keyboard.fill",
-            title: "Your keyboard (optional).",
+            glyph: .insert,
+            eyebrow: "Optional",
+            eyebrowTone: .accent,
+            title: "Your keyboard.",
             message: "The FlowBridge keyboard inserts what you dictate right where you're typing. iOS shows a scary Full Access warning when you enable it. What we actually do: read your transcript from this device's shared container. What we cannot do: send it anywhere — the app has no network path for your voice, ever."
         ) {
             VStack(spacing: 10) {
@@ -67,36 +76,48 @@ struct OnboardingView: View {
                     finish()
                 } label: {
                     Text("Enable later in Settings")
-                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(FlowCTAButtonStyle())
 
                 Button("Skip — clipboard works too", action: finish)
                     .font(.footnote)
+                    .foregroundStyle(FlowPalette.textSecondary)
             }
         }
     }
 
     private func scene(
-        symbol: String,
+        glyph: LineaVivaIcon.Glyph,
+        eyebrow: String,
+        eyebrowTone: CapsLabel.Tone,
         title: String,
         message: String,
         @ViewBuilder actions: () -> some View
     ) -> some View {
-        VStack(spacing: 24) {
+        VStack(spacing: FlowTheme.Spacing.stack) {
             Spacer()
-            Image(systemName: symbol)
-                .font(.system(size: 72))
-                .foregroundStyle(.tint)
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(FlowPalette.chipVioletBackground)
+                .frame(width: 132, height: 132)
+                .overlay {
+                    LineaVivaIcon(glyph)
+                        .foregroundStyle(FlowPalette.chipVioletForeground)
+                        .frame(width: 88, height: 88)
+                }
+                .accessibilityHidden(true)
+            CapsLabel(text: eyebrow, tone: eyebrowTone)
+                .padding(.top, 6)
             Text(title)
                 .font(.largeTitle.bold())
+                .foregroundStyle(FlowPalette.textBody)
             Text(message)
                 .font(.body)
                 .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FlowPalette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer()
             actions()
-                .padding(.bottom, 48)
+                .padding(.bottom, 64)
         }
         .padding(24)
     }
