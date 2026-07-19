@@ -51,6 +51,7 @@
 		87C366F1665DC1C1DDE5F2C0 /* FlowBridgeWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0A8C4B90E768974917B97D9E /* FlowBridgeWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8FC10AE539C765251A26314C /* DictationTextNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCF98DF41D148D8A7BFDD142 /* DictationTextNormalizer.swift */; };
 		90E6C2BB567DF4A4228E3A2E /* TranscriptStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CCF23ED7E9492A89A378F07 /* TranscriptStoreTests.swift */; };
+		917C2F64D051D80B548FA66B /* Benchmark in Resources */ = {isa = PBXBuildFile; fileRef = 74D2726B6533203B057035C1 /* Benchmark */; };
 		924A33B98416C97AF2CDDDEE /* WhisperEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 896D5D4E8D80D707EE776D26 /* WhisperEngine.swift */; };
 		93FE8D73A17602DB35A7B2EB /* VocabularyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35BFDA56276DAF70D933630E /* VocabularyStore.swift */; };
 		95BE94A5859002168A2BA040 /* PendingCommandStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1486D85A361FEE64331127F6 /* PendingCommandStore.swift */; };
@@ -78,6 +79,7 @@
 		D6A654878740388373DFBA59 /* EngineSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F2D2BB6F55A00469EE92836 /* EngineSelection.swift */; };
 		D81DF238E6E32E10F372D3B3 /* TranscriptPolisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD254DDA27ABED52D80A81F0 /* TranscriptPolisher.swift */; };
 		DA5E5ED36F8BB2653202CD75 /* CloudEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5250059818D573A35AE0D37 /* CloudEngine.swift */; };
+		DAB66618C44EE1C8CFA3E83E /* WhisperModels in Resources */ = {isa = PBXBuildFile; fileRef = 0C22ABA974FC16EC771CFC34 /* WhisperModels */; };
 		DCE91C09FB09734B72B3ADA4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C3F5740251CFDF8DC6F6A766 /* Assets.xcassets */; };
 		E6D4FFBB36D53CF49FB78B71 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FC38FD292248ABAC08C9CE1 /* AppDelegate.swift */; };
 		F4BD965A8C9CD401933AA3C6 /* FlowBridgeShared.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -189,6 +191,7 @@
 		048BFA8FD28603AE6F27DE18 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
 		0A094609470340B331D09D78 /* SharedContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedContainer.swift; sourceTree = "<group>"; };
 		0A8C4B90E768974917B97D9E /* FlowBridgeWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = FlowBridgeWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0C22ABA974FC16EC771CFC34 /* WhisperModels */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WhisperModels; path = Resources/WhisperModels; sourceTree = SOURCE_ROOT; };
 		0F16B79777254F400F0A0684 /* AppleSpeechEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeechEngine.swift; sourceTree = "<group>"; };
 		1486D85A361FEE64331127F6 /* PendingCommandStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingCommandStore.swift; sourceTree = "<group>"; };
 		1CD98E41DD5DE1B773A30C7B /* PendingCommandStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingCommandStoreTests.swift; sourceTree = "<group>"; };
@@ -216,6 +219,7 @@
 		6B453C3F7687571D700196B5 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		734D80C86D7A5ED5DD9A6F8F /* FlowBridgeJSON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeJSON.swift; sourceTree = "<group>"; };
 		748711B42A512CA9A05AA1AC /* FlowBridgeKeyboard.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = FlowBridgeKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		74D2726B6533203B057035C1 /* Benchmark */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Benchmark; path = Resources/Benchmark; sourceTree = SOURCE_ROOT; };
 		75585582B711A04DA59F231A /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		786B1AE80A62F3B8718B36D4 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		896D5D4E8D80D707EE776D26 /* WhisperEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperEngine.swift; sourceTree = "<group>"; };
@@ -338,6 +342,15 @@
 			path = Tests;
 			sourceTree = "<group>";
 		};
+		5C3F50691E08D76EB3D8C929 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				74D2726B6533203B057035C1 /* Benchmark */,
+				0C22ABA974FC16EC771CFC34 /* WhisperModels */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		5C7626E82E949194683CD417 /* DesignSystem */ = {
 			isa = PBXGroup;
 			children = (
@@ -404,6 +417,7 @@
 		BE0177806B6D9D7A6CBED163 = {
 			isa = PBXGroup;
 			children = (
+				5C3F50691E08D76EB3D8C929 /* Resources */,
 				A5B74E9B90DD524D277C280D /* Sources */,
 				3E7F44397CFEBDA085D03FAF /* Tests */,
 				3088F17D38E9E0E41A73C3D7 /* Products */,
@@ -647,6 +661,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				DCE91C09FB09734B72B3ADA4 /* Assets.xcassets in Resources */,
+				917C2F64D051D80B548FA66B /* Benchmark in Resources */,
+				DAB66618C44EE1C8CFA3E83E /* WhisperModels in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

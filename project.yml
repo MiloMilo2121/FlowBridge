@@ -33,10 +33,16 @@ targets:
     sources:
       - path: Sources/FlowBridgeApp
       - path: Sources/FlowBridgeAppIntents
-    resources:
+      # Resources belong under `sources`: XcodeGen has no target-level
+      # `resources` key and silently drops it, which kept the Whisper model
+      # out of the bundle. `type: folder` copies the tree verbatim so the
+      # `WhisperModels/WhisperSmall/` subdirectory the locator looks up is
+      # preserved (a group would flatten it and break the lookup).
       - path: Resources/WhisperModels
+        type: folder
         optional: true
       - path: Resources/Benchmark
+        type: folder
         optional: true
     dependencies:
       - target: FlowBridgeShared
