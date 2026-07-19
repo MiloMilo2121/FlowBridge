@@ -8,7 +8,7 @@ public enum FlowBridgeConstants {
     public static let modelFolderName = "WhisperSmall"
     public static let modelResourceSubdirectory = "WhisperModels"
     public static let maxRecordingSeconds: TimeInterval = 600
-    public static let modelIdleTTLSeconds: TimeInterval = 180
+    public static let modelIdleTTLSeconds: TimeInterval = 600
 
     /// Darwin notification posted whenever a live transcript snapshot is
     /// written to the App Group. Payload-free; readers reload from the store.
@@ -71,7 +71,10 @@ public enum FlowBridgeConstants {
     /// Engine warm-up (model load, speech-asset install) that exceeds this
     /// deadline fails the session instead of pinning the coordinator in
     /// `.warming` with the mic indicator and Live Activity held forever.
-    public static let warmupTimeoutSeconds: TimeInterval = 15
+    // A cold CoreML/ANE model load legitimately takes 20-40s the first time;
+    // 15s guaranteed a spurious "took too long to start". The model is now
+    // prewarmed at launch/foreground so this deadline is only a backstop.
+    public static let warmupTimeoutSeconds: TimeInterval = 45
 
     /// Ceiling for the session-append chain: past this many characters a new
     /// dictation starts a fresh delivered record instead of growing the

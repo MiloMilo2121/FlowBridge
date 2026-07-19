@@ -83,6 +83,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         lastTranscript = transcriptStore?.latest()
         registerCommandHub()
         await refreshEngineIfNeeded(force: true)
+        prewarmEngine()
         await recoverInterruptedDictationIfNeeded()
         // Observers come up only after recovery so a user trigger that fires
         // mid-recovery is deferred (see consumePendingCommand), not raced.
@@ -149,6 +150,10 @@ final class FlowBridgeCoordinator: ObservableObject {
     func handleScenePhase(_ phase: ScenePhase) async {
         switch phase {
         case .active:
+            // Re-warm on foreground so the first dictation of the session is
+            // instant (the model may have been dropped under memory pressure
+            // or by the idle TTL while backgrounded).
+            prewarmEngine()
             await consumePendingCommand()
             await processQueuedAudioIfNeeded()
         case .background:
@@ -156,11 +161,13 @@ final class FlowBridgeCoordinator: ObservableObject {
             case .recording:
                 statusMessage = "Live bridge active"
             case .warming, .transcribing:
-                // Work is in flight; unloading now would kill it. The idle
-                // TTL reclaims the model memory afterwards.
+                // Work is in flight; unloading now would kill it.
                 break
             case .idle, .ready, .failed:
-                await transcriber.unload()
+                // Keep the model resident across a quick background/foreground
+                // so the user isn't forced to re-mount it every time. The idle
+                // TTL and the memory-warning handler still reclaim it.
+                break
             }
         case .inactive:
             break
@@ -229,8 +236,20 @@ final class FlowBridgeCoordinator: ObservableObject {
             await transcriber.unload()
             transcriber = await EngineFactory.makeCurrent()
             enginePreference = preference
+            prewarmEngine()
         case .warming, .recording, .transcribing:
             break
+        }
+    }
+
+    /// Loads the model off the critical path so Record finds it warm.
+    private func prewarmEngine() {
+        let engine = transcriber
+        let label = enginePreference
+        Task {
+            FBLog.log("prewarm start engine=\(label)", category: "dictation")
+            await engine.prewarm()
+            FBLog.log("prewarm done", category: "dictation")
         }
     }
 
