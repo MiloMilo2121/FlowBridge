@@ -57,7 +57,19 @@ targets:
         NSSpeechRecognitionUsageDescription: FlowBridge uses Apple's on-device speech recognition to turn your voice into text. Nothing leaves this iPhone.
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
+        # Without this key iOS treats the app as legacy and renders it
+        # scaled/letterboxed instead of at native resolution.
+        UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
+        # Portrait-first (single-column UI); iPad keeps all rotations and the
+        # device build stops warning about supported orientations.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UIBackgroundModes:
           - audio
         CFBundleURLTypes:
