@@ -252,6 +252,7 @@ final class FlowBridgeCoordinator: ObservableObject {
 
             state = .warming
             statusMessage = "Loading local engine"
+            FBLog.log("warming engine=\(enginePreference)", category: "dictation")
             lastActivityPreview = ""
             lastActivityPushAt = .distantPast
             livePartial = ""
@@ -270,6 +271,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             }
             warmupToken = nil
             state = .recording(startedAt: startedAt)
+            FBLog.log("recording started", category: "dictation")
             // The cloud badge is not decoration: while this engine is active
             // the audio WILL leave the device, and the user must see it.
             statusMessage = enginePreference == .cloud
@@ -346,6 +348,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         do {
             let duration = Date().timeIntervalSince(recordingStartedAt)
             state = .transcribing
+            FBLog.log("stop → transcribing dur=\(Int(duration))s", category: "dictation")
             activityController.update(
                 phase: .transcribing,
                 transcriptPreview: LiveTranscriptStore.latest()?.text ?? "",
@@ -353,6 +356,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             )
 
             let record = try await transcriber.stopLiveTranscription(duration: duration)
+            FBLog.log("transcribed chars=\(record.text.count)", category: "dictation")
 
             // Deterministic spoken commands first ("punto", "a capo", …),
             // then the on-device polish with the current tone target. The
@@ -613,6 +617,7 @@ final class FlowBridgeCoordinator: ObservableObject {
 
     private func fail(_ error: Error) {
         let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        FBLog.log("FAIL error=\(message) raw=\(String(reflecting: error))", category: "dictation")
         state = .failed(message)
         statusMessage = message
         HapticPlayer.failed()

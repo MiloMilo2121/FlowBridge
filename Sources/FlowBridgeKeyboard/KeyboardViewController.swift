@@ -28,6 +28,7 @@ final class KeyboardViewController: UIInputViewController {
         NetworkGuard.install()
         buildInterface()
         refresh()
+        FBLog.log("kb load fullAccess=\(hasFullAccess) hasTranscript=\(TranscriptStore.latest()?.text.isEmpty == false)", category: "keyboard")
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -129,6 +130,16 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func refresh(live: LiveTranscriptSnapshot? = nil) {
+        // A keyboard extension can only reach the shared App Group (where the
+        // transcript lives) with "Allow Full Access" ON. Without it every
+        // read returns nil and Insert would silently do nothing — say so.
+        guard hasFullAccess else {
+            previewLabel.text = "Enable “Allow Full Access” for the FlowBridge keyboard (Settings › General › Keyboard › Keyboards) to insert your dictated text."
+            insertButton.isEnabled = false
+            liveButton.isEnabled = false
+            return
+        }
+        liveButton.isEnabled = true
         let record = TranscriptStore.latest()
         let liveSnapshot = live ?? LiveTranscriptStore.latest()
         previewLabel.text = liveSnapshot?.previewText.isEmpty == false ? liveSnapshot?.previewText : record?.text

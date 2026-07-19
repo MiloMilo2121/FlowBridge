@@ -16,6 +16,7 @@ struct ContentView: View {
                     heroCard
                     primaryButton
                     transcriptCard
+                    FlowTrailView(openHistory: { showHistory = true })
                 }
                 .padding(FlowTheme.Spacing.page)
             }

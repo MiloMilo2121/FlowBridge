@@ -33,6 +33,7 @@
 		482D55BADF4D2AF74392511B /* TranscriptHistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 678D04AE880D789EFCD73955 /* TranscriptHistoryStoreTests.swift */; };
 		49EBD2B635C75D1F5C62F833 /* FlowBridgeShared.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		4AB4F08AC8930C07253DD6D5 /* VocabularyAndStatsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2E470CC9E4CDE3B97DC829 /* VocabularyAndStatsTests.swift */; };
+		527BD722E60D73C034BD99AA /* FBLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1E5A021CD83FB6BE7E24B7 /* FBLog.swift */; };
 		52C34B7F588061303A75F48D /* FlowBridgeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64715A622B6B8DB9C2621BE5 /* FlowBridgeCoordinator.swift */; };
 		56C88637BE8997FCAD1CC513 /* FlowPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E04B4C22AE1220729C494DB /* FlowPalette.swift */; };
 		588B2660A8DB1D2B3FA73835 /* VoiceCommandProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE98420A07E6315C0192BA66 /* VoiceCommandProcessor.swift */; };
@@ -81,6 +82,7 @@
 		DA5E5ED36F8BB2653202CD75 /* CloudEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5250059818D573A35AE0D37 /* CloudEngine.swift */; };
 		DAB66618C44EE1C8CFA3E83E /* WhisperModels in Resources */ = {isa = PBXBuildFile; fileRef = 0C22ABA974FC16EC771CFC34 /* WhisperModels */; };
 		DCE91C09FB09734B72B3ADA4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C3F5740251CFDF8DC6F6A766 /* Assets.xcassets */; };
+		E1DEDBCF54E6B420357673F4 /* FlowTrailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74161510FC87C1560991AF20 /* FlowTrailView.swift */; };
 		E6D4FFBB36D53CF49FB78B71 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FC38FD292248ABAC08C9CE1 /* AppDelegate.swift */; };
 		F4BD965A8C9CD401933AA3C6 /* FlowBridgeShared.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		F50A90548C5BCCBE4E7D2B98 /* DictationActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AC1F7A2821AC69AFEBECAE7 /* DictationActivityAttributes.swift */; };
@@ -218,10 +220,12 @@
 		678D04AE880D789EFCD73955 /* TranscriptHistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptHistoryStoreTests.swift; sourceTree = "<group>"; };
 		6B453C3F7687571D700196B5 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		734D80C86D7A5ED5DD9A6F8F /* FlowBridgeJSON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeJSON.swift; sourceTree = "<group>"; };
+		74161510FC87C1560991AF20 /* FlowTrailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowTrailView.swift; sourceTree = "<group>"; };
 		748711B42A512CA9A05AA1AC /* FlowBridgeKeyboard.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = FlowBridgeKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		74D2726B6533203B057035C1 /* Benchmark */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Benchmark; path = Resources/Benchmark; sourceTree = SOURCE_ROOT; };
 		75585582B711A04DA59F231A /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		786B1AE80A62F3B8718B36D4 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
+		7B1E5A021CD83FB6BE7E24B7 /* FBLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FBLog.swift; sourceTree = "<group>"; };
 		896D5D4E8D80D707EE776D26 /* WhisperEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperEngine.swift; sourceTree = "<group>"; };
 		8A88C5488798C0EBBF2DC392 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		8C3376497876B786552C9DAF /* FlowBridgeWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeWidgetsBundle.swift; sourceTree = "<group>"; };
@@ -434,6 +438,7 @@
 				EA7CF10ABEEB3E9B75ACA0CF /* DictationCommandHub.swift */,
 				3D956BEAEE6CFBDC18F98329 /* DictationStatsStore.swift */,
 				FCF98DF41D148D8A7BFDD142 /* DictationTextNormalizer.swift */,
+				7B1E5A021CD83FB6BE7E24B7 /* FBLog.swift */,
 				CA149C0EF32FD199CF8FE8DD /* FlowBridgeConstants.swift */,
 				9A4096FE560985EB14367364 /* FlowBridgeError.swift */,
 				734D80C86D7A5ED5DD9A6F8F /* FlowBridgeJSON.swift */,
@@ -457,6 +462,7 @@
 		EE8393560D26D4222E1EFB21 /* Home */ = {
 			isa = PBXGroup;
 			children = (
+				74161510FC87C1560991AF20 /* FlowTrailView.swift */,
 				57B2AB8C56012A74605614BE /* MeshWaveformView.swift */,
 			);
 			path = Home;
@@ -688,6 +694,7 @@
 				7B56073779F0ABDD0765080E /* DictationCommandHub.swift in Sources */,
 				F9FD85C69C97E622EA1D4AB0 /* DictationStatsStore.swift in Sources */,
 				8FC10AE539C765251A26314C /* DictationTextNormalizer.swift in Sources */,
+				527BD722E60D73C034BD99AA /* FBLog.swift in Sources */,
 				2C47274F120E8031AF924D0F /* FlowBridgeConstants.swift in Sources */,
 				BD9AD1178F3B6F47A9EAA812 /* FlowBridgeError.swift in Sources */,
 				C3E950826C53F75339AE0DF8 /* FlowBridgeJSON.swift in Sources */,
@@ -737,6 +744,7 @@
 				0EB9CBD54D1AF6CAF867563D /* FlowBridgeApp.swift in Sources */,
 				52C34B7F588061303A75F48D /* FlowBridgeCoordinator.swift in Sources */,
 				694AA8EADF26779BA3EBC57D /* FlowDesign.swift in Sources */,
+				E1DEDBCF54E6B420357673F4 /* FlowTrailView.swift in Sources */,
 				23C517C51D5E249DD8879ADF /* HapticPlayer.swift in Sources */,
 				7BD984A8937758C635E0C8D9 /* HistoryView.swift in Sources */,
 				024C48C75778E2C5F7BCDFCC /* KeychainStore.swift in Sources */,
