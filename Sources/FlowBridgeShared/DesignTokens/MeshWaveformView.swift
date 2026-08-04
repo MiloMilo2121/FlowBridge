@@ -1,4 +1,8 @@
-import FlowBridgeShared
+// Il nastro armonico e' l'unica immagine del marchio: sta nel layer condiviso,
+// non dentro un target di una sola piattaforma. iOS e la console macOS devono
+// disegnare lo stesso identico tracciato — le armoniche 20.1/42.7/71.3 e
+// l'envelope sin^1.15 vengono dal design system, non dal caso.
+#if canImport(UIKit) || canImport(AppKit)
 import SwiftUI
 
 /// The signature: a mesh of drifting voice-lines, ported 1:1 from the
@@ -11,18 +15,29 @@ import SwiftUI
 /// ~24Hz signal still reads as continuous. All lines batch into two stroke
 /// calls per frame. Under Reduce Motion the timeline pauses and a single
 /// static frame is drawn.
-struct MeshWaveformView: View {
+public struct MeshWaveformView: View {
     var live: Bool
     var level: Float = 0
     var lines: Int = 54
     var speed: Double = 1
     var paused: Bool = false
 
+    /// `live` cambia colore e velocita': viola in attesa, arancio in cattura.
+    /// `level` e' l'energia reale del microfono, 0…1.
+    public init(live: Bool, level: Float = 0, lines: Int = 54,
+                speed: Double = 1, paused: Bool = false) {
+        self.live = live
+        self.level = level
+        self.lines = lines
+        self.speed = speed
+        self.paused = paused
+    }
+
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var clock = MeshClock()
 
-    var body: some View {
+    public var body: some View {
         TimelineView(.animation(minimumInterval: live ? 1 / 60 : 1 / 30, paused: paused || reduceMotion)) { timeline in
             Canvas { context, size in
                 let (t, drive) = clock.advance(
@@ -109,3 +124,4 @@ private final class MeshClock {
         return (t, 0.25 + level * 0.75)
     }
 }
+#endif

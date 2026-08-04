@@ -23,6 +23,12 @@ let package = Package(
             name: "FlowBridgeShared",
             path: "Sources/FlowBridgeShared"
         ),
+        // Galleria visiva del design system su macOS: si guarda, non si spedisce.
+        .executableTarget(
+            name: "AnteprimaMac",
+            dependencies: ["FlowBridgeShared"],
+            path: "Sources/AnteprimaMac"
+        ),
         .executableTarget(
             name: "FlowBridgeSharedCheck",
             dependencies: ["FlowBridgeShared"],
