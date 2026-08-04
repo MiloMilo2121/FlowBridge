@@ -1,6 +1,6 @@
-// UI tokens exist only where UIKit does; the shared framework also builds
-// via SwiftPM for Linux CI, where this whole file is compiled out.
-#if canImport(UIKit)
+// I glifi sono `Shape` puri: geometria, niente di specifico di una
+// piattaforma. Restano fuori solo da Linux, dove non c'e' SwiftUI.
+#if canImport(UIKit) || canImport(AppKit)
 import SwiftUI
 
 /// The «Linea Viva» proprietary icon set (replaces SF Symbols in chrome).

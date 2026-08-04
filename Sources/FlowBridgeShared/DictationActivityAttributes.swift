@@ -1,6 +1,9 @@
 import Foundation
 
-#if canImport(ActivityKit)
+// `canImport(ActivityKit)` e' VERO anche su macOS: il modulo c'e', ma
+// `ActivityAttributes` e' dichiarato non disponibile. La guardia controllava
+// quindi la cosa sbagliata, e su macOS il target condiviso non compilava.
+#if canImport(ActivityKit) && !os(macOS)
 import ActivityKit
 
 /// Shared Live Activity contract between the app (which starts and updates

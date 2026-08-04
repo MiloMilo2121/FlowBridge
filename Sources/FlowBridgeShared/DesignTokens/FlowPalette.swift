@@ -1,8 +1,11 @@
-// UI tokens exist only where UIKit does; the shared framework also builds
-// via SwiftPM for Linux CI, where this whole file is compiled out.
-#if canImport(UIKit)
+// I token vivono dove c'e' una libreria di UI — UIKit su iOS, AppKit su macOS.
+// Il framework condiviso si compila anche su Linux per la CI, dove questo file
+// sparisce per intero.
+//
+// La differenza fra le due piattaforme sta tutta in `ColorePiattaforma.swift`:
+// qui sotto ci sono solo i token, che non sanno su cosa girano.
+#if canImport(UIKit) || canImport(AppKit)
 import SwiftUI
-import UIKit
 
 /// FlowBridge design tokens — single source of truth for every target.
 ///
@@ -124,20 +127,23 @@ public enum FlowPalette {
     // MARK: Builders
 
     private static func fixed(_ hex: UInt32) -> Color {
-        Color(uiColor: UIColor(hex: hex, alpha: 1))
+        FlowColore.fisso(hex)
     }
 
     private static func adaptive(
         light: UInt32, lightAlpha: CGFloat = 1,
         dark: UInt32, darkAlpha: CGFloat = 1
     ) -> Color {
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(hex: dark, alpha: darkAlpha)
-                : UIColor(hex: light, alpha: lightAlpha)
-        })
+        FlowColore.adattivo(
+            chiaro: light, alphaChiaro: lightAlpha,
+            scuro: dark, alphaScuro: darkAlpha
+        )
     }
 }
+
+// La tastiera e' una extension UIKit e non esiste su macOS: questi token
+// restano dove sono utili.
+#if canImport(UIKit)
 
 /// UIKit-facing tokens for the keyboard extension (UIKit surface).
 public enum FlowPaletteUIKit {
@@ -154,14 +160,5 @@ public enum FlowPaletteUIKit {
     }
 }
 
-private extension UIColor {
-    convenience init(hex: UInt32, alpha: CGFloat) {
-        self.init(
-            red: CGFloat((hex >> 16) & 0xFF) / 255,
-            green: CGFloat((hex >> 8) & 0xFF) / 255,
-            blue: CGFloat(hex & 0xFF) / 255,
-            alpha: alpha
-        )
-    }
-}
+#endif
 #endif
