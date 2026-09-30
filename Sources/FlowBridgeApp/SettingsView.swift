@@ -81,7 +81,7 @@ struct SettingsView: View {
         case .appleSpeech:
             return "Apple's on-device speech model (iOS 26). Fastest, best Italian; no custom vocabulary biasing."
         case .cloud:
-            return "Dictations with this engine are uploaded to \(FlowBridgeConstants.cloudProviderName). Audio leaves this iPhone — a visible badge reminds you while recording."
+            return "Live audio goes to \(FlowBridgeConstants.cloudProviderName) in the EU. Your own API key is stored in the Keychain."
         }
     }
 
@@ -177,7 +177,7 @@ struct SettingsView: View {
     private var cloudSection: some View {
         Section {
             Toggle(isOn: $cloudEnabled) {
-                ChipRow(glyph: .language, tone: .orange, title: "Cloud engine (optional)")
+                ChipRow(glyph: .language, tone: .orange, title: "AssemblyAI live transcription")
             }
                 .onChange(of: cloudEnabled) { _, newValue in
                     if newValue {
@@ -202,14 +202,26 @@ struct SettingsView: View {
                     .textInputAutocapitalization(.never)
                     .onSubmit {
                         KeychainStore.saveCloudAPIKey(cloudAPIKey)
+                        if !cloudAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && cloudEnabled {
+                            engine = .cloud
+                            EnginePreference.set(.cloud)
+                        }
                     }
+                Button("Save API key and use cloud") {
+                    KeychainStore.saveCloudAPIKey(cloudAPIKey)
+                    if !cloudAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        engine = .cloud
+                        EnginePreference.set(.cloud)
+                    }
+                }
+                .disabled(cloudAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         } header: {
-            Text("Cloud (off by default)")
+            Text("Cloud dictation")
         } footer: {
             Text(cloudEnabled
-                ? "While the Cloud engine is selected, dictation audio is sent to \(FlowBridgeConstants.cloudProviderName) and nothing else — the network guard allows exactly that one host. Enable EU Data Residency and Zero Retention on your provider account. The key is stored in the Keychain."
-                : "FlowBridge is fully on-device. If you enable the optional cloud engine, dictations made with it will leave this iPhone — you will be asked to confirm.")
+                ? "Live microphone audio is sent to AssemblyAI's EU endpoint when cloud is selected. Your key stays in this iPhone's Keychain."
+                : "Local dictation is active. Enable cloud and enter your own AssemblyAI key to make streaming the default.")
         }
         .confirmationDialog(
             "Send dictations to the cloud?",
@@ -224,7 +236,7 @@ struct SettingsView: View {
                 cloudEnabled = false
             }
         } message: {
-            Text("Dictations made with the Cloud engine are recorded on this iPhone and then uploaded to \(FlowBridgeConstants.cloudProviderName) for transcription. Audio leaves your device only for those dictations; every other engine stays fully local.")
+            Text("With cloud selected, microphone audio streams to AssemblyAI in the EU as you speak. A local WAV is kept until the transcript is safely delivered. Your diary syncs separately through iCloud Drive.")
         }
     }
 
@@ -234,13 +246,13 @@ struct SettingsView: View {
                 glyph: .privacy,
                 tone: .green,
                 title: "Audio & transcripts",
-                subtitle: cloudEnabled ? "On-device by default" : "On-device only"
+                subtitle: cloudEnabled ? "AssemblyAI EU when cloud is selected" : "Local transcription"
             )
             ChipRow(
                 glyph: .onDevice,
                 tone: .green,
                 title: "Network on the audio path",
-                subtitle: cloudEnabled ? "One provider host, opt-in" : "None — guard active, works in Airplane Mode"
+                subtitle: cloudEnabled ? "AssemblyAI EU; iCloud syncs the diary" : "iCloud syncs the diary"
             )
         } header: {
             Text("Privacy")

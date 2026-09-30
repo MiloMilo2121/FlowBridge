@@ -32,13 +32,23 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>FlowBridge records your speech only when you start a dictation, transcribes it entirely on this iPhone, and never sends audio anywhere.</string>
+	<string>FlowBridge records only when you start dictation. If you choose cloud, live audio goes to AssemblyAI in the EU; local mode stays on this iPhone.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>FlowBridge uses Apple's on-device speech recognition to turn your voice into text. Nothing leaves this iPhone.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
 	<true/>
+	<key>NSUbiquitousContainers</key>
+	<dict>
+		<key>iCloud.com.marcomilanello.flowbridge</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<false/>
+			<key>NSUbiquitousContainerName</key>
+			<string>FlowBridge</string>
+		</dict>
+	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

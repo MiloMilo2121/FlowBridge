@@ -9,6 +9,10 @@ func require(_ condition: @autoclosure () -> Bool, _ message: String) {
 
 let normalized = DictationTextNormalizer.normalize(" hello   world  , flowbridge  ! ")
 require(normalized == "Hello world, flowbridge!", "Unexpected normalization: \(normalized)")
+require(TranscriptIntegrityGuard.accepts(original: "Ehm, ciao ciao Marco.", cleaned: "Ciao Marco."),
+        "Safe cleanup was rejected")
+require(!TranscriptIntegrityGuard.accepts(original: "Costa 1,3 milioni.", cleaned: "Costa 13 milioni."),
+        "A changed number was accepted")
 
 let suite = "FlowBridgeSharedCheck.\(UUID().uuidString)"
 let defaults = UserDefaults(suiteName: suite)!

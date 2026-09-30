@@ -23,11 +23,20 @@ public struct DictationActivityAttributes: ActivityAttributes, Sendable {
         /// static + dynamic Live Activity payload must stay under 4KB.
         public var transcriptPreview: String
         public var startedAt: Date
+        /// Quantized microphone energy. Optional for activities restored from
+        /// a build that predates the meter.
+        public var level: UInt8?
+        public var finishedAt: Date?
+        public var isCloud: Bool?
 
-        public init(phase: Phase, transcriptPreview: String, startedAt: Date) {
+        public init(phase: Phase, transcriptPreview: String, startedAt: Date,
+                    level: UInt8 = 0, finishedAt: Date? = nil, isCloud: Bool = false) {
             self.phase = phase
             self.transcriptPreview = String(transcriptPreview.suffix(220))
             self.startedAt = startedAt
+            self.level = level
+            self.finishedAt = finishedAt
+            self.isCloud = isCloud
         }
     }
 

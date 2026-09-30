@@ -165,12 +165,13 @@ struct CapsLabel: View {
 
 /// The iOS mic indicator, made brand: a small green dot with a soft glow.
 struct PrivacyDot: View {
+    var cloud = false
     var body: some View {
         Circle()
-            .fill(FlowPalette.statePrivate)
+            .fill(cloud ? FlowPalette.stateLive : FlowPalette.statePrivate)
             .frame(width: 7, height: 7)
-            .shadow(color: FlowPalette.statePrivate.opacity(0.7), radius: 4)
-            .accessibilityHidden(true)
+            .shadow(color: (cloud ? FlowPalette.stateLive : FlowPalette.statePrivate).opacity(0.7), radius: 4)
+            .accessibilityLabel(cloud ? "Cloud transcription" : "Local transcription")
     }
 }
 

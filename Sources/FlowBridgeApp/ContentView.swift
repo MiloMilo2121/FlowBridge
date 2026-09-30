@@ -68,6 +68,13 @@ struct ContentView: View {
             .sheet(isPresented: $showSettings) {
                 SettingsView()
             }
+            .onOpenURL { url in
+                switch url.host {
+                case "diary": showHistory = true
+                case "recover": Task { await coordinator.retrySavedDictation() }
+                default: break
+                }
+            }
         }
     }
 
@@ -84,7 +91,7 @@ struct ContentView: View {
                         .monospacedDigit()
                         .foregroundStyle(FlowPalette.textSecondary)
                 }
-                PrivacyDot()
+                PrivacyDot(cloud: EnginePreference.current == .cloud)
             }
 
             MeshWaveformView(
@@ -191,7 +198,7 @@ private extension FlowBridgeCoordinator.State {
         case .warming: return "Warming up"
         case .recording: return "Listening"
         case .transcribing: return "Transcribing"
-        case .ready: return "Copied · on-device"
+        case .ready: return "Copied to clipboard"
         case .failed: return "Error"
         }
     }

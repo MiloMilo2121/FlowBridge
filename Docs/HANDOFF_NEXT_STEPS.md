@@ -2,6 +2,8 @@
 
 > Aggiornato: 6 luglio 2026 · Da leggere insieme a [ROADMAP_V2.md](ROADMAP_V2.md), [KILLER_FEATURES_V2.md](KILLER_FEATURES_V2.md), [ARCHITECTURE.md](ARCHITECTURE.md) e [CODE_REVIEW_2026-07.md](CODE_REVIEW_2026-07.md) (quattro giri di review, findings chiusi/aperti).
 
+> Stato beta al 30 settembre 2026: questo documento è lo storico del progetto. Per la configurazione corrente AssemblyAI EU, diario iCloud, verifica e rilascio usare [TESTFLIGHT_BETA.md](TESTFLIGHT_BETA.md) e [PRIVACY_BETA.md](PRIVACY_BETA.md). I gate device e account restano aperti.
+
 ## Stato del repository
 
 | Cosa | Dove |
@@ -17,21 +19,15 @@ Cosa è stato verificato e cosa no:
 
 ## Vincoli non negoziabili (non violarli mai)
 
-1. **On-device di default; la rete è vietata salvo l'unica eccezione deliberata.** `NetworkGuard` resta installato ovunque e blocca tutto; l'unico varco è il **CloudEngine opt-in** (OFF di default, consenso esplicito, whitelist del solo host provider via `CloudGate`, badge visibile in registrazione). **Le extension non possono MAI raggiungere la rete** (`CloudGate.enableForAppProcess()` è chiamato solo dall'app). Nessun download di modelli a runtime; nessuna telemetria remota (MetricKit è locale e opt-in, condivisione solo manuale).
+1. **La rete del motore richiede consenso e chiave personale.** `NetworkGuard` blocca il resto; AssemblyAI EU è predefinito solo dopo consenso e configurazione della chiave. Senza chiave si usa Whisper locale. **Le extension non inviano audio** (`CloudGate.enableForAppProcess()` è chiamato solo dall'app). Il diario sincronizza i testi tramite il container iCloud dell'app; nessun download di modelli a runtime.
 2. **La keyboard extension non registra audio e non carica modelli** (vietato dalla piattaforma: niente mic per entitlement, ~60–70MB di tetto memoria). L'app registra, la tastiera inserisce.
 3. **Avvio in background = Live Activity obbligatoria** per tutta la durata della registrazione (`AudioRecordingIntent`): se l'activity muore, iOS uccide l'audio.
 4. **Il transcript grezzo non si perde mai**: ogni percorso di errore del polisher/comandi ritorna il verbatim; `rawText` resta sul record.
-5. **Codice V1 preservato**: le modifiche sono additive; Whisper resta il motore di default finché il benchmark non decide diversamente.
+5. **Whisper resta disponibile e gestisce il recupero**: è predefinito senza chiave AssemblyAI e completa dal WAV una sessione cloud interrotta.
 
 ## ⚠️ Decisione pre-submit obbligatoria: Full Access della tastiera
 
-Apple rigetta le tastiere il cui *core* non funziona senza Full Access (è
-successo a WhisperPad). La nostra tastiera oggi ha un'unica funzione — leggere
-il transcript dall'App Group — e quella richiede Full Access. **Prima di
-inviare in review** va deciso: aggiungere una funzione base che funzioni senza
-Full Access, oppure riposizionare la tastiera come componente opzionale. Non è
-un problema di codice ma di posizionamento: deciderlo con calma, non davanti al
-rigetto.
+La tastiera include ora digitazione di base senza Full Access. L'inserimento delle trascrizioni dall'App Group richiede Full Access e va verificato sul dispositivo prima della beta review.
 
 ## TODO in ordine di priorità
 
@@ -56,7 +52,7 @@ rigetto.
 - [ ] **Recovery**: uccidere l'app mentre registra → al riavvio la dettatura viene recuperata dal safety buffer? Verificare che il WAV sia leggibile e che il gap-on-purge di WhisperKit (documentato in ARCHITECTURE.md) non degradi troppo.
 - [ ] **Tastiera**: Darwin notifications arrivano nell'extension? Il diff incrementale non sfarfalla? Full Access + App Group ok?
 - [ ] **Spike Whisper Mode** (killer feature #5, non ancora implementata): misurare WER parlando a bassissimo volume; decidere gain/VAD.
-- [ ] **CloudEngine** (opt-in): con una chiave ElevenLabs vera — consenso mostrato una volta sola? badge visibile? upload allo stop ok? upload fallito (modalità aereo a metà) → WAV recuperato al riavvio? disattivando il toggle il motore torna a Whisper?
+- [ ] **CloudEngine**: con una chiave AssemblyAI personale — consenso prima del primo invio? badge visibile? streaming EU e chiusura allo Stop? rete persa a metà → Whisper dal WAV senza seconda sessione? disattivando il toggle il motore torna a Whisper?
 - [ ] **MetricKit**: i report arrivano (iOS li consegna ~1 volta/giorno)? ShareLink funziona?
 
 ### 3. Benchmark (decide il motore di default)

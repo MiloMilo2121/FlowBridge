@@ -16,19 +16,22 @@ import Foundation
 final class DictationActivityController {
     private var activity: Activity<DictationActivityAttributes>?
     private var tail: Task<Void, Never> = Task {}
+    private var isCloud = false
 
     var isActive: Bool {
         activity != nil
     }
 
-    func start(sessionID: UUID, startedAt: Date) {
+    func start(sessionID: UUID, startedAt: Date, isCloud: Bool) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         end(immediately: true)
+        self.isCloud = isCloud
 
         let state = DictationActivityAttributes.ContentState(
             phase: .recording,
             transcriptPreview: "",
-            startedAt: startedAt
+            startedAt: startedAt,
+            isCloud: isCloud
         )
         activity = try? Activity.request(
             attributes: DictationActivityAttributes(sessionID: sessionID),
@@ -36,12 +39,16 @@ final class DictationActivityController {
         )
     }
 
-    func update(phase: DictationActivityAttributes.ContentState.Phase, transcriptPreview: String, startedAt: Date) {
+    func update(phase: DictationActivityAttributes.ContentState.Phase, transcriptPreview: String,
+                startedAt: Date, level: UInt8 = 0) {
         guard let activity else { return }
         let state = DictationActivityAttributes.ContentState(
             phase: phase,
             transcriptPreview: transcriptPreview,
-            startedAt: startedAt
+            startedAt: startedAt,
+            level: level,
+            finishedAt: phase == .transcribing ? Date() : nil,
+            isCloud: isCloud
         )
         // ActivityKit's async surface is thread-safe by design; its types
         // just lack Sendable annotations in this SDK.
@@ -60,7 +67,9 @@ final class DictationActivityController {
         let state = DictationActivityAttributes.ContentState(
             phase: failed ? .failed : .ready,
             transcriptPreview: transcriptPreview,
-            startedAt: startedAt
+            startedAt: startedAt,
+            finishedAt: Date(),
+            isCloud: isCloud
         )
         nonisolated(unsafe) let handle = activity
         nonisolated(unsafe) let content = ActivityContent(state: state, staleDate: nil)

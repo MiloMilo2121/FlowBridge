@@ -10,30 +10,65 @@ struct OnboardingView: View {
 
     @State private var page = 0
     @State private var microphoneGranted = false
+    @State private var cloudKey = ""
 
     var body: some View {
         TabView(selection: $page) {
-            speakScene.tag(0)
-            triggerScene.tag(1)
-            keyboardScene.tag(2)
+            cloudScene.tag(0)
+            speakScene.tag(1)
+            triggerScene.tag(2)
+            keyboardScene.tag(3)
         }
         .tabViewStyle(.page)
         .background { AuroraBackground() }
         .interactiveDismissDisabled()
     }
 
+    private var cloudScene: some View {
+        scene(
+            glyph: .language,
+            eyebrow: "Choose where speech is processed",
+            eyebrowTone: .accent,
+            title: "Your voice, your choice.",
+            message: "For live cloud dictation, FlowBridge sends microphone audio to AssemblyAI's EU service while you speak. Enter your own API key. The diary syncs through your iCloud Drive account. You can choose local dictation instead."
+        ) {
+            VStack(spacing: 12) {
+                SecureField("AssemblyAI API key", text: $cloudKey)
+                    .textContentType(.password)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .textFieldStyle(.roundedBorder)
+                Button("I agree · use AssemblyAI streaming") {
+                    KeychainStore.saveCloudAPIKey(cloudKey)
+                    UserDefaults.standard.set(true, forKey: FlowBridgeConstants.cloudConsentAcceptedKey)
+                    CloudGate.setCloudEngineEnabled(true)
+                    EnginePreference.set(.cloud)
+                    withAnimation { page = 1 }
+                }
+                .buttonStyle(FlowCTAButtonStyle())
+                .disabled(cloudKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Use local dictation") {
+                    CloudGate.setCloudEngineEnabled(false)
+                    EnginePreference.set(.whisper)
+                    withAnimation { page = 1 }
+                }
+                .font(.footnote)
+            }
+        }
+    }
+
     private var speakScene: some View {
         scene(
             glyph: .dictate,
-            eyebrow: "On-device · Private",
+            eyebrow: "Microphone permission",
             eyebrowTone: .privacy,
             title: "Speak.",
-            message: "FlowBridge turns your voice into clean text, entirely on this iPhone. No cloud, no account. Try it: allow the microphone and say something."
+            message: "FlowBridge records only when you start a dictation. AssemblyAI receives live audio if you chose cloud; local mode keeps processing on this iPhone."
         ) {
             Button {
                 Task {
                     microphoneGranted = await FlowBridgeCoordinator.shared.requestMicrophonePermission()
-                    withAnimation { page = 1 }
+                    withAnimation { page = 2 }
                 }
             } label: {
                 HStack(spacing: 10) {
@@ -55,7 +90,7 @@ struct OnboardingView: View {
             message: "Map the Action Button to FlowBridge and dictation starts with one press — without opening the app, with live progress in the Dynamic Island. Settings → Action Button → Controls → FlowBridge Dictation. No Action Button? Back Tap or the Lock Screen control work the same way."
         ) {
             Button {
-                withAnimation { page = 2 }
+                withAnimation { page = 3 }
             } label: {
                 Text("Done — next")
             }
@@ -69,7 +104,7 @@ struct OnboardingView: View {
             eyebrow: "Optional",
             eyebrowTone: .accent,
             title: "Your keyboard.",
-            message: "The FlowBridge keyboard inserts what you dictate right where you're typing. iOS shows a scary Full Access warning when you enable it. What we actually do: read your transcript from this device's shared container. What we cannot do: send it anywhere — the app has no network path for your voice, ever."
+            message: "The keyboard types normally without Full Access. To insert FlowBridge transcripts, Full Access lets it read the app's shared container. The keyboard extension itself has no network access."
         ) {
             VStack(spacing: 10) {
                 Button {

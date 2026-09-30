@@ -27,7 +27,7 @@ jobs:
   # validates code and fallbacks, not model output — device testing stays a
   # manual gate (see Docs/HANDOFF_NEXT_STEPS.md).
   ios-simulator:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - name: Install XcodeGen
