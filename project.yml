@@ -30,6 +30,9 @@ targets:
   FlowBridgeApp:
     type: application
     platform: iOS
+    scheme:
+      testTargets:
+        - FlowBridgeSharedTests
     sources:
       - path: Sources/FlowBridgeApp
       - path: Sources/FlowBridgeAppIntents
