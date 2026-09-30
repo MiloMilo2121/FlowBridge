@@ -199,7 +199,11 @@ final class AudioSafetyBufferTests: XCTestCase {
         }
         let exhausted = AudioSafetyBuffer.exhaustedRecordings(in: directory)
         XCTAssertEqual(exhausted.map(\.url), [first.url])
-        XCTAssertEqual(exhausted[0].recordedAt, pending[0].recordedAt, "Renames keep the recording date")
+        // Creation-date granularity and rename semantics differ per
+        // filesystem (Linux ext4/overlayfs vs APFS): closeness, not identity.
+        let exhaustedDate = try XCTUnwrap(exhausted[0].recordedAt)
+        let originalDate = try XCTUnwrap(pending[0].recordedAt)
+        XCTAssertEqual(exhaustedDate.timeIntervalSince(originalDate), 0, accuracy: 5, "Renames keep the recording date")
 
         // A user-initiated retry starts from scratch.
         let reset = try XCTUnwrap(AudioSafetyBuffer.resetRecoveryAttempts(exhausted[0]))
