@@ -179,5 +179,7 @@ targets:
     platform: iOS
     sources:
       - path: Tests/FlowBridgeSharedTests
+      - path: Tests/Fixtures/diario
+        type: folder
     dependencies:
       - target: FlowBridgeShared

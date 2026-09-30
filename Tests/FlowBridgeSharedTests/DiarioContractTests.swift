@@ -4,9 +4,12 @@ import XCTest
 
 final class DiarioContractTests: XCTestCase {
     func testMacFixturesAndTombstone() throws {
-        let fixtureDirectory = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Fixtures/diario")
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        #else
+        let bundle = Bundle(for: Self.self)
+        #endif
+        let fixtureDirectory = try XCTUnwrap(bundle.url(forResource: "diario", withExtension: nil))
         let temporary = FileManager.default.temporaryDirectory
             .appendingPathComponent("flowbridge-diary-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)

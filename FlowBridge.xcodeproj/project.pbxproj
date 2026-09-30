@@ -66,6 +66,7 @@
 		98A207D93F6AA1AA5C53C449 /* UnrecoveredDictationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54DF5F13A34F23A11091A4D6 /* UnrecoveredDictationsView.swift */; };
 		9AABBC088A4A9ACDBDD1F76D /* DictationControlWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0208D6D8D2F2AA7BB27FB4B8 /* DictationControlWidget.swift */; };
 		9C0AFFA53D11D51D1350D5F3 /* LineaVivaIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6A8E9CA4B7BBB63DAE2CAD1 /* LineaVivaIcon.swift */; };
+		9F92A34FAA1D5FFF2912B71B /* diario in Resources */ = {isa = PBXBuildFile; fileRef = 1BE26683271A090886C2F304 /* diario */; };
 		A4A02AACCB81EE23CC7B56E5 /* AudioSafetyBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9FCB7173B4C2474162C05C6 /* AudioSafetyBuffer.swift */; };
 		A691EAAEA84F3163C5AB37DC /* FlowBridgeShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; };
 		AFBFD21CFF2D7FA6C103754C /* DictationActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 253FCE496170F7FC75566588 /* DictationActivityController.swift */; };
@@ -207,6 +208,7 @@
 		0F16B79777254F400F0A0684 /* AppleSpeechEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeechEngine.swift; sourceTree = "<group>"; };
 		10352A5098BF8448B58B735E /* Deadline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Deadline.swift; sourceTree = "<group>"; };
 		1486D85A361FEE64331127F6 /* PendingCommandStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingCommandStore.swift; sourceTree = "<group>"; };
+		1BE26683271A090886C2F304 /* diario */ = {isa = PBXFileReference; lastKnownFileType = folder; name = diario; path = Tests/Fixtures/diario; sourceTree = SOURCE_ROOT; };
 		1CD98E41DD5DE1B773A30C7B /* PendingCommandStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingCommandStoreTests.swift; sourceTree = "<group>"; };
 		1D3BEA99E7DB4AE0BE1A7340 /* FlowBridgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeApp.swift; sourceTree = "<group>"; };
 		253FCE496170F7FC75566588 /* DictationActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationActivityController.swift; sourceTree = "<group>"; };
@@ -363,6 +365,7 @@
 		3E7F44397CFEBDA085D03FAF /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				6DDD66A264B183A32031E89A /* Fixtures */,
 				B9B4CB0F6CB47AC4EA802C74 /* FlowBridgeSharedTests */,
 			);
 			path = Tests;
@@ -394,6 +397,14 @@
 				8C3376497876B786552C9DAF /* FlowBridgeWidgetsBundle.swift */,
 			);
 			path = FlowBridgeWidgets;
+			sourceTree = "<group>";
+		};
+		6DDD66A264B183A32031E89A /* Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				1BE26683271A090886C2F304 /* diario */,
+			);
+			path = Fixtures;
 			sourceTree = "<group>";
 		};
 		8717567B2720A7EF0E8648EC /* FlowBridgeShareExtension */ = {
@@ -564,6 +575,7 @@
 			buildConfigurationList = 747F88A81B07FE6005391E2E /* Build configuration list for PBXNativeTarget "FlowBridgeSharedTests" */;
 			buildPhases = (
 				F3455934C078209C572AF7DD /* Sources */,
+				D664F397CC193781703A2E0D /* Resources */,
 				D9224CD96F8367E1CB953031 /* Frameworks */,
 				9959BC640BF989D86448B856 /* Embed Frameworks */,
 			);
@@ -699,6 +711,14 @@
 				DCE91C09FB09734B72B3ADA4 /* Assets.xcassets in Resources */,
 				917C2F64D051D80B548FA66B /* Benchmark in Resources */,
 				DAB66618C44EE1C8CFA3E83E /* WhisperModels in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D664F397CC193781703A2E0D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9F92A34FAA1D5FFF2912B71B /* diario in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

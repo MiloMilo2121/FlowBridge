@@ -7,7 +7,8 @@ var targets: [Target] = [
     .executableTarget(name: "FlowBridgeSharedCheck", dependencies: ["FlowBridgeShared"],
                       path: "Checks/FlowBridgeSharedCheck"),
     .testTarget(name: "FlowBridgeSharedTests", dependencies: ["FlowBridgeShared"],
-                path: "Tests/FlowBridgeSharedTests")
+                path: "Tests/FlowBridgeSharedTests",
+                resources: [.copy("../Fixtures/diario")])
 ]
 #if os(macOS)
 // AppKit is unavailable in the Linux CI container.
