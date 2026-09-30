@@ -1,9 +1,10 @@
 import Foundation
 
-// `canImport(ActivityKit)` e' VERO anche su macOS: il modulo c'e', ma
-// `ActivityAttributes` e' dichiarato non disponibile. La guardia controllava
-// quindi la cosa sbagliata, e su macOS il target condiviso non compilava.
-#if canImport(ActivityKit) && !os(macOS)
+// os(iOS) matters: ActivityKit *imports* fine on macOS, but
+// `ActivityAttributes` is marked unavailable there, so a canImport-only
+// guard breaks `swift build`/`swift test` on the host while the Linux CI
+// (no ActivityKit at all) stays green.
+#if canImport(ActivityKit) && os(iOS)
 import ActivityKit
 
 /// Shared Live Activity contract between the app (which starts and updates

@@ -39,29 +39,54 @@ enum EnginePreference: String, CaseIterable {
 }
 
 enum EngineFactory {
-    static func makeCurrent() async -> any TranscriptionEngine {
-        switch EnginePreference.current {
+    struct Built {
+        let engine: any TranscriptionEngine
+        /// The preference actually satisfied — `.whisper` whenever the
+        /// request had to fall back. Callers record this, not the requested
+        /// preference, so the user can be told which engine is really
+        /// running.
+        let resolved: EnginePreference
+    }
+
+    /// The preference that `requested` can actually be satisfied with right
+    /// now, without building anything. A fallback is re-resolved on every
+    /// start so a fix (cloud key added, locale supported) is picked up,
+    /// while an unchanged fallback is not rebuilt.
+    static func resolve(_ requested: EnginePreference) async -> EnginePreference {
+        switch requested {
         case .whisper:
-            return WhisperEngine()
+            return .whisper
         case .whisperPrecision:
-            if WhisperModelLocator.precisionFolderIfInstalled() != nil {
-                return WhisperEngine(variant: .precision)
-            }
-            return WhisperEngine()
+            // The requested variant falls back to the bundled model, but
+            // the preference is still honored: the user asked for Whisper
+            // either way, and no engine change is worth reporting.
+            return .whisperPrecision
         case .appleSpeech:
             // Apple's transcriber only exists for supported locales; without
             // this guard the selection fails at runtime mid-dictation.
-            if await AppleSpeechEngine.isUsable() {
-                return AppleSpeechEngine()
-            }
-            return WhisperEngine()
+            return await AppleSpeechEngine.isUsable() ? .appleSpeech : .whisper
         case .cloud:
             // The cloud engine only exists while explicitly enabled AND
             // configured; anything less falls back to fully local.
-            if CloudGate.isCloudEngineEnabled, KeychainStore.loadCloudAPIKey() != nil {
-                return CloudEngine()
-            }
-            return WhisperEngine()
+            return CloudGate.isCloudEngineEnabled && KeychainStore.loadCloudAPIKey() != nil
+                ? .cloud
+                : .whisper
+        }
+    }
+
+    static func make(_ resolved: EnginePreference) -> Built {
+        switch resolved {
+        case .whisper:
+            return Built(engine: WhisperEngine(), resolved: .whisper)
+        case .whisperPrecision:
+            let variant: WhisperModelVariant = WhisperModelLocator.precisionFolderIfInstalled() != nil
+                ? .precision
+                : .bundled
+            return Built(engine: WhisperEngine(variant: variant), resolved: .whisperPrecision)
+        case .appleSpeech:
+            return Built(engine: AppleSpeechEngine(), resolved: .appleSpeech)
+        case .cloud:
+            return Built(engine: CloudEngine(), resolved: .cloud)
         }
     }
 }

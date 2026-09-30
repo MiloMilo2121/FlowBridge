@@ -22,8 +22,20 @@ final class DictationActivityController {
         activity != nil
     }
 
-    func start(sessionID: UUID, startedAt: Date, isCloud: Bool) {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+    /// Whether a new activity can be requested right now. Checked before a
+    /// background start, where its absence is fatal to the session.
+    var isAvailable: Bool {
+        ActivityAuthorizationInfo().areActivitiesEnabled
+    }
+
+    /// Starts the activity for a new session. Returns false when Live
+    /// Activities are off or the system refused the request — a background
+    /// start cannot hold audio without a visible activity, so the caller
+    /// must abort rather than record into a session the system will tear
+    /// down.
+    @discardableResult
+    func start(sessionID: UUID, startedAt: Date, isCloud: Bool) -> Bool {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return false }
         end(immediately: true)
         self.isCloud = isCloud
 
@@ -33,10 +45,11 @@ final class DictationActivityController {
             startedAt: startedAt,
             isCloud: isCloud
         )
-        activity = try? Activity.request(
+        activity = try? Activity<DictationActivityAttributes>.request(
             attributes: DictationActivityAttributes(sessionID: sessionID),
             content: ActivityContent(state: state, staleDate: nil)
         )
+        return activity != nil
     }
 
     func update(phase: DictationActivityAttributes.ContentState.Phase, transcriptPreview: String,

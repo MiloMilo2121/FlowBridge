@@ -316,6 +316,25 @@ final class KeyboardViewController: UIInputViewController {
             lastSessionID = snapshot.sessionID
         }
 
+        // An error snapshot carries the message in `previewText` and an
+        // EMPTY text. It must never reach the diff: the field holds the
+        // words already inserted for this session, so diffing "" against it
+        // would delete the user's dictation. Show the message, close the
+        // session, touch nothing.
+        //
+        // An empty FINAL (the engine heard nothing it would commit) gets the
+        // same treatment: it would otherwise erase the volatile words the
+        // user watched appear. Stale words are easy to fix by hand; words
+        // deleted by the keyboard are not.
+        if snapshot.isError || (snapshot.isFinal && snapshot.text.isEmpty) {
+            if snapshot.isError {
+                previewLabel.text = snapshot.previewText
+            }
+            lastSequence = max(lastSequence, snapshot.sequence)
+            completedSessionID = snapshot.sessionID
+            return
+        }
+
         guard !liveInsertAborted else {
             if snapshot.isFinal {
                 completedSessionID = snapshot.sessionID

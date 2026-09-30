@@ -151,6 +151,18 @@ actor AppleSpeechEngine: TranscriptionEngine {
         inputContinuation?.finish()
         inputContinuation = nil
         try? await analyzer?.finalizeAndFinishThroughEndOfInput()
+        // Finalize emits the segments still buffered as final results before
+        // the stream ends. Cancelling the consumer here would drop exactly
+        // the last words of the dictation, so drain it — with a bounded
+        // wait, because a stream that never closes must not hold the
+        // stop-to-ready path.
+        if let resultsTask {
+            _ = try? await withDeadline(
+                .seconds(FlowBridgeConstants.speechFinalizeDrainSeconds),
+                onTimeout: { () },
+                operation: { await resultsTask.value }
+            )
+        }
         resultsTask?.cancel()
         resultsTask = nil
         analyzer = nil

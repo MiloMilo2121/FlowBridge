@@ -121,4 +121,21 @@ public enum FlowBridgeConstants {
     /// Interrupted recordings shorter than this are discarded instead of
     /// recovered: below ~1s there is no usable speech.
     public static let safetyBufferMinimumRecoverySeconds: TimeInterval = 1.0
+    /// How many times an interrupted dictation is retried from the safety
+    /// buffer before it is left alone. A file is renamed before each
+    /// attempt, so an unrecoverable one (truncated header, engine that
+    /// cannot read it, a decode that kills the process) stops being retried
+    /// on every launch — and is never deleted: it is still the user's
+    /// audio, retried or discarded by hand from Settings.
+    public static let safetyBufferMaxRecoveryAttempts = 3
+    /// A cloud upload body older than this is an orphan from a kill
+    /// mid-upload (the request timeout is far shorter), safe to delete.
+    public static let safetyBufferStaleUploadSeconds: TimeInterval = 60 * 60
+
+    /// Grace period after `finalizeAndFinishThroughEndOfInput` during which
+    /// the trailing final results the transcriber emits while its stream
+    /// closes are consumed, instead of cancelling the consumer and losing
+    /// the last words. Bounded: a stream that never closes cannot hold the
+    /// stop-to-ready path.
+    public static let speechFinalizeDrainSeconds: TimeInterval = 1
 }

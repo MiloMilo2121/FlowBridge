@@ -31,6 +31,15 @@ public final class PendingCommandStore: @unchecked Sendable {
         DarwinNotifier.post(FlowBridgeConstants.pendingCommandDidChangeDarwinName)
     }
 
+    /// The stored command, left in place. Lets a busy consumer decide
+    /// whether a command is still worth keeping before taking it.
+    public func peek() -> PendingCommand? {
+        guard let data = defaults.data(forKey: FlowBridgeConstants.pendingCommandKey) else {
+            return nil
+        }
+        return try? FlowBridgeJSON.decoder().decode(PendingCommand.self, from: data)
+    }
+
     public func consume() -> PendingCommand? {
         guard let data = defaults.data(forKey: FlowBridgeConstants.pendingCommandKey) else {
             return nil
