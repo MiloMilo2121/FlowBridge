@@ -9,6 +9,16 @@ public struct LiveTranscriptSnapshot: Codable, Equatable, Sendable {
     public let isFinal: Bool
     public let updatedAt: Date
 
+    /// A terminal error snapshot: `writeError` puts the message in
+    /// `previewText` and leaves `text` empty. Consumers must surface the
+    /// message and stop, never treat the empty text as the transcript.
+    ///
+    /// Derived from the payload rather than stored as a new field, so the
+    /// on-disk format (and every existing writer) is unchanged.
+    public var isError: Bool {
+        isFinal && !isRecording && text.isEmpty && !previewText.isEmpty
+    }
+
     public init(
         sessionID: UUID,
         sequence: Int,
@@ -59,15 +69,22 @@ public final class LiveTranscriptStore: @unchecked Sendable {
         )
     }
 
+    /// Fallback for a caller that passes an empty message: an error snapshot
+    /// is recognized by its non-empty preview (`isError`), so an empty one
+    /// would be indistinguishable from an empty final.
+    public static let genericErrorMessage = "Dictation stopped because of an error."
+
     /// Terminal error snapshot: the message rides in the preview so the
-    /// keyboard can show it without inserting anything.
+    /// keyboard can show it without inserting anything. Never empty — see
+    /// `genericErrorMessage`.
     public func writeError(sessionID: UUID, sequence: Int, message: String) {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         try? write(
             LiveTranscriptSnapshot(
                 sessionID: sessionID,
                 sequence: sequence,
                 text: "",
-                previewText: message,
+                previewText: trimmed.isEmpty ? Self.genericErrorMessage : message,
                 isRecording: false,
                 isFinal: true
             )

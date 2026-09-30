@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var cloudEnabled = CloudGate.isCloudEngineEnabled
     @State private var cloudAPIKey = ""
     @State private var showCloudConsent = false
+    @State private var keySaveTask: Task<Void, Never>?
 
     private let appendChoices: [(label: String, value: TimeInterval)] = [
         ("Off", 0), ("2 min", 120), ("5 min", 300), ("15 min", 900)
@@ -26,6 +27,9 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if !coordinator.unrecoveredDictations.isEmpty {
+                    recoverySection
+                }
                 engineSection
                 polishSection
                 captureSection
@@ -43,6 +47,14 @@ struct SettingsView: View {
                 }
             }
             .onAppear(perform: load)
+            // A pending debounce must not be lost to a dismissal, and a key
+            // left unsaved on purpose must not be written on the way out.
+            .onDisappear {
+                guard keySaveTask != nil else { return }
+                keySaveTask?.cancel()
+                keySaveTask = nil
+                KeychainStore.saveCloudAPIKey(cloudAPIKey)
+            }
         }
     }
 
@@ -136,6 +148,25 @@ struct SettingsView: View {
         }
     }
 
+    /// Only shown when there is something to act on: audio that automatic
+    /// recovery could not transcribe is surfaced first, because it is the
+    /// user's dictation and nothing else will ever pick it up.
+    private var recoverySection: some View {
+        Section {
+            NavigationLink {
+                UnrecoveredDictationsView()
+            } label: {
+                LabeledContent {
+                    Text("\(coordinator.unrecoveredDictations.count)")
+                } label: {
+                    Label("Unrecovered dictations", systemImage: "waveform.badge.exclamationmark")
+                }
+            }
+        } footer: {
+            Text("Interrupted dictations that could not be transcribed automatically. The audio is still on this iPhone.")
+        }
+    }
+
     private var vocabularySection: some View {
         Section {
             NavigationLink {
@@ -165,6 +196,20 @@ struct SettingsView: View {
         }
     }
 
+    /// Persists the API key after the user stops typing. `.onSubmit` alone
+    /// loses the key whenever the field is dismissed without pressing
+    /// Return (Settings closed, scene backgrounded), which silently leaves
+    /// the cloud engine unconfigured.
+    private func scheduleCloudAPIKeySave() {
+        keySaveTask?.cancel()
+        let key = cloudAPIKey
+        keySaveTask = Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            KeychainStore.saveCloudAPIKey(key)
+        }
+    }
+
     private var cloudSection: some View {
         Section {
             Toggle("Cloud engine (optional)", isOn: $cloudEnabled)
@@ -189,7 +234,11 @@ struct SettingsView: View {
                 SecureField("\(FlowBridgeConstants.cloudProviderName) API key", text: $cloudAPIKey)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
+                    .onChange(of: cloudAPIKey) { _, _ in
+                        scheduleCloudAPIKeySave()
+                    }
                     .onSubmit {
+                        keySaveTask?.cancel()
                         KeychainStore.saveCloudAPIKey(cloudAPIKey)
                     }
             }
@@ -259,8 +308,14 @@ struct SettingsView: View {
         }
     }
 
+    /// Seeds every `@State` from the source of truth. The initial values
+    /// are only defaults: `bootstrap()` writes to the App Group
+    /// asynchronously, so opening Settings early would otherwise show
+    /// "on" for a feature that is off.
     private func load() {
         engine = EnginePreference.current
+        cloudEnabled = CloudGate.isCloudEngineEnabled
+        cloudAPIKey = KeychainStore.loadCloudAPIKey() ?? ""
         let defaults = try? SharedContainer.userDefaults()
         polishEnabled = defaults?.object(forKey: FlowBridgeConstants.polishEnabledKey) as? Bool ?? true
         voiceCommandsEnabled = defaults?.object(forKey: FlowBridgeConstants.voiceCommandsEnabledKey) as? Bool ?? true
@@ -270,6 +325,7 @@ struct SettingsView: View {
         stats = coordinator.stats?.stats() ?? DictationStatsStore.Stats()
         diagnosticsEnabled = DiagnosticsCollector.isEnabled
         diagnosticReports = DiagnosticsCollector.reports()
+        coordinator.refreshUnrecoveredDictations()
     }
 }
 

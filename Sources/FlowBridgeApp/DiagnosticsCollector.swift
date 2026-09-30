@@ -79,7 +79,9 @@ final class DiagnosticsCollector: NSObject, MXMetricManagerSubscriber {
         guard let directory = Self.reportsDirectory() else { return }
         let stamp = ISO8601DateFormatter().string(from: Date())
             .replacingOccurrences(of: ":", with: "-")
-        let url = directory.appendingPathComponent("\(prefix)-\(stamp).json")
+        // Two payloads delivered in the same batch share a timestamp to the
+        // second; the suffix keeps both instead of overwriting one.
+        let url = directory.appendingPathComponent("\(prefix)-\(stamp)-\(UUID().uuidString.prefix(8)).json")
         try? data.write(to: url, options: .atomic)
     }
 }

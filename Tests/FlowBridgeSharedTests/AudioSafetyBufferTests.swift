@@ -85,12 +85,170 @@ final class AudioSafetyBufferTests: XCTestCase {
         XCTAssertEqual(Int16(littleEndian: low), -Int16.max)
     }
 
+    // MARK: - Recovery attempts (crash-safety: audio is never destroyed)
+
+    func testFailedRecoveryKeepsTheFileAndCountsTheAttempt() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let sampleRate = 16_000.0
+        let buffer = AudioSafetyBuffer(directory: directory, sampleRate: sampleRate)
+        try await buffer.begin(sessionID: UUID())
+        try await buffer.append([Float](repeating: 0.25, count: 16_000))
+        await buffer.closeKeepingFile()
+
+        let fresh = try XCTUnwrap(AudioSafetyBuffer.pendingRecordings(in: directory).first)
+        XCTAssertEqual(fresh.recoveryAttempt, 0, "A never-tried recording must report no attempts")
+
+        // The attempt is counted before transcribing: renamed, not deleted.
+        let marked = try XCTUnwrap(AudioSafetyBuffer.recordRecoveryAttempt(fresh))
+        XCTAssertEqual(marked.recoveryAttempt, 1)
+
+        let afterFailure = AudioSafetyBuffer.pendingRecordings(in: directory, sampleRate: sampleRate)
+        XCTAssertEqual(afterFailure.count, 1, "A failed recovery must not lose the audio")
+        XCTAssertEqual(afterFailure[0].recoveryAttempt, 1)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: afterFailure[0].url.path),
+            "The WAV must survive a failed recovery"
+        )
+        // The rename must not disturb what makes the file recoverable.
+        XCTAssertEqual(afterFailure[0].duration, 1.0, accuracy: 0.001)
+    }
+
+    func testRepeatedFailuresAdvanceTheAttemptCounter() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let buffer = AudioSafetyBuffer(directory: directory)
+        try await buffer.begin(sessionID: UUID())
+        try await buffer.append([Float](repeating: 0.25, count: 16_000))
+        await buffer.closeKeepingFile()
+
+        var pending = try XCTUnwrap(AudioSafetyBuffer.pendingRecordings(in: directory).first)
+        for expected in 1...FlowBridgeConstants.safetyBufferMaxRecoveryAttempts {
+            pending = try XCTUnwrap(AudioSafetyBuffer.recordRecoveryAttempt(pending))
+            XCTAssertEqual(pending.recoveryAttempt, expected)
+            let found = try XCTUnwrap(AudioSafetyBuffer.pendingRecordings(in: directory).first)
+            XCTAssertEqual(found.recoveryAttempt, expected, "The attempt count must survive the rename")
+        }
+
+        // Past the cap the file is still there — the loop stops, the audio stays.
+        let exhausted = try XCTUnwrap(AudioSafetyBuffer.pendingRecordings(in: directory).first)
+        XCTAssertGreaterThanOrEqual(
+            exhausted.recoveryAttempt,
+            FlowBridgeConstants.safetyBufferMaxRecoveryAttempts
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: exhausted.url.path))
+    }
+
+    func testSuccessfulRecoveryRemovesTheFile() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let buffer = AudioSafetyBuffer(directory: directory)
+        try await buffer.begin(sessionID: UUID())
+        try await buffer.append([Float](repeating: 0.25, count: 16_000))
+        await buffer.closeKeepingFile()
+
+        let pending = try XCTUnwrap(AudioSafetyBuffer.pendingRecordings(in: directory).first)
+        // What the coordinator does once the transcript is safely stored.
+        AudioSafetyBuffer.remove(pending)
+        XCTAssertTrue(AudioSafetyBuffer.pendingRecordings(in: directory).isEmpty)
+    }
+
+    func testMarkingAMissingFileIsBestEffort() {
+        let missing = AudioSafetyBuffer.PendingRecording(
+            url: URL(fileURLWithPath: "/tmp/flowbridge-does-not-exist-\(UUID().uuidString).wav"),
+            duration: 1
+        )
+        XCTAssertNil(
+            AudioSafetyBuffer.recordRecoveryAttempt(missing),
+            "Renaming a file that is not there must fail quietly, not throw"
+        )
+    }
+
+    func testWithdrawnAttemptGivesTheCountBack() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try await writeOneSecondRecording(in: directory)
+
+        let fresh = try XCTUnwrap(AudioSafetyBuffer.pendingRecordings(in: directory).first)
+        let attempted = try XCTUnwrap(AudioSafetyBuffer.recordRecoveryAttempt(fresh))
+        // A transient failure (offline cloud) must not count against the file.
+        let withdrawn = try XCTUnwrap(AudioSafetyBuffer.withdrawRecoveryAttempt(attempted))
+        XCTAssertEqual(withdrawn.recoveryAttempt, 0)
+        XCTAssertEqual(withdrawn.url.lastPathComponent, fresh.url.lastPathComponent, "Back to the plain name")
+        XCTAssertEqual(AudioSafetyBuffer.pendingRecordings(in: directory).first?.recoveryAttempt, 0)
+    }
+
+    func testExhaustedRecordingsAreListedAndCanBeReset() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try await writeOneSecondRecording(in: directory)
+        try await writeOneSecondRecording(in: directory)
+
+        var pending = AudioSafetyBuffer.pendingRecordings(in: directory)
+        XCTAssertEqual(pending.count, 2)
+        XCTAssertTrue(AudioSafetyBuffer.exhaustedRecordings(in: directory).isEmpty)
+        XCTAssertNotNil(pending[0].recordedAt, "The recording date must come from the file")
+
+        // Exhaust only the first one.
+        var first = pending[0]
+        while !first.isExhausted {
+            first = try XCTUnwrap(AudioSafetyBuffer.recordRecoveryAttempt(first))
+        }
+        let exhausted = AudioSafetyBuffer.exhaustedRecordings(in: directory)
+        XCTAssertEqual(exhausted.map(\.url), [first.url])
+        XCTAssertEqual(exhausted[0].recordedAt, pending[0].recordedAt, "Renames keep the recording date")
+
+        // A user-initiated retry starts from scratch.
+        let reset = try XCTUnwrap(AudioSafetyBuffer.resetRecoveryAttempts(exhausted[0]))
+        XCTAssertEqual(reset.recoveryAttempt, 0)
+        XCTAssertTrue(AudioSafetyBuffer.exhaustedRecordings(in: directory).isEmpty)
+        pending = AudioSafetyBuffer.pendingRecordings(in: directory)
+        XCTAssertEqual(pending.count, 2, "Nothing is ever lost along the way")
+    }
+
+    func testStaleUploadBodiesAreSweptAndNothingElse() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try await writeOneSecondRecording(in: directory)
+        let wav = try XCTUnwrap(AudioSafetyBuffer.pendingRecordings(in: directory).first)
+
+        let stale = AudioSafetyBuffer.uploadBodyURL(for: wav.url)
+        let fresh = AudioSafetyBuffer.uploadBodyURL(for: wav.url)
+        let unrelated = directory.appendingPathComponent("notes.tmp")
+        for url in [stale, fresh, unrelated] {
+            try Data("body".utf8).write(to: url)
+        }
+        let twoHoursAgo = Date().addingTimeInterval(-2 * 60 * 60)
+        try FileManager.default.setAttributes([.modificationDate: twoHoursAgo], ofItemAtPath: stale.path)
+        try FileManager.default.setAttributes([.modificationDate: twoHoursAgo], ofItemAtPath: unrelated.path)
+
+        XCTAssertTrue(
+            AudioSafetyBuffer.pendingRecordings(in: directory).allSatisfy { $0.url.pathExtension == "wav" },
+            "Upload bodies must never look like a dictation to recover"
+        )
+        XCTAssertEqual(AudioSafetyBuffer.removeStaleUploadBodies(in: directory), 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stale.path), "The orphan goes")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fresh.path), "An upload in flight stays")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path), "Only upload bodies are touched")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: wav.url.path), "The WAV is never touched")
+    }
+
     func testPendingRecordingsIgnoresNonWavFiles() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
         try Data("not audio".utf8).write(to: directory.appendingPathComponent("note.txt"))
         XCTAssertTrue(AudioSafetyBuffer.pendingRecordings(in: directory).isEmpty)
+    }
+
+    private func writeOneSecondRecording(in directory: URL) async throws {
+        let buffer = AudioSafetyBuffer(directory: directory)
+        try await buffer.begin(sessionID: UUID())
+        try await buffer.append([Float](repeating: 0.25, count: 16_000))
+        await buffer.closeKeepingFile()
     }
 
     private func makeDirectory() throws -> URL {

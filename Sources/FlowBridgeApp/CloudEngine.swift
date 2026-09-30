@@ -176,27 +176,31 @@ actor CloudEngine: TranscriptionEngine {
             throw FlowBridgeError.transcriptionFailed("Invalid provider endpoint.")
         }
 
-        let audioData = try Data(contentsOf: fileURL)
         let boundary = "flowbridge-\(UUID().uuidString)"
 
-        var body = Data()
-        func appendField(name: String, value: String) {
-            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
-        }
-        appendField(name: "model_id", value: FlowBridgeConstants.cloudModelID)
-        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"dictation.wav\"\r\nContent-Type: audio/wav\r\n\r\n".utf8))
-        body.append(audioData)
-        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        // The multipart body goes to disk and is uploaded with
+        // `upload(for:fromFile:)`: `maxRecordingSeconds` is 600, so a
+        // 10-minute dictation is ~19 MB of 16 kHz PCM, and materializing the
+        // body in memory (plus URLSession's own copy) is a jetsam risk on
+        // exactly the long dictations this engine is for. The temp file is
+        // removed on every exit path, success or failure.
+        // Launch-time recovery sweeps bodies orphaned by a kill mid-upload.
+        let bodyURL = AudioSafetyBuffer.uploadBodyURL(for: fileURL)
+        defer { try? FileManager.default.removeItem(at: bodyURL) }
+        try writeMultipartBody(
+            to: bodyURL,
+            boundary: boundary,
+            audioURL: fileURL
+        )
 
         var request = URLRequest(url: endpoint, timeoutInterval: FlowBridgeConstants.cloudRequestTimeoutSeconds)
         request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        request.httpBody = body
 
         // Ephemeral session: no caches, no cookies, nothing persisted.
         let session = URLSession(configuration: .ephemeral)
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.upload(for: request, fromFile: bodyURL)
 
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? -1
@@ -212,6 +216,30 @@ actor CloudEngine: TranscriptionEngine {
             throw FlowBridgeError.emptyTranscript
         }
         return text
+    }
+
+    /// Streams the multipart body to `bodyURL`: the small fields and headers
+    /// in memory, the audio in 1 MB chunks straight from the WAV. Never holds
+    /// the whole payload.
+    private func writeMultipartBody(to bodyURL: URL, boundary: String, audioURL: URL) throws {
+        FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
+        let output = try FileHandle(forWritingTo: bodyURL)
+        defer { try? output.close() }
+
+        func append(_ string: String) throws {
+            try output.write(contentsOf: Data(string.utf8))
+        }
+
+        try append("--\(boundary)\r\nContent-Disposition: form-data; name=\"model_id\"\r\n\r\n\(FlowBridgeConstants.cloudModelID)\r\n")
+        try append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"dictation.wav\"\r\nContent-Type: audio/wav\r\n\r\n")
+
+        let input = try FileHandle(forReadingFrom: audioURL)
+        defer { try? input.close() }
+        while let chunk = try input.read(upToCount: 1 << 20), !chunk.isEmpty {
+            try output.write(contentsOf: chunk)
+        }
+
+        try append("\r\n--\(boundary)--\r\n")
     }
 }
 
