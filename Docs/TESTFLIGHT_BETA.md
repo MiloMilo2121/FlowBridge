@@ -1,5 +1,7 @@
 # External TestFlight beta handoff
 
+La guida da inviare ai tester è [GUIDA_TESTER.md](GUIDA_TESTER.md). Lo storyboard e le evidenze richieste per il video sono in [VIDEO_DEMO.md](VIDEO_DEMO.md).
+
 ## Build gates
 
 1. Verify an active Apple Developer Program team and an App Store Connect app record for `com.marcomilanello.flowbridge`. Register `iCloud.com.marcomilanello.flowbridge` for both the iPhone app and the signed Mac app. A Personal Team can install on a personal device but cannot distribute through TestFlight.

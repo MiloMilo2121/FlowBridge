@@ -42,10 +42,11 @@ Privacy posture: the main app opens only the configured AssemblyAI EU streaming 
    xcodegen generate
    ```
 
-5. Open `FlowBridge.xcodeproj`, set your development team, and enable the App Group:
+5. Open `FlowBridge.xcodeproj`, set your development team, and register the App Group and iCloud Documents container in the Apple Developer account:
 
    ```text
    group.com.marcomilanello.flowbridge
+   iCloud.com.marcomilanello.flowbridge
    ```
 
 ## Trigger setup
@@ -60,10 +61,12 @@ Privacy posture: the main app opens only the configured AssemblyAI EU streaming 
 FlowBridge is designed as a normal iOS app bundle with a custom keyboard extension and share extension. That makes it suitable for TestFlight and App Store review, as long as the App Store metadata clearly explains:
 
 - speech is captured only after microphone permission and explicit user trigger;
-- transcription runs locally on device;
+- local transcription and cloud failure recovery run on device;
 - the keyboard extension needs Full Access only to read the shared local transcript;
 - cloud dictation streams audio to AssemblyAI EU only after consent and key setup; diary text syncs through the user's iCloud Drive account;
 - local mode and the keyboard extension do not send speech to a transcription provider.
+
+For beta installation and review gates see [TESTFLIGHT_BETA.md](Docs/TESTFLIGHT_BETA.md); send [GUIDA_TESTER.md](Docs/GUIDA_TESTER.md) to testers. The on-device video shot list is [VIDEO_DEMO.md](Docs/VIDEO_DEMO.md).
 
 ## Runtime guarantee
 
