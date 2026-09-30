@@ -11,6 +11,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         CloudGate.enableForAppProcess()
         NetworkGuard.install()
         DiagnosticsCollector.shared.startIfEnabled()
+        // Build the coordinator now, not when SwiftUI first reads it: its
+        // init registers the App Intent handlers, and an intent can be the
+        // first thing this process runs.
+        _ = FlowBridgeCoordinator.shared
         return true
     }
 }

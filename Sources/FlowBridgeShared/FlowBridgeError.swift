@@ -12,6 +12,9 @@ public enum FlowBridgeError: Error, Equatable, LocalizedError, Sendable {
     case recorderFailed(String)
     case transcriptionFailed(String)
     case warmupTimedOut
+    case liveActivityUnavailable
+    case noDictationHandler
+    case dictationBusy
 
     public var errorDescription: String? {
         switch self {
@@ -37,6 +40,12 @@ public enum FlowBridgeError: Error, Equatable, LocalizedError, Sendable {
             return "Transcription failed: \(message)"
         case .warmupTimedOut:
             return "The speech engine took too long to start."
+        case .liveActivityUnavailable:
+            return "Live Activities are off, so a background dictation cannot stay alive."
+        case .noDictationHandler:
+            return "Dictation is not available in this process."
+        case .dictationBusy:
+            return "FlowBridge is still finishing the previous dictation."
         }
     }
 }
