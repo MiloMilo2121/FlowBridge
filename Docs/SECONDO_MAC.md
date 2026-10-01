@@ -25,16 +25,22 @@ In un checkout nuovo di `MiloMilo2121/FlowBridge`, passa al branch `design-syste
 
 Il preflight deve completare build Swift, test condivisi, controllo runtime, generazione progetto, build di tutti i target iOS e test su simulatore. La CI della PR ha già passato 63 test; il preflight locale verifica la toolchain del secondo Mac. Controlla che `Resources/WhisperModels/WhisperSmall/` sia nel checkout e nell'archivio finale.
 
-## 3. Firma e dispositivo
+## 3. Verificare l'account, poi firmare
 
-In Xcode seleziona un team **Apple Developer Program** attivo per app, tastiera, share e widgets. Verifica che il team possa usare `group.com.marcomilanello.flowbridge` e `iCloud.com.marcomilanello.flowbridge`; la presenza delle stringhe negli entitlement non prova che i profili firmati le autorizzino. Verifica anche un record App Store Connect per `com.marcomilanello.flowbridge`.
+Accedi a [Apple Developer Account](https://developer.apple.com/account/) con l'Apple Account che userai in Xcode. In **Membership details** verifica che compaiano un Team ID, il ruolo e una data di rinnovo per **Apple Developer Program**. Se Xcode mostra solo **Personal Team**, puoi installare sul tuo iPhone ma non distribuire tramite TestFlight. Le [istruzioni Apple sugli account](https://developer.apple.com/help/account/basics/about-your-developer-account) distinguono i due casi.
+
+Accedi anche ad [App Store Connect](https://appstoreconnect.apple.com/) e controlla in **Apps** se esiste FlowBridge con bundle ID `com.marcomilanello.flowbridge`. Se la sezione non è accessibile, o l'app non compare, annota esattamente ciò che vedi: l'accesso e il record vanno risolti prima dell'upload. Non inviare password, codici a due fattori o chiavi API nel repository.
+
+In Xcode seleziona un team **Apple Developer Program** attivo per app, tastiera, share e widgets. Verifica che il team possa usare `group.com.marcomilanello.flowbridge` e `iCloud.com.marcomilanello.flowbridge`; la presenza delle stringhe negli entitlement non prova che i profili firmati le autorizzino.
+
+## 4. Dispositivo
 
 Collega l'iPhone 17 Air, abilita Developer Mode se richiesto e installa la build. Esegui la matrice in [TESTFLIGHT_BETA.md](TESTFLIGHT_BETA.md) e registra i tre tempi per cloud, locale, rete assente e primo avvio. La guida non tecnica è [GUIDA_TESTER.md](GUIDA_TESTER.md).
 
-## 4. Diario Mac ↔ iPhone
+## 5. Diario Mac ↔ iPhone
 
 In un checkout separato di `MiloMilo2121/trascrittore-auto`, passa a `flowbridge-icloud-sync` ed esegui `cd app && ./scripts/costruisci.sh` senza `--installa`. Prima di installare la nuova app sul Mac che registra davvero, verifica firma, entitlement iCloud e percorso dell'archivio. Usa call sintetiche per la prima prova e confronta gli hash del testo originale prima e dopo l'esportazione. Prova creazione simultanea, offline→online, migrazione ripetuta, lapidi, call e conflitti; controlla lo stato su entrambe le app.
 
-## 5. Solo dopo il collaudo
+## 6. Solo dopo il collaudo
 
 Incrementa `CURRENT_PROJECT_VERSION` in `project.yml`, rigenera il progetto, committa e pubblica il branch. Archivia dall'Organizer di Xcode con firma valida, verifica modello e capability nel `.xcarchive`, carica in App Store Connect, completa le note per la beta review e associa la build al gruppo esterno. Conserva misure, esiti e [video reale](VIDEO_DEMO.md) con il numero di build. Nessun test su simulatore dimostra da solo streaming AssemblyAI, iCloud tra dispositivi o affidabilità con telefono bloccato.
