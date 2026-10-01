@@ -66,7 +66,7 @@ FlowBridge is designed as a normal iOS app bundle with a custom keyboard extensi
 - cloud dictation streams audio to AssemblyAI EU only after consent and key setup; diary text syncs through the user's iCloud Drive account;
 - local mode and the keyboard extension do not send speech to a transcription provider.
 
-For beta installation and review gates see [TESTFLIGHT_BETA.md](Docs/TESTFLIGHT_BETA.md); send [GUIDA_TESTER.md](Docs/GUIDA_TESTER.md) to testers. The on-device video shot list is [VIDEO_DEMO.md](Docs/VIDEO_DEMO.md).
+For the second Mac setup see [SECONDO_MAC.md](Docs/SECONDO_MAC.md); beta review gates are in [TESTFLIGHT_BETA.md](Docs/TESTFLIGHT_BETA.md). Send [GUIDA_TESTER.md](Docs/GUIDA_TESTER.md) to testers. The on-device video shot list is [VIDEO_DEMO.md](Docs/VIDEO_DEMO.md).
 
 ## Runtime guarantee
 

@@ -1,6 +1,6 @@
 # Riprese per il video della beta
 
-Registrare il video **sull'iPhone Air con la build TestFlight installata**. Non usare schermate simulate come prova della beta. Durata suggerita: 90–120 secondi. Mostrare in sovraimpressione build, dispositivo, motore e rete per ogni prova; oscurare chiave API e qualsiasi dato reale di clienti.
+Registrare il video **sull'iPhone 17 Air con la build TestFlight installata**. Non usare schermate simulate come prova della beta. Durata suggerita: 90–120 secondi. Mostrare in sovraimpressione build, dispositivo, motore e rete per ogni prova; oscurare chiave API e qualsiasi dato reale di clienti.
 
 | Ripresa | Azione visibile | Evidenza da conservare |
 |---|---|---|
