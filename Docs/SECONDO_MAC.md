@@ -20,10 +20,11 @@ Servono almeno 10 GiB liberi per il preflight; libera ulteriore spazio prima del
 In un checkout nuovo di `MiloMilo2121/FlowBridge`, passa al branch `design-system-macos`, poi esegui:
 
 ```sh
+./scripts/fetch-whisper-small.sh
 ./scripts/preflight.sh
 ```
 
-Il preflight deve completare build Swift, test condivisi, controllo runtime, generazione progetto, build di tutti i target iOS e test su simulatore. La CI della PR ha già passato 63 test; il preflight locale verifica la toolchain del secondo Mac. Controlla che `Resources/WhisperModels/WhisperSmall/` sia nel checkout e nell'archivio finale.
+Il modello Whisper (467 MB) è escluso da git, quindi un checkout nuovo non lo contiene: senza il primo comando il build passa ma la dettatura locale sul dispositivo non funziona. Il preflight deve completare build Swift, test condivisi, controllo runtime, generazione progetto, build di tutti i target iOS e test su simulatore. La CI della PR ha già passato 63 test; il preflight locale verifica la toolchain del secondo Mac. Controlla che `Resources/WhisperModels/WhisperSmall/` sia presente anche nell'archivio finale.
 
 ## 3. Verificare l'account, poi firmare
 
