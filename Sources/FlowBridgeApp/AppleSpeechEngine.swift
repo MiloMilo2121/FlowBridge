@@ -35,7 +35,15 @@ actor AppleSpeechEngine: TranscriptionEngine {
     }
 
     func transcribe(recording: RecordedAudio, source: TranscriptRecord.Source) async throws -> TranscriptRecord {
-        let transcriber = SpeechTranscriber(locale: locale, preset: .offlineTranscription)
+        // The `.offlineTranscription` preset was removed in the final iOS 26
+        // SDK; the explicit configuration below is its equivalent (final
+        // results only — the collector already filters on `isFinal`).
+        let transcriber = SpeechTranscriber(
+            locale: locale,
+            transcriptionOptions: [],
+            reportingOptions: [],
+            attributeOptions: []
+        )
         try await ensureAssets(for: transcriber)
         let analyzer = SpeechAnalyzer(modules: [transcriber])
 

@@ -16,6 +16,7 @@ import Foundation
 final class DictationActivityController {
     private var activity: Activity<DictationActivityAttributes>?
     private var tail: Task<Void, Never> = Task {}
+    private var isCloud = false
 
     var isActive: Bool {
         activity != nil
@@ -33,14 +34,16 @@ final class DictationActivityController {
     /// must abort rather than record into a session the system will tear
     /// down.
     @discardableResult
-    func start(sessionID: UUID, startedAt: Date) -> Bool {
+    func start(sessionID: UUID, startedAt: Date, isCloud: Bool) -> Bool {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return false }
         end(immediately: true)
+        self.isCloud = isCloud
 
         let state = DictationActivityAttributes.ContentState(
             phase: .recording,
             transcriptPreview: "",
-            startedAt: startedAt
+            startedAt: startedAt,
+            isCloud: isCloud
         )
         activity = try? Activity<DictationActivityAttributes>.request(
             attributes: DictationActivityAttributes(sessionID: sessionID),
@@ -49,15 +52,23 @@ final class DictationActivityController {
         return activity != nil
     }
 
-    func update(phase: DictationActivityAttributes.ContentState.Phase, transcriptPreview: String, startedAt: Date) {
+    func update(phase: DictationActivityAttributes.ContentState.Phase, transcriptPreview: String,
+                startedAt: Date, level: UInt8 = 0) {
         guard let activity else { return }
         let state = DictationActivityAttributes.ContentState(
             phase: phase,
             transcriptPreview: transcriptPreview,
-            startedAt: startedAt
+            startedAt: startedAt,
+            level: level,
+            finishedAt: phase == .transcribing ? Date() : nil,
+            isCloud: isCloud
         )
+        // ActivityKit's async surface is thread-safe by design; its types
+        // just lack Sendable annotations in this SDK.
+        nonisolated(unsafe) let handle = activity
+        nonisolated(unsafe) let content = ActivityContent(state: state, staleDate: nil)
         enqueue {
-            await activity.update(ActivityContent(state: state, staleDate: nil))
+            await handle.update(content)
         }
     }
 
@@ -69,11 +80,15 @@ final class DictationActivityController {
         let state = DictationActivityAttributes.ContentState(
             phase: failed ? .failed : .ready,
             transcriptPreview: transcriptPreview,
-            startedAt: startedAt
+            startedAt: startedAt,
+            finishedAt: Date(),
+            isCloud: isCloud
         )
+        nonisolated(unsafe) let handle = activity
+        nonisolated(unsafe) let content = ActivityContent(state: state, staleDate: nil)
         enqueue {
-            await activity.end(
-                ActivityContent(state: state, staleDate: nil),
+            await handle.end(
+                content,
                 dismissalPolicy: .after(.now + FlowBridgeConstants.liveActivityIdleDismissSeconds)
             )
         }
@@ -82,15 +97,18 @@ final class DictationActivityController {
     func end(immediately: Bool) {
         guard let activity else { return }
         self.activity = nil
+        nonisolated(unsafe) let handle = activity
         enqueue {
-            await activity.end(nil, dismissalPolicy: immediately ? .immediate : .default)
+            await handle.end(nil, dismissalPolicy: immediately ? .immediate : .default)
         }
     }
 
     /// Appends `operation` after whatever is already queued, preserving order.
-    private func enqueue(_ operation: @escaping @Sendable () async -> Void) {
+    /// Main-actor closures, not @Sendable: the activity handle never leaves
+    /// this actor, so captures stay region-safe under strict concurrency.
+    private func enqueue(_ operation: @escaping @MainActor () async -> Void) {
         let previous = tail
-        tail = Task {
+        tail = Task { @MainActor in
             await previous.value
             await operation()
         }

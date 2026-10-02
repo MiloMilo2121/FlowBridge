@@ -26,6 +26,9 @@ struct FlowBridgeApp: App {
                         showOnboarding = false
                     }
                 }
+                // Outermost so every presentation (sheets included) inherits
+                // the brand accent instead of system blue.
+                .tint(FlowPalette.accent)
         }
     }
 }

@@ -45,4 +45,13 @@ public enum CloudGate {
         }
         return host == FlowBridgeConstants.cloudProviderHost
     }
+
+    public static func isAllowedWebSocket(_ url: URL) -> Bool {
+        guard url.scheme == "wss" else { return false }
+        lock.lock()
+        let processAllows = processMayAllowCloud
+        lock.unlock()
+        return processAllows && isCloudEngineEnabled
+            && url.host()?.lowercased() == FlowBridgeConstants.cloudProviderHost
+    }
 }

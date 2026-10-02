@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var cloudEnabled = CloudGate.isCloudEngineEnabled
     @State private var cloudAPIKey = ""
     @State private var showCloudConsent = false
+    @State private var vocabularyCount = 0
     @State private var keySaveTask: Task<Void, Never>?
 
     private let appendChoices: [(label: String, value: TimeInterval)] = [
@@ -92,13 +93,15 @@ struct SettingsView: View {
         case .appleSpeech:
             return "Apple's on-device speech model (iOS 26). Fastest, best Italian; no custom vocabulary biasing."
         case .cloud:
-            return "Dictations with this engine are uploaded to \(FlowBridgeConstants.cloudProviderName). Audio leaves this iPhone — a visible badge reminds you while recording."
+            return "Live audio goes to \(FlowBridgeConstants.cloudProviderName) in the EU. Your own API key is stored in the Keychain."
         }
     }
 
     private var polishSection: some View {
         Section {
-            Toggle("Polish transcripts", isOn: $polishEnabled)
+            Toggle(isOn: $polishEnabled) {
+                ChipRow(glyph: .polish, title: "Polish transcripts")
+            }
                 .onChange(of: polishEnabled) { _, newValue in
                     let defaults = try? SharedContainer.userDefaults()
                     defaults?.set(newValue, forKey: FlowBridgeConstants.polishEnabledKey)
@@ -127,7 +130,9 @@ struct SettingsView: View {
 
     private var captureSection: some View {
         Section {
-            Toggle("Spoken commands", isOn: $voiceCommandsEnabled)
+            Toggle(isOn: $voiceCommandsEnabled) {
+                ChipRow(glyph: .commands, title: "Spoken commands", subtitle: "“punto” · “virgola” · “a capo”")
+            }
                 .onChange(of: voiceCommandsEnabled) { _, newValue in
                     let defaults = try? SharedContainer.userDefaults()
                     defaults?.set(newValue, forKey: FlowBridgeConstants.voiceCommandsEnabledKey)
@@ -172,7 +177,11 @@ struct SettingsView: View {
             NavigationLink {
                 VocabularyEditorView()
             } label: {
-                Label("My vocabulary", systemImage: "character.book.closed")
+                ChipRow(
+                    glyph: .vocab,
+                    title: "My vocabulary",
+                    subtitle: vocabularyCount > 0 ? "\(vocabularyCount) terms" : "Names, brands, jargon"
+                )
             }
         } footer: {
             Text("Names, brands, jargon — recognized the way you spell them. The feature system dictation doesn't have.")
@@ -212,7 +221,9 @@ struct SettingsView: View {
 
     private var cloudSection: some View {
         Section {
-            Toggle("Cloud engine (optional)", isOn: $cloudEnabled)
+            Toggle(isOn: $cloudEnabled) {
+                ChipRow(glyph: .language, tone: .orange, title: "AssemblyAI live transcription")
+            }
                 .onChange(of: cloudEnabled) { _, newValue in
                     if newValue {
                         let consented = UserDefaults.standard.bool(forKey: FlowBridgeConstants.cloudConsentAcceptedKey)
@@ -240,14 +251,26 @@ struct SettingsView: View {
                     .onSubmit {
                         keySaveTask?.cancel()
                         KeychainStore.saveCloudAPIKey(cloudAPIKey)
+                        if !cloudAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && cloudEnabled {
+                            engine = .cloud
+                            EnginePreference.set(.cloud)
+                        }
                     }
+                Button("Save API key and use cloud") {
+                    KeychainStore.saveCloudAPIKey(cloudAPIKey)
+                    if !cloudAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        engine = .cloud
+                        EnginePreference.set(.cloud)
+                    }
+                }
+                .disabled(cloudAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         } header: {
-            Text("Cloud (off by default)")
+            Text("Cloud dictation")
         } footer: {
             Text(cloudEnabled
-                ? "While the Cloud engine is selected, dictation audio is sent to \(FlowBridgeConstants.cloudProviderName) and nothing else — the network guard allows exactly that one host. Enable EU Data Residency and Zero Retention on your provider account. The key is stored in the Keychain."
-                : "FlowBridge is fully on-device. If you enable the optional cloud engine, dictations made with it will leave this iPhone — you will be asked to confirm.")
+                ? "Live microphone audio is sent to AssemblyAI's EU endpoint when cloud is selected. Your key stays in this iPhone's Keychain."
+                : "Local dictation is active. Enable cloud and enter your own AssemblyAI key to make streaming the default.")
         }
         .confirmationDialog(
             "Send dictations to the cloud?",
@@ -262,14 +285,24 @@ struct SettingsView: View {
                 cloudEnabled = false
             }
         } message: {
-            Text("Dictations made with the Cloud engine are recorded on this iPhone and then uploaded to \(FlowBridgeConstants.cloudProviderName) for transcription. Audio leaves your device only for those dictations; every other engine stays fully local.")
+            Text("With cloud selected, microphone audio streams to AssemblyAI in the EU as you speak. A local WAV is kept until the transcript is safely delivered. Your diary syncs separately through iCloud Drive.")
         }
     }
 
     private var privacySection: some View {
         Section {
-            LabeledContent("Audio & transcripts", value: cloudEnabled ? "On-device by default" : "On-device only")
-            LabeledContent("Network access on the audio path", value: cloudEnabled ? "One provider host, opt-in" : "None")
+            ChipRow(
+                glyph: .privacy,
+                tone: .green,
+                title: "Audio & transcripts",
+                subtitle: cloudEnabled ? "AssemblyAI EU when cloud is selected" : "Local transcription"
+            )
+            ChipRow(
+                glyph: .onDevice,
+                tone: .green,
+                title: "Network on the audio path",
+                subtitle: cloudEnabled ? "AssemblyAI EU; iCloud syncs the diary" : "iCloud syncs the diary"
+            )
         } header: {
             Text("Privacy")
         } footer: {
@@ -279,7 +312,9 @@ struct SettingsView: View {
 
     private var diagnosticsSection: some View {
         Section {
-            Toggle("Collect crash reports on this iPhone", isOn: $diagnosticsEnabled)
+            Toggle(isOn: $diagnosticsEnabled) {
+                ChipRow(glyph: .copy, title: "Collect crash reports", subtitle: "Stored on this iPhone only")
+            }
                 .onChange(of: diagnosticsEnabled) { _, newValue in
                     DiagnosticsCollector.isEnabled = newValue
                     if newValue {
@@ -293,7 +328,11 @@ struct SettingsView: View {
                 LabeledContent("Stored reports", value: "\(diagnosticReports.count)")
                 if let latest = diagnosticReports.first {
                     ShareLink(item: latest) {
-                        Label("Share latest report", systemImage: "square.and.arrow.up")
+                        HStack(spacing: 12) {
+                            LineaVivaIcon(.share)
+                                .frame(width: 20, height: 20)
+                            Text("Share latest report")
+                        }
                     }
                 }
                 Button("Delete all reports", role: .destructive) {
@@ -325,6 +364,7 @@ struct SettingsView: View {
         stats = coordinator.stats?.stats() ?? DictationStatsStore.Stats()
         diagnosticsEnabled = DiagnosticsCollector.isEnabled
         diagnosticReports = DiagnosticsCollector.reports()
+        vocabularyCount = (try? VocabularyStore())?.terms().count ?? 0
         coordinator.refreshUnrecoveredDictations()
     }
 }

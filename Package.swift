@@ -2,6 +2,20 @@
 
 import PackageDescription
 
+var targets: [Target] = [
+    .target(name: "FlowBridgeShared", path: "Sources/FlowBridgeShared"),
+    .executableTarget(name: "FlowBridgeSharedCheck", dependencies: ["FlowBridgeShared"],
+                      path: "Checks/FlowBridgeSharedCheck"),
+    .testTarget(name: "FlowBridgeSharedTests", dependencies: ["FlowBridgeShared"],
+                path: "Tests/FlowBridgeSharedTests",
+                resources: [.copy("../Fixtures/diario")])
+]
+#if os(macOS)
+// AppKit is unavailable in the Linux CI container.
+targets.append(.executableTarget(name: "AnteprimaMac", dependencies: ["FlowBridgeShared"],
+                                 path: "Sources/AnteprimaMac"))
+#endif
+
 let package = Package(
     name: "FlowBridge",
     platforms: [
@@ -18,23 +32,5 @@ let package = Package(
             targets: ["FlowBridgeSharedCheck"]
         )
     ],
-    targets: [
-        .target(
-            name: "FlowBridgeShared",
-            path: "Sources/FlowBridgeShared"
-        ),
-        .executableTarget(
-            name: "FlowBridgeSharedCheck",
-            dependencies: ["FlowBridgeShared"],
-            path: "Checks/FlowBridgeSharedCheck"
-        ),
-        // Lets the XCTest suite for the shared framework run on Linux CI
-        // (`swift test`), independent of the iOS `bundle.unit-test` target
-        // in project.yml that Xcode builds.
-        .testTarget(
-            name: "FlowBridgeSharedTests",
-            dependencies: ["FlowBridgeShared"],
-            path: "Tests/FlowBridgeSharedTests"
-        )
-    ]
+    targets: targets
 )

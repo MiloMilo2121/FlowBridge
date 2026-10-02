@@ -26,16 +26,26 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.marcomilanello.flowbridge.shared
         APPLICATION_EXTENSION_API_ONLY: "YES"
+        GENERATE_INFOPLIST_FILE: "YES"
   FlowBridgeApp:
     type: application
     platform: iOS
+    scheme:
+      testTargets:
+        - FlowBridgeSharedTests
     sources:
       - path: Sources/FlowBridgeApp
       - path: Sources/FlowBridgeAppIntents
-    resources:
+      # Resources belong under `sources`: XcodeGen has no target-level
+      # `resources` key and silently drops it, which kept the Whisper model
+      # out of the bundle. `type: folder` copies the tree verbatim so the
+      # `WhisperModels/WhisperSmall/` subdirectory the locator looks up is
+      # preserved (a group would flatten it and break the lookup).
       - path: Resources/WhisperModels
+        type: folder
         optional: true
       - path: Resources/Benchmark
+        type: folder
         optional: true
     dependencies:
       - target: FlowBridgeShared
@@ -46,17 +56,38 @@ targets:
       - target: FlowBridgeWidgets
     entitlements:
       path: Entitlements/FlowBridgeApp.entitlements
+      properties:
+        com.apple.developer.icloud-services:
+          - CloudDocuments
+        com.apple.developer.ubiquity-container-identifiers:
+          - iCloud.com.marcomilanello.flowbridge
     info:
       path: Configuration/FlowBridgeApp-Info.plist
       properties:
         CFBundleDisplayName: FlowBridge
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        NSMicrophoneUsageDescription: FlowBridge records your speech only when you start a dictation, transcribes it entirely on this iPhone, and never sends audio anywhere.
+        NSMicrophoneUsageDescription: FlowBridge records only when you start dictation. If you choose cloud, live audio goes to AssemblyAI in the EU; local mode stays on this iPhone.
         NSSpeechRecognitionUsageDescription: FlowBridge uses Apple's on-device speech recognition to turn your voice into text. Nothing leaves this iPhone.
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
+        NSUbiquitousContainers:
+          iCloud.com.marcomilanello.flowbridge:
+            NSUbiquitousContainerIsDocumentScopePublic: false
+            NSUbiquitousContainerName: FlowBridge
+        # Without this key iOS treats the app as legacy and renders it
+        # scaled/letterboxed instead of at native resolution.
+        UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
+        # Portrait-first (single-column UI); iPad keeps all rotations and the
+        # device build stops warning about supported orientations.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UIBackgroundModes:
           - audio
         CFBundleURLTypes:
@@ -67,6 +98,10 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.marcomilanello.flowbridge
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Marks code compiled into the app target (vs. the widget extension,
+        # which shares Sources/FlowBridgeAppIntents but must not see
+        # extension-unavailable API like ForegroundContinuableIntent).
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) FLOWBRIDGE_MAIN_APP"
   FlowBridgeKeyboard:
     type: app-extension
     platform: iOS
@@ -144,5 +179,7 @@ targets:
     platform: iOS
     sources:
       - path: Tests/FlowBridgeSharedTests
+      - path: Tests/Fixtures/diario
+        type: folder
     dependencies:
       - target: FlowBridgeShared

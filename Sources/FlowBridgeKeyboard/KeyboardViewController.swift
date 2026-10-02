@@ -3,6 +3,7 @@ import UIKit
 
 final class KeyboardViewController: UIInputViewController {
     private let previewLabel = UILabel()
+    private let statusLabel = UILabel()
     private let insertButton = UIButton(type: .system)
     private let liveButton = UIButton(type: .system)
     private var liveTimer: Timer?
@@ -18,8 +19,10 @@ final class KeyboardViewController: UIInputViewController {
     /// moment we stop touching the field for the rest of the session — the
     /// finished transcript stays available via Insert and the clipboard.
     private var liveInsertAborted = false
+    private var uppercase = false
+    private var characterButtons: [UIButton] = []
 
-    deinit {
+    isolated deinit {
         liveTimer?.invalidate()
     }
 
@@ -28,6 +31,7 @@ final class KeyboardViewController: UIInputViewController {
         NetworkGuard.install()
         buildInterface()
         refresh()
+        FBLog.log("kb load fullAccess=\(hasFullAccess) hasTranscript=\(TranscriptStore.latest()?.text.isEmpty == false)", category: "keyboard")
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -51,12 +55,21 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func buildInterface() {
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = FlowPaletteUIKit.keyboardBackground
 
-        previewLabel.font = .preferredFont(forTextStyle: .callout)
+        // The transcript voice: serif italic, matching the app and island.
+        let calloutDescriptor = UIFont.preferredFont(forTextStyle: .callout).fontDescriptor
+        let serifItalic = calloutDescriptor
+            .withDesign(.serif)?
+            .withSymbolicTraits(.traitItalic)
+        previewLabel.font = serifItalic.map { UIFont(descriptor: $0, size: 0) }
+            ?? .preferredFont(forTextStyle: .callout)
         previewLabel.textColor = .secondaryLabel
         previewLabel.numberOfLines = 2
         previewLabel.lineBreakMode = .byTruncatingTail
+        statusLabel.font = .preferredFont(forTextStyle: .caption2)
+        statusLabel.textColor = .secondaryLabel
+        statusLabel.numberOfLines = 2
 
         insertButton.setImage(UIImage(systemName: "text.insert"), for: .normal)
         insertButton.setTitle(" Insert", for: .normal)
@@ -90,13 +103,74 @@ final class KeyboardViewController: UIInputViewController {
         buttonRow.distribution = .fill
         buttonRow.spacing = 10
 
+        // Key chips: 12pt radius on the key fill; the primary Insert key
+        // carries the brand accent (design: violet = primary action).
+        for key in [nextKeyboardButton, liveButton, sendButton, deleteButton] {
+            key.backgroundColor = FlowPaletteUIKit.key
+            key.layer.cornerRadius = 12
+            key.layer.cornerCurve = .continuous
+            key.tintColor = .label
+        }
+        insertButton.backgroundColor = FlowPaletteUIKit.accent
+        insertButton.layer.cornerRadius = 12
+        insertButton.layer.cornerCurve = .continuous
+        insertButton.tintColor = .white
+
         nextKeyboardButton.widthAnchor.constraint(equalToConstant: 54).isActive = true
         liveButton.widthAnchor.constraint(equalToConstant: 54).isActive = true
         deleteButton.widthAnchor.constraint(equalToConstant: 54).isActive = true
 
-        let stack = UIStackView(arrangedSubviews: [previewLabel, buttonRow])
+        let characterRows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"].map { letters -> UIStackView in
+            let buttons = letters.map { character -> UIButton in
+                let button = UIButton(type: .system)
+                button.setTitle(String(character), for: .normal)
+                button.titleLabel?.font = .preferredFont(forTextStyle: .body)
+                button.backgroundColor = FlowPaletteUIKit.key
+                button.tintColor = .label
+                button.layer.cornerRadius = 5
+                button.addTarget(self, action: #selector(typeCharacter(_:)), for: .touchUpInside)
+                characterButtons.append(button)
+                return button
+            }
+            let row = UIStackView(arrangedSubviews: buttons)
+            row.axis = .horizontal
+            row.distribution = .fillEqually
+            row.spacing = 3
+            return row
+        }
+        // The top row spans the full width and sets the key size; the
+        // shorter rows reuse it, centered, so every row shares the same
+        // half-key stagger instead of stretching its keys to fill.
+        let keyWidth = characterRows[0].arrangedSubviews[0].widthAnchor
+        var keyWidthConstraints: [NSLayoutConstraint] = []
+        let characterRowViews: [UIView] = characterRows.enumerated().map { index, row in
+            guard index > 0 else { return row }
+            row.distribution = .fill
+            keyWidthConstraints += row.arrangedSubviews.map { $0.widthAnchor.constraint(equalTo: keyWidth) }
+            let container = UIView()
+            row.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(row)
+            NSLayoutConstraint.activate([
+                row.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+                row.topAnchor.constraint(equalTo: container.topAnchor),
+                row.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            ])
+            return container
+        }
+        let shift = typingKey("shift", image: "shift", action: #selector(toggleShift))
+        let space = typingKey("space", image: nil, action: #selector(typeSpace))
+        let period = typingKey(".", image: nil, action: #selector(typePeriod))
+        let enter = typingKey("return", image: "return", action: #selector(typeReturn))
+        shift.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        period.widthAnchor.constraint(equalToConstant: 38).isActive = true
+        enter.widthAnchor.constraint(equalToConstant: 62).isActive = true
+        let lastRow = UIStackView(arrangedSubviews: [shift, space, period, enter])
+        lastRow.axis = .horizontal
+        lastRow.spacing = 3
+
+        let stack = UIStackView(arrangedSubviews: [statusLabel, previewLabel, buttonRow] + characterRowViews + [lastRow])
         stack.axis = .vertical
-        stack.spacing = 10
+        stack.spacing = 5
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
 
@@ -105,16 +179,69 @@ final class KeyboardViewController: UIInputViewController {
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 10),
             stack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -10),
-            insertButton.heightAnchor.constraint(equalToConstant: 44)
+            insertButton.heightAnchor.constraint(equalToConstant: 40),
+            view.heightAnchor.constraint(greaterThanOrEqualToConstant: 292)
         ])
+        // Cross-row constraints need the rows in one hierarchy first.
+        NSLayoutConstraint.activate(keyWidthConstraints)
+        for row in characterRows { row.heightAnchor.constraint(equalToConstant: 37).isActive = true }
+        lastRow.heightAnchor.constraint(equalToConstant: 37).isActive = true
+    }
+
+    private func typingKey(_ title: String, image: String?, action: Selector) -> UIButton {
+        let button = UIButton(type: .system)
+        if let image { button.setImage(UIImage(systemName: image), for: .normal) }
+        else { button.setTitle(title, for: .normal) }
+        button.backgroundColor = FlowPaletteUIKit.key
+        button.tintColor = .label
+        button.layer.cornerRadius = 5
+        button.addTarget(self, action: action, for: .touchUpInside)
+        return button
+    }
+
+    @objc private func typeCharacter(_ sender: UIButton) {
+        guard let value = sender.title(for: .normal) else { return }
+        textDocumentProxy.insertText(value)
+        if uppercase { toggleShift() }
+    }
+    @objc private func typeSpace() { textDocumentProxy.insertText(" ") }
+    @objc private func typePeriod() { textDocumentProxy.insertText(".") }
+    @objc private func typeReturn() { textDocumentProxy.insertText("\n") }
+    @objc private func toggleShift() {
+        uppercase.toggle()
+        for button in characterButtons {
+            button.setTitle(uppercase ? button.title(for: .normal)?.uppercased()
+                                    : button.title(for: .normal)?.lowercased(), for: .normal)
+        }
     }
 
     private func refresh(live: LiveTranscriptSnapshot? = nil) {
+        // A keyboard extension can only reach the shared App Group (where the
+        // transcript lives) with "Allow Full Access" ON. Without it every
+        // read returns nil and Insert would silently do nothing — say so.
+        guard hasFullAccess else {
+            statusLabel.text = "Typing works. Enable Full Access to insert FlowBridge transcripts."
+            previewLabel.text = "Settings › General › Keyboard › FlowBridge"
+            insertButton.isEnabled = false
+            liveButton.isEnabled = false
+            return
+        }
+        liveButton.isEnabled = true
         let record = TranscriptStore.latest()
         let liveSnapshot = live ?? LiveTranscriptStore.latest()
+        if liveInsertAborted {
+            statusLabel.text = "Live insert paused: cursor or text changed. Use Insert after checking the field."
+        } else if let liveSnapshot, liveSnapshot.isRecording {
+            statusLabel.text = "● Listening · live insert \(liveModeEnabled ? "on" : "off")"
+        } else if let liveSnapshot, liveSnapshot.isFinal, liveSnapshot.text.isEmpty,
+                  !liveSnapshot.previewText.isEmpty {
+            statusLabel.text = liveSnapshot.previewText
+        } else {
+            statusLabel.text = "Ready · last transcript stays in the clipboard"
+        }
         previewLabel.text = liveSnapshot?.previewText.isEmpty == false ? liveSnapshot?.previewText : record?.text
         insertButton.isEnabled = record?.text.isEmpty == false
-        liveButton.tintColor = liveModeEnabled ? .systemBlue : .secondaryLabel
+        liveButton.tintColor = liveModeEnabled ? FlowPaletteUIKit.accent : .secondaryLabel
     }
 
     @objc private func insertLatestTranscript() {
@@ -122,6 +249,7 @@ final class KeyboardViewController: UIInputViewController {
         guard textDocumentProxy.isSecureTextEntry != true,
               let text = TranscriptStore.latest()?.text, !text.isEmpty else { return }
         textDocumentProxy.insertText(text)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     /// Insert the transcript and hit return — in most chat apps the return
@@ -132,6 +260,7 @@ final class KeyboardViewController: UIInputViewController {
               let text = TranscriptStore.latest()?.text, !text.isEmpty else { return }
         textDocumentProxy.insertText(text)
         textDocumentProxy.insertText("\n")
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     /// Tone from the active field's traits (public API; keyboards cannot see
@@ -250,13 +379,18 @@ final class KeyboardViewController: UIInputViewController {
         // user's own characters — stop live insertion for this session.
         guard fieldStillMatchesInsertedText() else {
             liveInsertAborted = true
+            statusLabel.text = "Live insert paused: cursor or text changed. Use Insert."
             if snapshot.isFinal {
                 completedSessionID = snapshot.sessionID
             }
             return
         }
 
-        applyIncrementalDiff(from: lastInsertedText, to: nextText)
+        guard applyIncrementalDiff(from: lastInsertedText, to: nextText) else {
+            liveInsertAborted = true
+            statusLabel.text = "Large rewrite paused. Check the field, then use Insert."
+            return
+        }
         lastInsertedText = nextText
 
         if snapshot.isFinal {
@@ -281,7 +415,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Replaces only the unstable tail instead of delete-all/reinsert: the
     /// committed prefix never flickers and long dictations stay smooth.
-    private func applyIncrementalDiff(from old: String, to new: String) {
+    private func applyIncrementalDiff(from old: String, to new: String) -> Bool {
         let oldChars = Array(old)
         let newChars = Array(new)
 
@@ -291,6 +425,9 @@ final class KeyboardViewController: UIInputViewController {
             commonPrefix += 1
         }
 
+        // UITextDocumentProxy has no batch-delete API. A large correction
+        // causes host autocorrect to race individual deletes, so stop safely.
+        guard oldChars.count - commonPrefix <= 32 else { return false }
         for _ in 0..<(oldChars.count - commonPrefix) {
             textDocumentProxy.deleteBackward()
         }
@@ -298,5 +435,6 @@ final class KeyboardViewController: UIInputViewController {
         if commonPrefix < newChars.count {
             textDocumentProxy.insertText(String(newChars[commonPrefix...]))
         }
+        return true
     }
 }

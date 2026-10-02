@@ -1,0 +1,10 @@
+{
+  "dispositivo" : "iphone",
+  "durata_s" : 12,
+  "id" : "0B1C2D3E-4F5A-4B6C-9D7E-8F9A0B1C2D3E",
+  "lingua" : "it",
+  "quando" : "2026-09-30T08:15:00+02:00",
+  "schema" : 1,
+  "testo" : "Ricordarsi di chiamare il fornitore per la consegna di giovedì.",
+  "tipo" : "nota"
+}

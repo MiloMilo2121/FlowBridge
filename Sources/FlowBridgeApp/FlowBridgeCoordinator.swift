@@ -22,6 +22,13 @@ final class FlowBridgeCoordinator: ObservableObject {
     @Published private(set) var lastTranscript: TranscriptRecord?
     @Published private(set) var statusMessage: String?
     @Published private(set) var recordingElapsed: TimeInterval?
+    /// Smoothed microphone energy (0…1) while recording; drives the mesh
+    /// waveform. Stays 0 for engines without a metering source.
+    @Published private(set) var inputLevel: Float = 0
+    /// Words as they stream, mirrored from the live snapshots the engine
+    /// already publishes for the Dynamic Island.
+    @Published private(set) var livePartial: String = ""
+    @Published private(set) var diaryStatus = "Diary saved here · waiting for iCloud Drive"
     /// Safety-buffer recordings automatic recovery gave up on; listed in
     /// Settings so the audio is never stranded on disk.
     @Published private(set) var unrecoveredDictations: [AudioSafetyBuffer.PendingRecording] = []
@@ -34,16 +41,20 @@ final class FlowBridgeCoordinator: ObservableObject {
     private let polisher = TranscriptPolisher.shared
     private var transcriptStore: TranscriptStore?
     private var historyStore: TranscriptHistoryStore?
+    private var diarySync: DiarySyncController?
     private var statsStore: DictationStatsStore?
     private var toneStore: ToneContextStore?
     private var pendingCommandStore: PendingCommandStore?
     private var elapsedTask: Task<Void, Never>?
     private var maxDurationTask: Task<Void, Never>?
+    private var levelTask: Task<Void, Never>?
     private var memoryWarningObserver: NSObjectProtocol?
     private var commandObserver: DarwinNotificationObserver?
     private var liveSnapshotObserver: DarwinNotificationObserver?
     private var lastActivityPreview = ""
     private var lastActivityPushAt = Date.distantPast
+    private var lastLevelPushAt = Date.distantPast
+    private var lastActivityLevel: UInt8 = 0
     /// Identifies the warm-up in flight; cleared by abortWarmup so a start
     /// that completes after the user cancelled tears itself down instead of
     /// resurrecting the session.
@@ -68,9 +79,10 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
     }
 
-    deinit {
+    isolated deinit {
         elapsedTask?.cancel()
         maxDurationTask?.cancel()
+        levelTask?.cancel()
         if let memoryWarningObserver {
             NotificationCenter.default.removeObserver(memoryWarningObserver)
         }
@@ -79,10 +91,20 @@ final class FlowBridgeCoordinator: ObservableObject {
     func bootstrap() async {
         transcriptStore = try? TranscriptStore()
         historyStore = try? TranscriptHistoryStore()
+        diarySync = try? DiarySyncController()
         statsStore = try? DictationStatsStore()
         toneStore = try? ToneContextStore()
         pendingCommandStore = try? PendingCommandStore()
         lastTranscript = transcriptStore?.latest()
+        if let diarySync {
+            let legacy = await historyStore?.all() ?? []
+            if UserDefaults.standard.object(forKey: "diaryPinnedIDs") == nil {
+                UserDefaults.standard.set(legacy.filter(\.isPinned).map { $0.id.uuidString },
+                                          forKey: "diaryPinnedIDs")
+            }
+            await diarySync.migrate(legacy)
+            scheduleDiarySync()
+        }
         await refreshEngineIfNeeded(force: true)
         await recoverInterruptedDictationIfNeeded()
         // Observers come up only after recovery so a user trigger that fires
@@ -164,6 +186,11 @@ final class FlowBridgeCoordinator: ObservableObject {
     func handleScenePhase(_ phase: ScenePhase) async {
         switch phase {
         case .active:
+            scheduleDiarySync()
+            // Re-warm on foreground so the first dictation of the session is
+            // instant (the model may have been dropped under memory pressure
+            // or by the idle TTL while backgrounded).
+            prewarmEngine()
             await consumePendingCommand()
             await processQueuedAudioIfNeeded()
         case .background:
@@ -171,11 +198,13 @@ final class FlowBridgeCoordinator: ObservableObject {
             case .recording:
                 statusMessage = "Live bridge active"
             case .warming, .transcribing:
-                // Work is in flight; unloading now would kill it. The idle
-                // TTL reclaims the model memory afterwards.
+                // Work is in flight; unloading now would kill it.
                 break
             case .idle, .ready, .failed:
-                await transcriber.unload()
+                // Keep the model resident across a quick background/foreground
+                // so the user isn't forced to re-mount it every time. The idle
+                // TTL and the memory-warning handler still reclaim it.
+                break
             }
         case .inactive:
             break
@@ -228,6 +257,12 @@ final class FlowBridgeCoordinator: ObservableObject {
     }
 
     var history: TranscriptHistoryStore? { historyStore }
+    func diaryEntries() async -> [VoceDiario] { await diarySync?.entries() ?? [] }
+    func diaryCallText(_ entry: VoceDiario) async -> String? { await diarySync?.callText(entry) }
+    func deleteDiaryEntry(_ id: UUID) async throws {
+        try await diarySync?.delete(id)
+        scheduleDiarySync()
+    }
     var stats: DictationStatsStore? { statsStore }
     var toneContext: ToneContextStore? { toneStore }
 
@@ -268,9 +303,26 @@ final class FlowBridgeCoordinator: ObservableObject {
                 // selected is the kind of thing that reads as a bug.
                 statusMessage = "\(preference.displayName) isn't available — using \(built.resolved.displayName)"
             }
+            prewarmEngine()
         case .warming, .recording, .transcribing:
             break
         }
+    }
+
+    /// iCloud mirroring is secondary and can be slow or offline: never let it
+    /// hold up the transcript. The actor serializes overlapping requests.
+    private func scheduleDiarySync() {
+        guard let diarySync else { return }
+        Task {
+            await diarySync.sync()
+            diaryStatus = await diarySync.statusText()
+        }
+    }
+
+    /// Loads a local model before the next Record tap.
+    private func prewarmEngine() {
+        let engine = transcriber
+        Task { await engine.prewarm() }
     }
 
     /// True when the engine in use is not the one the user selected, so the
@@ -310,9 +362,13 @@ final class FlowBridgeCoordinator: ObservableObject {
             }
 
             state = .warming
-            statusMessage = "Loading local engine"
+            statusMessage = enginePreference == .cloud ? "Connecting to AssemblyAI EU" : "Loading local engine"
+            FBLog.log("warming engine=\(enginePreference)", category: "dictation")
             lastActivityPreview = ""
             lastActivityPushAt = .distantPast
+            lastLevelPushAt = .distantPast
+            lastActivityLevel = 0
+            livePartial = ""
             warmupToken = sessionID
             warmupStarted = true
             // The Live Activity goes up before the engine warms: the island
@@ -320,7 +376,8 @@ final class FlowBridgeCoordinator: ObservableObject {
             // AudioRecordingIntent require a visible activity to keep audio.
             // Foreground dictation works without one, so a refusal here is
             // only fatal on the background path.
-            let activityStarted = activityController.start(sessionID: sessionID, startedAt: startedAt)
+            let activityStarted = activityController.start(sessionID: sessionID, startedAt: startedAt,
+                                                           isCloud: enginePreference == .cloud)
             if requiresActivity, !activityStarted {
                 throw FlowBridgeError.liveActivityUnavailable
             }
@@ -333,6 +390,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             }
             warmupToken = nil
             state = .recording(startedAt: startedAt)
+            FBLog.log("recording started", category: "dictation")
             // The cloud badge is not decoration: while this engine is active
             // the audio WILL leave the device, and the user must see it.
             let base = enginePreference == .cloud
@@ -341,6 +399,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             statusMessage = engineFallbackNote.map { "\(base) — \($0)" } ?? base
             startElapsedTimer(from: startedAt)
             startMaxDurationTimer()
+            startLevelMeter()
             HapticPlayer.listeningStarted()
             UIAccessibility.post(notification: .announcement, argument: "Listening")
             Task { await polisher.prewarm() }
@@ -402,6 +461,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     private func abortWarmup() async {
         guard case .warming = state else { return }
         warmupToken = nil
+        stopLevelMeter()
         activityController.end(immediately: true)
         state = .idle
         statusMessage = "Dictation cancelled"
@@ -412,6 +472,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         elapsedTask?.cancel()
         maxDurationTask?.cancel()
         recordingElapsed = nil
+        stopLevelMeter()
         HapticPlayer.listeningStopped()
 
         let recordingStartedAt: Date
@@ -424,6 +485,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         do {
             let duration = Date().timeIntervalSince(recordingStartedAt)
             state = .transcribing
+            FBLog.log("stop → transcribing dur=\(Int(duration))s", category: "dictation")
             activityController.update(
                 phase: .transcribing,
                 transcriptPreview: LiveTranscriptStore.latest()?.text ?? "",
@@ -431,6 +493,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             )
 
             let record = try await transcriber.stopLiveTranscription(duration: duration)
+            FBLog.log("transcribed chars=\(record.text.count)", category: "dictation")
 
             // Deterministic spoken commands first ("punto", "a capo", …),
             // then the on-device polish with the current tone target. The
@@ -446,6 +509,13 @@ final class FlowBridgeCoordinator: ObservableObject {
             let finalRecord = workingText == record.text ? record : record.polished(workingText)
 
             try? await historyStore?.add(finalRecord)
+            do {
+                try await diarySync?.add(finalRecord, engine: enginePreference.rawValue,
+                                         polished: finalRecord.rawText != nil)
+                scheduleDiarySync()
+            } catch {
+                diaryStatus = "Diary save failed · \(error.localizedDescription)"
+            }
             statsStore?.record(text: finalRecord.text, audioDuration: duration)
 
             let delivered = sessionAppendedRecord(for: finalRecord) ?? finalRecord
@@ -453,6 +523,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             lastTranscript = delivered
             UIPasteboard.general.string = delivered.text
             state = .ready
+            livePartial = ""
             statusMessage = delivered.id == finalRecord.id ? "Clipboard updated" : "Appended to previous dictation"
             activityController.finish(transcriptPreview: delivered.text, startedAt: recordingStartedAt)
             HapticPlayer.transcriptReady()
@@ -479,13 +550,14 @@ final class FlowBridgeCoordinator: ObservableObject {
         // The deadline wins over the raw text, and the polish itself is
         // abandoned (not cancelled: FoundationModels does not reliably
         // observe cancellation) — its result is simply discarded.
-        return (try? await withDeadline(
+        let candidate = (try? await withDeadline(
             .seconds(FlowBridgeConstants.polishDeadlineSeconds),
             onTimeout: { text },
             operation: {
                 await polisher.polish(text, tone: tone)
             }
         )) ?? text
+        return TranscriptIntegrityGuard.accepts(original: text, cleaned: candidate) ? candidate : text
     }
 
     private static var voiceCommandsEnabled: Bool {
@@ -531,6 +603,10 @@ final class FlowBridgeCoordinator: ObservableObject {
         guard case .recording(let startedAt) = state, activityController.isActive else { return }
         guard let snapshot = LiveTranscriptStore.latest(), snapshot.isRecording else { return }
 
+        // The home transcript card streams every snapshot (main-actor set,
+        // no cross-process budget); only the island push below is throttled.
+        livePartial = snapshot.text
+
         // Engines can emit many snapshots per second; the island only needs
         // changed content at a human cadence. Dropped frames are fine — the
         // next snapshot supersedes them.
@@ -545,7 +621,8 @@ final class FlowBridgeCoordinator: ObservableObject {
         activityController.update(
             phase: .recording,
             transcriptPreview: snapshot.text,
-            startedAt: startedAt
+            startedAt: startedAt,
+            level: UInt8((max(0, min(1, inputLevel)) * 255).rounded())
         )
     }
 
@@ -576,6 +653,8 @@ final class FlowBridgeCoordinator: ObservableObject {
             let recording = RecordedAudio(url: url, duration: duration)
             let record = try await transcriber.transcribe(recording: recording, source: .sharedAudio)
             try transcriptStore?.save(record)
+            try? await diarySync?.add(record, engine: enginePreference.rawValue, polished: false)
+            scheduleDiarySync()
             try? QueuedAudioStore.clear(removeFile: true)
             lastTranscript = record
             UIPasteboard.general.string = record.text
@@ -644,6 +723,12 @@ final class FlowBridgeCoordinator: ObservableObject {
             let audio = RecordedAudio(url: recording.url, duration: recording.duration)
             let record = try await transcriber.transcribe(recording: audio, source: .recovered)
             try transcriptStore?.save(record)
+            do {
+                try await diarySync?.add(record, engine: enginePreference.rawValue, polished: false)
+                scheduleDiarySync()
+            } catch {
+                diaryStatus = "Diary save failed · \(error.localizedDescription)"
+            }
             lastTranscript = record
             UIPasteboard.general.string = record.text
             state = .ready
@@ -752,6 +837,52 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
     }
 
+    /// Polls the engine's metering at ~24Hz while recording. The render side
+    /// interpolates between samples, so this cadence reads as continuous
+    /// without hammering the main actor.
+    private func startLevelMeter() {
+        levelTask?.cancel()
+        levelTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let raw = await self.transcriber.currentInputLevel()
+                if Task.isCancelled { return }
+                self.inputLevel = self.inputLevel * 0.6 + raw * 0.4
+                self.pushInputLevelToActivityIfNeeded()
+                try? await Task.sleep(for: .milliseconds(42))
+            }
+        }
+    }
+
+    private func stopLevelMeter() {
+        levelTask?.cancel()
+        levelTask = nil
+        inputLevel = 0
+    }
+
+    private func pushInputLevelToActivityIfNeeded() {
+        guard case .recording(let startedAt) = state, activityController.isActive else { return }
+        let now = Date()
+        let quantized = UInt8((max(0, min(1, inputLevel)) * 255).rounded())
+        guard now.timeIntervalSince(lastLevelPushAt) >= 0.5,
+              abs(Int(quantized) - Int(lastActivityLevel)) >= 5 else { return }
+        lastLevelPushAt = now
+        lastActivityLevel = quantized
+        activityController.update(phase: .recording, transcriptPreview: lastActivityPreview,
+                                  startedAt: startedAt, level: quantized)
+    }
+
+    func retrySavedDictation() async {
+        guard state != .warming, state != .transcribing else { return }
+        if case .recording = state { return }
+        state = .idle
+        let pending = (try? AudioSafetyBuffer.defaultDirectory()).map {
+            AudioSafetyBuffer.pendingRecordings(in: $0)
+        } ?? []
+        await recoverInterruptedDictationIfNeeded()
+        if pending.isEmpty { await startRecording() }
+    }
+
     private func startMaxDurationTimer() {
         maxDurationTask?.cancel()
         maxDurationTask = Task { [weak self] in
@@ -762,6 +893,7 @@ final class FlowBridgeCoordinator: ObservableObject {
 
     private func fail(_ error: Error) {
         let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        FBLog.log("FAIL error=\(message) raw=\(String(reflecting: error))", category: "dictation")
         state = .failed(message)
         statusMessage = message
         HapticPlayer.failed()

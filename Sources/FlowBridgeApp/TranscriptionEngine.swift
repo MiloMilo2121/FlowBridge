@@ -21,4 +21,20 @@ protocol TranscriptionEngine: Sendable {
 
     /// Releases model memory. Safe to call at any time.
     func unload() async
+
+    /// Loads the model ahead of time (launch/foreground) so the first
+    /// dictation is warm. Idempotent, best-effort, off the critical path.
+    func prewarm() async
+
+    /// Instantaneous microphone energy (0…1) while a live session runs.
+    /// Drives the mesh waveform. Engines without a metering source keep the
+    /// default 0 — the visualization falls back to its procedural drive.
+    func currentInputLevel() async -> Float
+}
+
+extension TranscriptionEngine {
+    func currentInputLevel() async -> Float { 0 }
+    // Engines without a heavy local model (Apple system model, cloud) load
+    // on demand and need no prewarm.
+    func prewarm() async {}
 }

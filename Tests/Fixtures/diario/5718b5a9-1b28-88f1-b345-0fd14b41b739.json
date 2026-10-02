@@ -1,0 +1,10 @@
+{
+  "dispositivo" : "mac",
+  "durata_s" : 1504,
+  "id" : "5718B5A9-1B28-88F1-B345-0FD14B41B739",
+  "quando" : "2026-09-29T12:01:45+02:00",
+  "schema" : 1,
+  "tipo" : "call",
+  "titolo" : "Call di prova sintetica",
+  "trascrizione" : "testi/call_di_prova_2026-09-29.txt"
+}

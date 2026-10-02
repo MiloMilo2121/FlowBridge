@@ -6,6 +6,10 @@ import WhisperKit
 
 actor WhisperEngine: TranscriptionEngine {
     private var whisperKit: WhisperKit?
+    // Void result (not WhisperKit, which isn't Sendable): the task loads and
+    // stores `whisperKit` inside the actor; callers await completion then read
+    // the stored model. This dedups a prewarm racing a Record tap.
+    private var loadTask: Task<Void, Error>?
     private var unloadTask: Task<Void, Never>?
     private var streamTranscriber: AudioStreamTranscriber?
     private var streamTask: Task<Void, Never>?
@@ -120,13 +124,24 @@ actor WhisperEngine: TranscriptionEngine {
             )
         }
 
+        // The pipeline components are handed to the stream-transcriber actor,
+        // which is their only concurrent user while the stream runs; our own
+        // reads (safety flush, input level) are documented best-effort. The
+        // strict checker cannot see that ownership contract.
+        nonisolated(unsafe) let audioEncoder = kit.audioEncoder
+        nonisolated(unsafe) let featureExtractor = kit.featureExtractor
+        nonisolated(unsafe) let segmentSeeker = kit.segmentSeeker
+        nonisolated(unsafe) let textDecoder = kit.textDecoder
+        nonisolated(unsafe) let sendableTokenizer = tokenizer
+        nonisolated(unsafe) let audioProcessor = kit.audioProcessor
+
         let streamTranscriber = AudioStreamTranscriber(
-            audioEncoder: kit.audioEncoder,
-            featureExtractor: kit.featureExtractor,
-            segmentSeeker: kit.segmentSeeker,
-            textDecoder: kit.textDecoder,
-            tokenizer: tokenizer,
-            audioProcessor: kit.audioProcessor,
+            audioEncoder: audioEncoder,
+            featureExtractor: featureExtractor,
+            segmentSeeker: segmentSeeker,
+            textDecoder: textDecoder,
+            tokenizer: sendableTokenizer,
+            audioProcessor: audioProcessor,
             decodingOptions: options,
             requiredSegmentsForConfirmation: 1,
             silenceThreshold: 0.25,
@@ -157,7 +172,7 @@ actor WhisperEngine: TranscriptionEngine {
             throw FlowBridgeError.notRecording
         }
 
-        streamTranscriber?.stopStreamTranscription()
+        await streamTranscriber?.stopStreamTranscription()
         streamTask?.cancel()
         streamTask = nil
         streamTranscriber = nil
@@ -189,13 +204,23 @@ actor WhisperEngine: TranscriptionEngine {
         )
     }
 
+    func currentInputLevel() -> Float {
+        // WhisperKit already computes per-buffer relative energy for its VAD;
+        // reading the last value costs nothing on the audio path.
+        guard liveSessionID != nil, let processor = whisperKit?.audioProcessor else { return 0 }
+        guard let energy = processor.relativeEnergy.last else { return 0 }
+        return max(0, min(1, energy))
+    }
+
     func unload() async {
         unloadTask?.cancel()
         unloadTask = nil
+        loadTask?.cancel()
+        loadTask = nil
         // An unload during a live session is an interruption (memory pressure,
         // teardown): keep the safety file so the dictation can be recovered.
         await stopSafetyFlush(keepFileForRecovery: liveSessionID != nil)
-        streamTranscriber?.stopStreamTranscription()
+        await streamTranscriber?.stopStreamTranscription()
         streamTask?.cancel()
         streamTask = nil
         streamTranscriber = nil
@@ -290,19 +315,52 @@ actor WhisperEngine: TranscriptionEngine {
         return tokens.isEmpty ? nil : tokens
     }
 
+    /// Loads the model ahead of the first dictation. Off the critical path so
+    /// tapping Record finds a warm model instead of paying the cold load.
+    func prewarm() async {
+        _ = try? await model()
+    }
+
     private func model() async throws -> WhisperKit {
         if let whisperKit {
             scheduleIdleUnload()
             return whisperKit
         }
+        // Dedup concurrent loads: a CoreML load suspends at `await`, so a
+        // prewarm racing a Record tap would otherwise start a SECOND cold
+        // load. Every caller awaits the one in-flight load task.
+        if let loadTask {
+            try await loadTask.value
+        } else {
+            let task = Task { [weak self] in
+                guard let self else { return }
+                try await self.performLoad()
+            }
+            loadTask = task
+            do {
+                try await task.value
+                loadTask = nil
+            } catch {
+                loadTask = nil
+                throw error
+            }
+        }
+        guard let whisperKit else {
+            throw FlowBridgeError.transcriptionFailed("The speech model failed to load.")
+        }
+        scheduleIdleUnload()
+        return whisperKit
+    }
 
+    /// Builds and stores the model. Kept inline in the actor so the
+    /// non-Sendable `WhisperKit` never crosses an isolation boundary.
+    private func performLoad() async throws {
         let modelFolder = try WhisperModelLocator.folder(for: variant)
         let compute = ModelComputeOptions(
             melCompute: .cpuAndGPU,
             audioEncoderCompute: .cpuAndNeuralEngine,
             textDecoderCompute: .cpuAndNeuralEngine
         )
-
         let config = WhisperKitConfig(
             modelFolder: modelFolder.path,
             tokenizerFolder: modelFolder,
@@ -314,11 +372,7 @@ actor WhisperEngine: TranscriptionEngine {
             download: false,
             useBackgroundDownloadSession: false
         )
-
-        let kit = try await WhisperKit(config)
-        whisperKit = kit
-        scheduleIdleUnload()
-        return kit
+        whisperKit = try await WhisperKit(config)
     }
 
     private func scheduleIdleUnload() {

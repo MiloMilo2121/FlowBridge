@@ -2,274 +2,278 @@ import AVFoundation
 import FlowBridgeShared
 import Foundation
 
-/// Opt-in cloud transcription engine (OFF by default).
-///
-/// Positioning: FlowBridge stays on-device by default; this engine exists
-/// for users who deliberately trade "audio never leaves the phone" for the
-/// provider's accuracy. Every layer reminds them: explicit consent screen,
-/// status badge while recording, and `CloudGate`/`NetworkGuard` whitelisting
-/// exactly one host only while the toggle is on.
-///
-/// Shape: audio is captured LOCALLY into the crash-safe WAV (the same
-/// `AudioSafetyBuffer` machinery as the local engines) and uploaded once, on
-/// stop — no streaming partials. If the upload fails, the WAV is kept for
-/// recovery, so even a cloud dictation is never lost: the next launch
-/// re-transcribes it (with whatever engine is then configured).
-///
-/// Provider: ElevenLabs Scribe (best independent Italian WER; configure EU
-/// Data Residency + Zero Retention on the account, and sign the DPA). The
-/// API key lives in the Keychain.
+/// AssemblyAI EU streaming, with a crash-safe WAV kept until delivery.
 actor CloudEngine: TranscriptionEngine {
-    private var audioEngine: AVAudioEngine?
-    private var safetyBuffer: AudioSafetyBuffer?
-    private var safetyFlushTask: Task<Void, Never>?
-    private var recordingFileURL: URL?
-    private var liveSessionID: UUID?
-    private let sampleAccumulator = CloudSampleAccumulator()
+    private struct Event: Decodable {
+        let type: String
+        let turn_order: Int?
+        let end_of_turn: Bool?
+        let transcript: String?
+    }
+
+    private var engine: AVAudioEngine?
+    private var buffer: AudioSafetyBuffer?
+    private var fileURL: URL?
+    private var sessionID: UUID?
+    private var session: URLSession?
+    private var socket: URLSessionWebSocketTask?
+    private var flushTask: Task<Void, Never>?
+    private var receiveTask: Task<Void, Never>?
+    private let samples = CloudSampleAccumulator()
+    private var resampler = StreamingResampler(sourceRate: 16_000)
+    private var finalTurns: [Int: String] = [:]
+    private var partial = ""
+    private var partialOrder: Int?
+    private var sequence = 0
+    private var streamFailed = false
+    private var safetyBufferFailed = false
+    private var terminated = false
 
     func transcribe(recording: RecordedAudio, source: TranscriptRecord.Source) async throws -> TranscriptRecord {
-        let text = try await upload(fileURL: recording.url)
-        return TranscriptRecord(
-            text: text,
-            language: Locale.current.language.languageCode?.identifier ?? "und",
-            audioDuration: recording.duration,
-            source: source
-        )
+        // Recovery never opens a second billable cloud session.
+        try await WhisperEngine().transcribe(recording: recording, source: source)
     }
 
     func startLiveTranscription(sessionID: UUID) async throws {
-        guard audioEngine == nil else {
-            throw FlowBridgeError.alreadyRecording
+        guard engine == nil, socket == nil else { throw FlowBridgeError.alreadyRecording }
+        guard CloudGate.isCloudEngineEnabled, let key = KeychainStore.loadCloudAPIKey() else {
+            throw FlowBridgeError.transcriptionFailed("Configure your AssemblyAI key before cloud dictation.")
         }
-        guard CloudGate.isCloudEngineEnabled, KeychainStore.loadCloudAPIKey() != nil else {
-            throw FlowBridgeError.transcriptionFailed("Cloud engine is not configured.")
+        guard let url = URL(string: FlowBridgeConstants.cloudStreamingURL),
+              CloudGate.isAllowedWebSocket(url) else {
+            throw FlowBridgeError.transcriptionFailed("EU streaming is unavailable.")
         }
+        finalTurns = [:]; partial = ""; partialOrder = nil; sequence = 0
+        streamFailed = false; safetyBufferFailed = false; terminated = false; samples.reset()
 
-        let liveStore = try LiveTranscriptStore()
-        liveSessionID = sessionID
-        try liveStore.write(
-            LiveTranscriptSnapshot(
-                sessionID: sessionID,
-                sequence: 1,
-                text: "",
-                previewText: "Cloud dictation — transcript arrives when you stop.",
-                isRecording: true,
-                isFinal: false
-            )
-        )
-
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .spokenAudio, options: [.allowBluetoothHFP, .duckOthers])
-        try session.setActive(true, options: [])
-
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
-
-        let directory = try AudioSafetyBuffer.defaultDirectory()
-        let buffer = AudioSafetyBuffer(directory: directory, sampleRate: format.sampleRate)
-        try await buffer.begin(sessionID: sessionID)
-        safetyBuffer = buffer
-        recordingFileURL = directory.appendingPathComponent(sessionID.uuidString).appendingPathExtension("wav")
-
-        sampleAccumulator.reset(expectedSamplesPerFlush: Int(format.sampleRate * FlowBridgeConstants.safetyBufferFlushInterval))
-        safetyFlushTask = Task { [sampleAccumulator] in
-            while !Task.isCancelled {
-                let pending = sampleAccumulator.drain()
-                if !pending.isEmpty {
-                    try? await buffer.append(pending)
-                }
-                try? await Task.sleep(for: .seconds(FlowBridgeConstants.safetyBufferFlushInterval))
+        var request = URLRequest(url: url, timeoutInterval: 12)
+        request.setValue(key, forHTTPHeaderField: "Authorization")
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 12
+        let session = URLSession(configuration: configuration)
+        let socket = session.webSocketTask(with: request)
+        socket.resume()
+        do {
+            let message = try await socket.receive()
+            guard case .string(let value) = message,
+                  let event = try? JSONDecoder().decode(Event.self, from: Data(value.utf8)),
+                  event.type == "Begin" else {
+                throw FlowBridgeError.transcriptionFailed("AssemblyAI did not open a session.")
             }
+        } catch {
+            socket.cancel(with: .goingAway, reason: nil)
+            session.invalidateAndCancel()
+            throw error
         }
+        self.session = session
+        self.socket = socket
+        self.sessionID = sessionID
+        receiveTask = Task { [weak self] in await self?.receiveLoop() }
 
-        let accumulator = sampleAccumulator
-        input.installTap(onBus: 0, bufferSize: 4_096, format: format) { pcmBuffer, _ in
-            if let channel = pcmBuffer.floatChannelData?.pointee {
-                accumulator.append(UnsafeBufferPointer(start: channel, count: Int(pcmBuffer.frameLength)))
+        do {
+            let audio = AVAudioSession.sharedInstance()
+            try audio.setCategory(.record, mode: .spokenAudio, options: [.allowBluetoothHFP, .duckOthers])
+            try audio.setActive(true)
+            let engine = AVAudioEngine()
+            let input = engine.inputNode
+            let format = input.outputFormat(forBus: 0)
+            resampler = StreamingResampler(sourceRate: format.sampleRate)
+            let directory = try AudioSafetyBuffer.defaultDirectory()
+            let buffer = AudioSafetyBuffer(directory: directory, sampleRate: format.sampleRate)
+            try await buffer.begin(sessionID: sessionID)
+            self.buffer = buffer
+            fileURL = directory.appendingPathComponent(sessionID.uuidString).appendingPathExtension("wav")
+            let accumulator = samples
+            input.installTap(onBus: 0, bufferSize: 4_096, format: format) { pcm, _ in
+                guard let channel = pcm.floatChannelData?.pointee else { return }
+                accumulator.append(UnsafeBufferPointer(start: channel, count: Int(pcm.frameLength)))
             }
+            engine.prepare()
+            try engine.start()
+            self.engine = engine
+            publish(text: "", preview: "Listening · AssemblyAI EU", isRecording: true)
+            flushTask = Task { [weak self] in await self?.flushLoop() }
+        } catch {
+            await unload()
+            throw error
         }
-
-        engine.prepare()
-        try engine.start()
-        audioEngine = engine
     }
 
     func stopLiveTranscription(duration: TimeInterval) async throws -> TranscriptRecord {
-        guard let sessionID = liveSessionID else {
-            throw FlowBridgeError.notRecording
-        }
-
+        guard let id = sessionID, let url = fileURL, let buffer else { throw FlowBridgeError.notRecording }
         stopCapture()
-        liveSessionID = nil
-
-        safetyFlushTask?.cancel()
-        safetyFlushTask = nil
-
-        guard let buffer = safetyBuffer, let fileURL = recordingFileURL else {
-            throw FlowBridgeError.transcriptionFailed("No recording file was produced.")
-        }
-        let pending = sampleAccumulator.drain()
-        if !pending.isEmpty {
-            try? await buffer.append(pending)
-        }
-        // Close but KEEP the WAV: it is both the upload payload and the
-        // crash/offline net.
+        flushTask?.cancel(); flushTask = nil
+        await flushPending()
         await buffer.closeKeepingFile()
-        safetyBuffer = nil
-        recordingFileURL = nil
+        self.buffer = nil; fileURL = nil; sessionID = nil
 
-        let liveStore = try LiveTranscriptStore()
+        if !streamFailed, let socket {
+            try? await socket.send(.string("{\"type\":\"ForceEndpoint\"}"))
+            for _ in 0..<25 {
+                if streamFailed || (partial.isEmpty && !finalTurns.isEmpty) { break }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            try? await socket.send(.string("{\"type\":\"Terminate\"}"))
+            for _ in 0..<10 {
+                if terminated || streamFailed { break }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+        let text = finalTurns.sorted { $0.key < $1.key }.map(\.value).joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        closeSocket()
+        if !streamFailed, partial.isEmpty, !text.isEmpty {
+            try? FileManager.default.removeItem(at: url)
+            publish(sessionID: id, text: text, preview: "", isRecording: false, isFinal: true)
+            return TranscriptRecord(text: text,
+                                    language: Locale.current.language.languageCode?.identifier ?? "und",
+                                    audioDuration: duration, source: .microphone)
+        }
+        publish(sessionID: id, text: "", preview: "Connection lost · finishing on this iPhone",
+                isRecording: false)
+        if safetyBufferFailed {
+            publish(sessionID: id, text: "", preview: "Audio could not be saved for recovery",
+                    isRecording: false, isFinal: true)
+            throw FlowBridgeError.transcriptionFailed("Cloud transcription failed and the local WAV could not be saved.")
+        }
         do {
-            let text = try await upload(fileURL: fileURL)
-            liveStore.writeFinal(sessionID: sessionID, text: text)
-            try? FileManager.default.removeItem(at: fileURL)
-            return TranscriptRecord(
-                text: text,
-                language: Locale.current.language.languageCode?.identifier ?? "und",
-                audioDuration: duration,
-                source: .microphone
-            )
+            let result = try await WhisperEngine().transcribe(
+                recording: RecordedAudio(url: url, duration: duration), source: .microphone)
+            try? FileManager.default.removeItem(at: url)
+            publish(sessionID: id, text: result.text, preview: "", isRecording: false, isFinal: true)
+            return result
         } catch {
-            // Upload failed (offline, key revoked, provider down): the WAV
-            // stays in the safety folder, so the next launch recovers and
-            // re-transcribes this dictation. Nothing is lost.
-            liveStore.writeError(sessionID: sessionID, sequence: Int.max, message: "Cloud upload failed — dictation saved for recovery.")
-            throw FlowBridgeError.transcriptionFailed(error.localizedDescription)
+            publish(sessionID: id, text: "", preview: "Audio saved for recovery",
+                    isRecording: false, isFinal: true)
+            throw error
         }
     }
 
     func unload() async {
         stopCapture()
-        safetyFlushTask?.cancel()
-        safetyFlushTask = nil
-        if let buffer = safetyBuffer {
-            let pending = sampleAccumulator.drain()
-            if !pending.isEmpty {
-                try? await buffer.append(pending)
-            }
-            // Interrupted session: keep the WAV for recovery.
-            await buffer.closeKeepingFile()
-        }
-        safetyBuffer = nil
-        recordingFileURL = nil
-        liveSessionID = nil
+        flushTask?.cancel(); flushTask = nil
+        await flushPending()
+        await buffer?.closeKeepingFile()
+        buffer = nil; fileURL = nil; sessionID = nil
+        closeSocket()
     }
 
+    func currentInputLevel() async -> Float { samples.currentLevel }
+
     private func stopCapture() {
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine?.stop()
-        audioEngine = nil
+        engine?.inputNode.removeTap(onBus: 0)
+        engine?.stop(); engine = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
-    // MARK: - Upload
-
-    private func upload(fileURL: URL) async throws -> String {
-        guard CloudGate.isCloudEngineEnabled else {
-            throw FlowBridgeError.transcriptionFailed("Cloud engine is disabled.")
+    private func flushLoop() async {
+        while !Task.isCancelled {
+            await flushPending()
+            try? await Task.sleep(for: .milliseconds(100))
         }
-        guard let apiKey = KeychainStore.loadCloudAPIKey() else {
-            throw FlowBridgeError.transcriptionFailed("No cloud API key is configured.")
-        }
-        guard let endpoint = URL(string: FlowBridgeConstants.cloudSpeechToTextURL) else {
-            throw FlowBridgeError.transcriptionFailed("Invalid provider endpoint.")
-        }
-
-        let boundary = "flowbridge-\(UUID().uuidString)"
-
-        // The multipart body goes to disk and is uploaded with
-        // `upload(for:fromFile:)`: `maxRecordingSeconds` is 600, so a
-        // 10-minute dictation is ~19 MB of 16 kHz PCM, and materializing the
-        // body in memory (plus URLSession's own copy) is a jetsam risk on
-        // exactly the long dictations this engine is for. The temp file is
-        // removed on every exit path, success or failure.
-        // Launch-time recovery sweeps bodies orphaned by a kill mid-upload.
-        let bodyURL = AudioSafetyBuffer.uploadBodyURL(for: fileURL)
-        defer { try? FileManager.default.removeItem(at: bodyURL) }
-        try writeMultipartBody(
-            to: bodyURL,
-            boundary: boundary,
-            audioURL: fileURL
-        )
-
-        var request = URLRequest(url: endpoint, timeoutInterval: FlowBridgeConstants.cloudRequestTimeoutSeconds)
-        request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-        // Ephemeral session: no caches, no cookies, nothing persisted.
-        let session = URLSession(configuration: .ephemeral)
-        let (data, response) = try await session.upload(for: request, fromFile: bodyURL)
-
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw FlowBridgeError.transcriptionFailed("Provider returned status \(status).")
-        }
-
-        struct ScribeResponse: Decodable {
-            let text: String
-        }
-        let decoded = try JSONDecoder().decode(ScribeResponse.self, from: data)
-        let text = DictationTextNormalizer.normalize(decoded.text)
-        guard !text.isEmpty else {
-            throw FlowBridgeError.emptyTranscript
-        }
-        return text
     }
 
-    /// Streams the multipart body to `bodyURL`: the small fields and headers
-    /// in memory, the audio in 1 MB chunks straight from the WAV. Never holds
-    /// the whole payload.
-    private func writeMultipartBody(to bodyURL: URL, boundary: String, audioURL: URL) throws {
-        FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
-        let output = try FileHandle(forWritingTo: bodyURL)
-        defer { try? output.close() }
+    private func flushPending() async {
+        let batch = samples.drain()
+        guard !batch.isEmpty else { return }
+        do { try await buffer?.append(batch) }
+        catch { safetyBufferFailed = true }
+        guard !streamFailed, let socket else { return }
+        let data = resampler.convert(batch)
+        guard !data.isEmpty else { return }
+        do { try await socket.send(.data(data)) }
+        catch { streamFailed = true }
+    }
 
-        func append(_ string: String) throws {
-            try output.write(contentsOf: Data(string.utf8))
+    private func receiveLoop() async {
+        guard let socket else { return }
+        while !Task.isCancelled {
+            do {
+                let message = try await socket.receive()
+                guard case .string(let value) = message,
+                      let event = try? JSONDecoder().decode(Event.self, from: Data(value.utf8)) else { continue }
+                if event.type == "Termination" { terminated = true; return }
+                guard event.type == "Turn", let order = event.turn_order else { continue }
+                if event.end_of_turn == true {
+                    finalTurns[order] = event.transcript ?? ""
+                    if partialOrder == order { partial = ""; partialOrder = nil }
+                } else {
+                    partialOrder = order
+                    partial = event.transcript ?? ""
+                }
+                let stable = finalTurns.sorted { $0.key < $1.key }.map(\.value).joined(separator: " ")
+                let live = [stable, partial].filter { !$0.isEmpty }.joined(separator: " ")
+                publish(text: live, preview: live, isRecording: true)
+            } catch {
+                streamFailed = true
+                return
+            }
         }
+    }
 
-        try append("--\(boundary)\r\nContent-Disposition: form-data; name=\"model_id\"\r\n\r\n\(FlowBridgeConstants.cloudModelID)\r\n")
-        try append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"dictation.wav\"\r\nContent-Type: audio/wav\r\n\r\n")
+    private func publish(sessionID override: UUID? = nil, text: String, preview: String,
+                         isRecording: Bool, isFinal: Bool = false) {
+        guard let id = override ?? sessionID else { return }
+        sequence += 1
+        try? LiveTranscriptStore().write(LiveTranscriptSnapshot(
+            sessionID: id, sequence: isFinal ? Int.max : sequence, text: text,
+            previewText: preview, isRecording: isRecording, isFinal: isFinal))
+    }
 
-        let input = try FileHandle(forReadingFrom: audioURL)
-        defer { try? input.close() }
-        while let chunk = try input.read(upToCount: 1 << 20), !chunk.isEmpty {
-            try output.write(contentsOf: chunk)
-        }
-
-        try append("\r\n--\(boundary)--\r\n")
+    private func closeSocket() {
+        receiveTask?.cancel(); receiveTask = nil
+        socket?.cancel(with: .normalClosure, reason: nil); socket = nil
+        session?.invalidateAndCancel(); session = nil
     }
 }
 
-/// Same shape as the Apple engine's accumulator (single realtime producer,
-/// single draining consumer, pre-reserved, O(1) swap under the lock).
 private final class CloudSampleAccumulator: @unchecked Sendable {
     private let lock = NSLock()
-    private var samples: [Float] = []
-    private var reservedCapacity = 0
-
-    func append(_ buffer: UnsafeBufferPointer<Float>) {
+    private var pending: [Float] = []
+    private var level: Float = 0
+    var currentLevel: Float { lock.lock(); defer { lock.unlock() }; return level }
+    func reset() { lock.lock(); pending.removeAll(); level = 0; lock.unlock() }
+    func append(_ input: UnsafeBufferPointer<Float>) {
         lock.lock()
-        samples.append(contentsOf: buffer)
+        pending.append(contentsOf: input)
+        var sum: Float = 0
+        for sample in input { sum += sample * sample }
+        level = min(1, sqrt(sum / Float(max(input.count, 1))) * 4)
         lock.unlock()
     }
-
     func drain() -> [Float] {
-        var drained: [Float] = []
-        drained.reserveCapacity(reservedCapacity)
-        lock.lock()
-        swap(&drained, &samples)
-        lock.unlock()
-        return drained
+        lock.lock(); defer { lock.unlock() }
+        let result = pending
+        pending.removeAll(keepingCapacity: true)
+        return result
     }
+}
 
-    func reset(expectedSamplesPerFlush: Int) {
-        lock.lock()
-        reservedCapacity = max(expectedSamplesPerFlush * 2, 4_096)
-        samples.removeAll(keepingCapacity: false)
-        samples.reserveCapacity(reservedCapacity)
-        lock.unlock()
+private struct StreamingResampler {
+    private let step: Double
+    private var processed = 0
+    private var nextOutput = 0.0
+    private var previous: Float = 0
+    init(sourceRate: Double) { step = sourceRate / 16_000 }
+    mutating func convert(_ input: [Float]) -> Data {
+        guard !input.isEmpty else { return Data() }
+        let start = processed
+        let end = start + input.count
+        var output = Data()
+        output.reserveCapacity(Int(Double(input.count) / step + 2) * 2)
+        while nextOutput <= Double(end - 1) {
+            let lower = Int(nextOutput.rounded(.down))
+            let upper = lower + 1
+            if upper >= end && nextOutput != Double(lower) { break }
+            let a = lower < start ? previous : input[lower - start]
+            let b = upper < end ? input[upper - start] : a
+            let value = a + Float(nextOutput - Double(lower)) * (b - a)
+            let sample = Int16((max(-1, min(1, value)) * Float(Int16.max)).rounded()).littleEndian
+            withUnsafeBytes(of: sample) { output.append(contentsOf: $0) }
+            nextOutput += step
+        }
+        previous = input[input.count - 1]
+        processed = end
+        return output
     }
 }

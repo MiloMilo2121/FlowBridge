@@ -8,7 +8,7 @@ public enum FlowBridgeConstants {
     public static let modelFolderName = "WhisperSmall"
     public static let modelResourceSubdirectory = "WhisperModels"
     public static let maxRecordingSeconds: TimeInterval = 600
-    public static let modelIdleTTLSeconds: TimeInterval = 180
+    public static let modelIdleTTLSeconds: TimeInterval = 600
 
     /// Darwin notification posted whenever a live transcript snapshot is
     /// written to the App Group. Payload-free; readers reload from the store.
@@ -29,7 +29,7 @@ public enum FlowBridgeConstants {
 
     /// How long the "ready" Live Activity stays in the Dynamic Island before
     /// dismissing itself.
-    public static let liveActivityIdleDismissSeconds: TimeInterval = 6
+    public static let liveActivityIdleDismissSeconds: TimeInterval = 30
 
     /// UserDefaults (App Group) key holding the user vocabulary (JSON).
     public static let vocabularyKey = "userVocabulary"
@@ -71,7 +71,10 @@ public enum FlowBridgeConstants {
     /// Engine warm-up (model load, speech-asset install) that exceeds this
     /// deadline fails the session instead of pinning the coordinator in
     /// `.warming` with the mic indicator and Live Activity held forever.
-    public static let warmupTimeoutSeconds: TimeInterval = 15
+    // A cold CoreML/ANE model load legitimately takes 20-40s the first time;
+    // 15s guaranteed a spurious "took too long to start". The model is now
+    // prewarmed at launch/foreground so this deadline is only a backstop.
+    public static let warmupTimeoutSeconds: TimeInterval = 45
 
     /// Ceiling for the session-append chain: past this many characters a new
     /// dictation starts a fresh delivered record instead of growing the
@@ -83,7 +86,7 @@ public enum FlowBridgeConstants {
     /// unless the user shares one explicitly.
     public static let diagnosticsEnabledKey = "diagnosticsEnabled"
 
-    // MARK: Cloud engine (opt-in, OFF by default)
+    // MARK: Cloud engine (selected after explicit setup)
 
     /// UserDefaults (App Group) key: the user explicitly enabled the cloud
     /// transcription engine. Off = the network ban is absolute, identical to
@@ -92,17 +95,13 @@ public enum FlowBridgeConstants {
     /// UserDefaults key: the user saw and accepted the "this dictation will
     /// leave your iPhone" consent.
     public static let cloudConsentAcceptedKey = "cloudConsentAccepted"
-    /// The ONLY host the network guard will ever let through, and only in
-    /// the app process with the cloud engine enabled. ElevenLabs Scribe:
-    /// best independent Italian WER; configure EU Data Residency + Zero
-    /// Retention on the account.
-    public static let cloudProviderHost = "api.elevenlabs.io"
-    public static let cloudProviderName = "ElevenLabs Scribe"
-    public static let cloudSpeechToTextURL = "https://api.elevenlabs.io/v1/speech-to-text"
-    public static let cloudModelID = "scribe_v1"
-    public static let cloudRequestTimeoutSeconds: TimeInterval = 60
+    /// EU-pinned AssemblyAI streaming. WebSockets are checked explicitly by
+    /// CloudGate because URLProtocol only observes HTTP requests.
+    public static let cloudProviderHost = "streaming.eu.assemblyai.com"
+    public static let cloudProviderName = "AssemblyAI Universal-3.5 Pro"
+    public static let cloudStreamingURL = "wss://streaming.eu.assemblyai.com/v3/ws?sample_rate=16000&speech_model=universal-3-5-pro&continuous_partials=true"
     /// Keychain identifiers for the provider API key (never UserDefaults).
-    public static let cloudKeychainService = "com.marcomilanello.flowbridge.cloud"
+    public static let cloudKeychainService = "com.marcomilanello.flowbridge.assemblyai"
     public static let cloudKeychainAccount = "providerAPIKey"
     /// Minimum interval between Live Activity content updates while
     /// streaming; intermediate snapshots are dropped (the next one lands).

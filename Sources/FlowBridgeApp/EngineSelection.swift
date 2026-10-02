@@ -10,8 +10,7 @@ enum EnginePreference: String, CaseIterable {
     case whisperPrecision
     /// iOS 26 SpeechAnalyzer/SpeechTranscriber (system model, opt-in).
     case appleSpeech
-    /// Opt-in cloud provider (OFF by default; audio leaves the device only
-    /// while this is both enabled and selected).
+    /// Default after the user consents and enters their own API key.
     case cloud
 
     var displayName: String {
@@ -26,7 +25,11 @@ enum EnginePreference: String, CaseIterable {
     static var current: EnginePreference {
         let defaults = try? SharedContainer.userDefaults()
         let raw = defaults?.string(forKey: FlowBridgeConstants.preferredEngineKey)
-        return raw.flatMap(EnginePreference.init(rawValue:)) ?? .whisper
+        let configuredCloud = CloudGate.isCloudEngineEnabled && KeychainStore.loadCloudAPIKey() != nil
+        if let selected = raw.flatMap(EnginePreference.init(rawValue:)) {
+            return selected == .cloud && !configuredCloud ? .whisper : selected
+        }
+        return configuredCloud ? .cloud : .whisper
     }
 
     static func set(_ preference: EnginePreference) {

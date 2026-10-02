@@ -1,0 +1,21 @@
+{
+  "app" : "com.apple.mail",
+  "cancello" : {
+    "motivi" : [
+
+    ],
+    "passato" : true
+  },
+  "dispositivo" : "mac",
+  "durata_s" : 6.4,
+  "id" : "3F1C2A4E-8B7D-4C1E-9A2B-5D6E7F8A9B0C",
+  "lingua" : "it",
+  "motore" : "dettatura+contesto",
+  "pulizia" : "regole",
+  "quando" : "2026-09-29T21:30:05+02:00",
+  "schema" : 1,
+  "testo" : "Il preventivo vale 2,4 milioni di euro, cioè 0,37 euro al chilowattora.",
+  "testo_grezzo" : "Ehm, il preventivo vale 2,4 milioni di euro, cioè 0,37 euro al chilowattora.",
+  "tipo" : "dettatura",
+  "versione_os" : "26.3"
+}
