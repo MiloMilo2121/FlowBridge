@@ -66,6 +66,7 @@
 		98A207D93F6AA1AA5C53C449 /* UnrecoveredDictationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54DF5F13A34F23A11091A4D6 /* UnrecoveredDictationsView.swift */; };
 		9AABBC088A4A9ACDBDD1F76D /* DictationControlWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0208D6D8D2F2AA7BB27FB4B8 /* DictationControlWidget.swift */; };
 		9C0AFFA53D11D51D1350D5F3 /* LineaVivaIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6A8E9CA4B7BBB63DAE2CAD1 /* LineaVivaIcon.swift */; };
+		9D0B4C9F227496717E6A41BC /* SpecchioDiario.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E8C68A601B54C03A64D1A0A /* SpecchioDiario.swift */; };
 		9F92A34FAA1D5FFF2912B71B /* diario in Resources */ = {isa = PBXBuildFile; fileRef = 1BE26683271A090886C2F304 /* diario */; };
 		A4A02AACCB81EE23CC7B56E5 /* AudioSafetyBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9FCB7173B4C2474162C05C6 /* AudioSafetyBuffer.swift */; };
 		A691EAAEA84F3163C5AB37DC /* FlowBridgeShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 58C58B58F6E6B43E5BA3F25F /* FlowBridgeShared.framework */; };
@@ -253,6 +254,7 @@
 		95F186F837B8831BF35BA77F /* WERCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WERCalculatorTests.swift; sourceTree = "<group>"; };
 		9A4096FE560985EB14367364 /* FlowBridgeError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeError.swift; sourceTree = "<group>"; };
 		9DA2B4042EE3EE3978B32A3B /* VoiceCommandProcessorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCommandProcessorTests.swift; sourceTree = "<group>"; };
+		9E8C68A601B54C03A64D1A0A /* SpecchioDiario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpecchioDiario.swift; sourceTree = "<group>"; };
 		9F56E15E64B23E97B7E6C2AB /* BenchmarkHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkHarness.swift; sourceTree = "<group>"; };
 		A0C88713ACFE8BA339690319 /* DictationIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationIntents.swift; sourceTree = "<group>"; };
 		A8E02D0F174821DC9C6189BE /* FlowBridgeApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FlowBridgeApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -485,6 +487,7 @@
 				1486D85A361FEE64331127F6 /* PendingCommandStore.swift */,
 				C11AE725B3ADE0516C84B25F /* QueuedAudioStore.swift */,
 				0A094609470340B331D09D78 /* SharedContainer.swift */,
+				9E8C68A601B54C03A64D1A0A /* SpecchioDiario.swift */,
 				B0E3E8A0E339AE074ABEDE3B /* ToneContext.swift */,
 				D5649734D540433B6C860832 /* TranscriptHistoryStore.swift */,
 				C1643F986D171970E3DF838B /* TranscriptIntegrityGuard.swift */,
@@ -758,6 +761,7 @@
 				95BE94A5859002168A2BA040 /* PendingCommandStore.swift in Sources */,
 				07C0BE46F639764371503D96 /* QueuedAudioStore.swift in Sources */,
 				BCABA4B3C0EED74B8E1B0806 /* SharedContainer.swift in Sources */,
+				9D0B4C9F227496717E6A41BC /* SpecchioDiario.swift in Sources */,
 				D5AD821FDA3ACC7143536FA4 /* ToneContext.swift in Sources */,
 				09F4684AAA12F2FBAFB8DAD5 /* TranscriptHistoryStore.swift in Sources */,
 				24277D410F59AE4A02E88994 /* TranscriptIntegrityGuard.swift in Sources */,
