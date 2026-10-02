@@ -103,8 +103,7 @@ final class FlowBridgeCoordinator: ObservableObject {
                                           forKey: "diaryPinnedIDs")
             }
             await diarySync.migrate(legacy)
-            await diarySync.sync()
-            diaryStatus = await diarySync.statusText()
+            scheduleDiarySync()
         }
         await refreshEngineIfNeeded(force: true)
         await recoverInterruptedDictationIfNeeded()
@@ -187,10 +186,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     func handleScenePhase(_ phase: ScenePhase) async {
         switch phase {
         case .active:
-            if let diarySync {
-                await diarySync.sync()
-                diaryStatus = await diarySync.statusText()
-            }
+            scheduleDiarySync()
             // Re-warm on foreground so the first dictation of the session is
             // instant (the model may have been dropped under memory pressure
             // or by the idle TTL while backgrounded).
@@ -265,8 +261,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     func diaryCallText(_ entry: VoceDiario) async -> String? { await diarySync?.callText(entry) }
     func deleteDiaryEntry(_ id: UUID) async throws {
         try await diarySync?.delete(id)
-        await diarySync?.sync()
-        diaryStatus = await diarySync?.statusText() ?? diaryStatus
+        scheduleDiarySync()
     }
     var stats: DictationStatsStore? { statsStore }
     var toneContext: ToneContextStore? { toneStore }
@@ -311,6 +306,16 @@ final class FlowBridgeCoordinator: ObservableObject {
             prewarmEngine()
         case .warming, .recording, .transcribing:
             break
+        }
+    }
+
+    /// iCloud mirroring is secondary and can be slow or offline: never let it
+    /// hold up the transcript. The actor serializes overlapping requests.
+    private func scheduleDiarySync() {
+        guard let diarySync else { return }
+        Task {
+            await diarySync.sync()
+            diaryStatus = await diarySync.statusText()
         }
     }
 
@@ -507,8 +512,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             do {
                 try await diarySync?.add(finalRecord, engine: enginePreference.rawValue,
                                          polished: finalRecord.rawText != nil)
-                await diarySync?.sync()
-                diaryStatus = await diarySync?.statusText() ?? diaryStatus
+                scheduleDiarySync()
             } catch {
                 diaryStatus = "Diary save failed · \(error.localizedDescription)"
             }
@@ -650,8 +654,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             let record = try await transcriber.transcribe(recording: recording, source: .sharedAudio)
             try transcriptStore?.save(record)
             try? await diarySync?.add(record, engine: enginePreference.rawValue, polished: false)
-            await diarySync?.sync()
-            diaryStatus = await diarySync?.statusText() ?? diaryStatus
+            scheduleDiarySync()
             try? QueuedAudioStore.clear(removeFile: true)
             lastTranscript = record
             UIPasteboard.general.string = record.text
@@ -722,8 +725,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             try transcriptStore?.save(record)
             do {
                 try await diarySync?.add(record, engine: enginePreference.rawValue, polished: false)
-                await diarySync?.sync()
-                diaryStatus = await diarySync?.statusText() ?? diaryStatus
+                scheduleDiarySync()
             } catch {
                 diaryStatus = "Diary save failed · \(error.localizedDescription)"
             }

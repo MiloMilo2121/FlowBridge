@@ -138,6 +138,25 @@ final class KeyboardViewController: UIInputViewController {
             row.spacing = 3
             return row
         }
+        // The top row spans the full width and sets the key size; the
+        // shorter rows reuse it, centered, so every row shares the same
+        // half-key stagger instead of stretching its keys to fill.
+        let keyWidth = characterRows[0].arrangedSubviews[0].widthAnchor
+        var keyWidthConstraints: [NSLayoutConstraint] = []
+        let characterRowViews: [UIView] = characterRows.enumerated().map { index, row in
+            guard index > 0 else { return row }
+            row.distribution = .fill
+            keyWidthConstraints += row.arrangedSubviews.map { $0.widthAnchor.constraint(equalTo: keyWidth) }
+            let container = UIView()
+            row.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(row)
+            NSLayoutConstraint.activate([
+                row.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+                row.topAnchor.constraint(equalTo: container.topAnchor),
+                row.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            ])
+            return container
+        }
         let shift = typingKey("shift", image: "shift", action: #selector(toggleShift))
         let space = typingKey("space", image: nil, action: #selector(typeSpace))
         let period = typingKey(".", image: nil, action: #selector(typePeriod))
@@ -149,7 +168,7 @@ final class KeyboardViewController: UIInputViewController {
         lastRow.axis = .horizontal
         lastRow.spacing = 3
 
-        let stack = UIStackView(arrangedSubviews: [statusLabel, previewLabel, buttonRow] + characterRows + [lastRow])
+        let stack = UIStackView(arrangedSubviews: [statusLabel, previewLabel, buttonRow] + characterRowViews + [lastRow])
         stack.axis = .vertical
         stack.spacing = 5
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -163,6 +182,8 @@ final class KeyboardViewController: UIInputViewController {
             insertButton.heightAnchor.constraint(equalToConstant: 40),
             view.heightAnchor.constraint(greaterThanOrEqualToConstant: 292)
         ])
+        // Cross-row constraints need the rows in one hierarchy first.
+        NSLayoutConstraint.activate(keyWidthConstraints)
         for row in characterRows { row.heightAnchor.constraint(equalToConstant: 37).isActive = true }
         lastRow.heightAnchor.constraint(equalToConstant: 37).isActive = true
     }

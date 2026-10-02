@@ -6,6 +6,13 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var showHistory = false
     @State private var showSettings = false
+    /// Resolved engine, cached. `EnginePreference.current` reads the Keychain
+    /// (`SecItemCopyMatching`) and the body re-runs at the level meter's
+    /// ~24Hz while recording, so it must not be read during layout.
+    @State private var engine: EnginePreference = .whisper
+    /// Onboarding is a sheet owned by `FlowBridgeApp`, so its dismissal is
+    /// only observable here through the flag it writes when it finishes.
+    @AppStorage(FlowBridgeConstants.onboardingCompletedKey) private var onboardingCompleted = false
 
     var body: some View {
         NavigationStack {
@@ -68,6 +75,15 @@ struct ContentView: View {
             .sheet(isPresented: $showSettings) {
                 SettingsView()
             }
+            .task { refreshEngine() }
+            // The engine is chosen in Settings and in Onboarding (both sheets),
+            // so their dismissals and every return to the foreground are the
+            // moments the cached value can go stale.
+            .onChange(of: showSettings) { _, _ in refreshEngine() }
+            .onChange(of: onboardingCompleted) { _, _ in refreshEngine() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { refreshEngine() }
+            }
             .onOpenURL { url in
                 switch url.host {
                 case "diary": showHistory = true
@@ -91,7 +107,7 @@ struct ContentView: View {
                         .monospacedDigit()
                         .foregroundStyle(FlowPalette.textSecondary)
                 }
-                PrivacyDot(cloud: EnginePreference.current == .cloud)
+                PrivacyDot(cloud: engine == .cloud)
             }
 
             MeshWaveformView(
@@ -119,9 +135,12 @@ struct ContentView: View {
     }
 
     private var engineLine: String {
-        let engine = EnginePreference.current
         let locality = engine == .cloud ? "Cloud" : "On-device"
         return "\(engine.displayName) · \(locality)"
+    }
+
+    private func refreshEngine() {
+        engine = EnginePreference.current
     }
 
     // MARK: Primary CTA
