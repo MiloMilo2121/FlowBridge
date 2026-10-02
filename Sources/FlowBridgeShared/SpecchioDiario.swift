@@ -40,7 +40,26 @@ public final class SpecchioDiario: @unchecked Sendable {
     public let localRoot: URL
     public let cloudRoot: URL
     let seenRegistry: URL
+    /// iCloud holds several versions of this file and has not picked one
+    /// (`ubiquitousItemHasUnresolvedConflicts`): it is not read as good, not
+    /// copied, not deleted. Injectable for the checks, which run outside iCloud.
+    let conflict: (URL) -> Bool
     private let fm = FileManager.default
+
+    /// A diary entry is a dictation or a note: 1 MiB is already an anomaly.
+    public static let entryLimit = 1 << 20
+    /// The largest call transcript so far is a few hundred KB.
+    public static let transcriptLimit = 16 << 20
+
+    enum Failure: LocalizedError {
+        case conflict(String), tooLarge(String, Int)
+        var errorDescription: String? {
+            switch self {
+            case .conflict(let name): "iCloud version conflict on \(name), left untouched"
+            case .tooLarge(let name, let bytes): "\(name) is \(bytes) bytes, over the limit: not read"
+            }
+        }
+    }
 
     var localDiary: URL { localRoot.appendingPathComponent("diario", isDirectory: true) }
     var cloudDiary: URL { cloudRoot.appendingPathComponent("diario", isDirectory: true) }
@@ -48,10 +67,19 @@ public final class SpecchioDiario: @unchecked Sendable {
     var cloudTexts: URL { cloudRoot.appendingPathComponent("testi", isDirectory: true) }
 
     /// `localRoot` and `cloudRoot` both contain `diario/` and `testi/`.
-    public init(localRoot: URL, cloudRoot: URL, seenRegistry: URL? = nil) {
+    public init(localRoot: URL, cloudRoot: URL, seenRegistry: URL? = nil,
+                conflict: ((URL) -> Bool)? = nil) {
         self.localRoot = localRoot
         self.cloudRoot = cloudRoot
         self.seenRegistry = seenRegistry ?? localRoot.appendingPathComponent("seen-in-icloud.json")
+        self.conflict = conflict ?? { url in
+            #if os(Linux)
+            return false
+            #else
+            return (try? url.resourceValues(forKeys: [.ubiquitousItemHasUnresolvedConflictsKey]))?
+                .ubiquitousItemHasUnresolvedConflicts == true
+            #endif
+        }
     }
 
     /// `container/Documents/FlowBridge`, where the Mac and the iPhone meet.
@@ -69,6 +97,12 @@ public final class SpecchioDiario: @unchecked Sendable {
             }
         } catch {
             result.issues.append("Folders: \(error.localizedDescription)")
+            return result
+        }
+        // A mirror folder that is a symbolic link would send writes (and the
+        // deletions of tombstones) wherever it points. Stop and say so.
+        for folder in [localRoot, localDiary, localTexts, cloudRoot, cloudDiary, cloudTexts] where isSymlink(folder) {
+            result.issues.append("Mirror folder is a symbolic link, stopping: \(folder.path)")
             return result
         }
         propagateTombstones(&result)
@@ -118,7 +152,7 @@ public final class SpecchioDiario: @unchecked Sendable {
         guard let field = object["id"] as? String, field.lowercased() == id else {
             return "id does not match the name"
         }
-        guard object["schema"] is Int else { return "missing schema" }
+        guard let schema = object["schema"] as? Int, schema >= 1 else { return "missing schema" }
         return nil
     }
 
@@ -129,6 +163,10 @@ public final class SpecchioDiario: @unchecked Sendable {
     /// The file is there, downloaded or as an iCloud placeholder.
     func present(_ folder: URL, _ name: String) -> Bool {
         exists(folder, name) || exists(folder, ".\(name).icloud")
+    }
+
+    func isSymlink(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
     }
 
     func isRegularFile(_ url: URL) -> Bool {
@@ -179,8 +217,11 @@ public final class SpecchioDiario: @unchecked Sendable {
             let name = id + Self.tombstoneSuffix
             var call = false
             var notDownloaded = false
+            var inConflict = false
             for s in sides where exists(s.folder, "\(id).json") {
-                switch isCall(s.folder.appendingPathComponent("\(id).json")) {
+                let entry = s.folder.appendingPathComponent("\(id).json")
+                if conflict(entry) { inConflict = true; continue }
+                switch isCall(entry) {
                 case .some(true): call = true
                 case .none: notDownloaded = true
                 case .some(false): break
@@ -191,13 +232,25 @@ public final class SpecchioDiario: @unchecked Sendable {
                 result.issues.append("Tombstone on a call, set aside: \(id)")
                 continue
             }
+            if inConflict {
+                result.issues.append("Deleted entry in an iCloud version conflict, not removed: \(id)")
+                continue
+            }
             if notDownloaded { result.waiting += 1; continue }
 
             var valid: URL?
             var invalidSides: Set<String> = []
             for s in holders {
                 let url = s.folder.appendingPathComponent(name)
-                guard let data = try? readIfDownloaded(url) else { result.waiting += 1; continue }
+                let data: Data
+                do {
+                    guard let read = try readIfDownloaded(url, limit: Self.entryLimit) else { result.waiting += 1; continue }
+                    data = read
+                } catch {
+                    result.issues.append("Tombstone (\(s.side)): \(error.localizedDescription)")
+                    invalidSides.insert(s.side)
+                    continue
+                }
                 if let reason = Self.invalidReason(data, id: id) {
                     result.issues.append("Invalid tombstone (\(s.side)): \(name) — \(reason)")
                     invalidSides.insert(s.side)
@@ -220,6 +273,10 @@ public final class SpecchioDiario: @unchecked Sendable {
                 }
                 let entry = s.folder.appendingPathComponent("\(id).json")
                 guard fm.fileExists(atPath: entry.path) else { continue }
+                if conflict(entry) {
+                    result.issues.append("Deleted entry in an iCloud version conflict, not removed: \(id)")
+                    continue
+                }
                 do {
                     try remove(entry)
                     result.removed += 1
@@ -233,7 +290,7 @@ public final class SpecchioDiario: @unchecked Sendable {
     /// Whether an entry is a call, without decoding all of it; nil if not
     /// downloaded yet. A broken file is not a call: its tombstone applies.
     func isCall(_ url: URL) -> Bool? {
-        guard let data = try? readIfDownloaded(url) else { return nil }
+        guard let data = try? readIfDownloaded(url, limit: Self.entryLimit) else { return nil }
         let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         return (object?["tipo"] as? String) == "call"
     }
@@ -300,7 +357,7 @@ public final class SpecchioDiario: @unchecked Sendable {
             }
             let target = localTexts.appendingPathComponent(name)
             do {
-                guard let data = try readIfDownloaded(source) else { result.waiting += 1; continue }
+                guard let data = try readIfDownloaded(source, limit: Self.transcriptLimit) else { result.waiting += 1; continue }
                 switch try compare(data, with: target) {
                 case .missing:
                     try writeOnce(data, to: target)
@@ -343,7 +400,7 @@ public final class SpecchioDiario: @unchecked Sendable {
 
     func copyOnce(from source: URL, to target: URL, id: String) -> Copy {
         do {
-            guard let data = try readIfDownloaded(source) else { return .waiting }
+            guard let data = try readIfDownloaded(source, limit: Self.entryLimit) else { return .waiting }
             if let reason = Self.invalidReason(data, id: id) { return .issue(reason) }
             switch try compare(data, with: target) {
             case .same: return .same
@@ -365,6 +422,12 @@ public final class SpecchioDiario: @unchecked Sendable {
             return exists(url.deletingLastPathComponent(), ".\(url.lastPathComponent).icloud")
                 ? .notDownloaded : .missing
         }
+        // Different size: different, without reading it (and without pulling
+        // an arbitrary file into memory just to find out).
+        if let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, bytes != data.count {
+            if conflict(url) { throw Failure.conflict(url.lastPathComponent) }
+            return .different
+        }
         guard let existing = try readIfDownloaded(url) else { return .notDownloaded }
         return existing == data ? .same : .different
     }
@@ -378,7 +441,11 @@ public final class SpecchioDiario: @unchecked Sendable {
     /// The bytes of a file, coordinated. An iCloud file that is not on disk yet
     /// is requested and nil is returned, instead of blocking on a coordinated
     /// read that waits for the network.
-    func readIfDownloaded(_ url: URL) throws -> Data? {
+    func readIfDownloaded(_ url: URL, limit: Int? = nil) throws -> Data? {
+        if conflict(url) { throw Failure.conflict(url.lastPathComponent) }
+        if let limit, let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, bytes > limit {
+            throw Failure.tooLarge(url.lastPathComponent, bytes)
+        }
         #if os(Linux)
         return try Data(contentsOf: url)
         #else

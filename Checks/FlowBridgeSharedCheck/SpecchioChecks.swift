@@ -12,8 +12,8 @@ private struct Bench {
     var phone: Diario { Diario(cartella: local.appendingPathComponent("diario"), dispositivo: "iphone") }
     var mac: Diario { Diario(cartella: cloud.appendingPathComponent("diario"), dispositivo: "mac") }
 
-    func sync() -> SpecchioDiario.Esito {
-        SpecchioDiario(localRoot: local, cloudRoot: cloud).sincronizza()
+    func sync(conflict: ((URL) -> Bool)? = nil) -> SpecchioDiario.Esito {
+        SpecchioDiario(localRoot: local, cloudRoot: cloud, conflict: conflict).sincronizza()
     }
 
     func has(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
@@ -155,6 +155,54 @@ func runSpecchioChecks() throws {
         require(r.issues.contains { $0.contains("sub") }, "A subfolder in the transcripts is not reported")
         require(!b.has(localTexts.appendingPathComponent("sub")), "A subfolder was copied")
         require(b.sync().copied == 0, "A second pass copied again")
+    }
+
+    // An entry over the size limit is not read and does not enter.
+    do {
+        let b = Bench()
+        try FileManager.default.createDirectory(at: b.mac.cartella, withIntermediateDirectories: true)
+        let id = UUID().uuidString.lowercased()
+        let huge = #"{"schema": 1, "id": "\#(id)", "tipo": "nota", "testo": ""#
+            + String(repeating: "x", count: SpecchioDiario.entryLimit) + #""}"#
+        try Data(huge.utf8).write(to: b.mac.cartella.appendingPathComponent("\(id).json"))
+        let r = b.sync()
+        require(b.names(b.phone.cartella).isEmpty, "An oversized entry entered the iPhone diary")
+        require(r.issues.contains { $0.contains("over the limit") }, "The size limit is not reported: \(r.issues)")
+    }
+
+    // A mirror folder that is a symbolic link stops the pass.
+    do {
+        let b = Bench()
+        let elsewhere = b.root.appendingPathComponent("elsewhere")
+        try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: b.cloud, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: b.mac.cartella, withDestinationURL: elsewhere)
+        try b.phone.scrivi(VoceDiario(dispositivo: "iphone", tipo: .nota, testo: "must not leave"))
+        let r = b.sync()
+        require(b.names(elsewhere).isEmpty, "The mirror wrote where the link points")
+        require(r.issues.contains { $0.contains("symbolic link") }, "The link is not reported: \(r.issues)")
+    }
+
+    // A file in an iCloud version conflict is not copied and not deleted.
+    do {
+        let b = Bench()
+        let theirs = VoceDiario(dispositivo: "mac", tipo: .nota, testo: "in conflict")
+        try b.mac.scrivi(theirs)
+        let name = "\(theirs.id.uuidString.lowercased()).json"
+        let r = b.sync(conflict: { $0.lastPathComponent == name })
+        require(!b.has(b.phone.file(theirs.id)), "An entry in conflict entered the iPhone diary")
+        require(r.issues.contains { $0.contains("version conflict") }, "The conflict is not reported: \(r.issues)")
+
+        let mine = VoceDiario(dispositivo: "iphone", tipo: .nota, testo: "deleted, but in conflict in iCloud")
+        try b.phone.scrivi(mine)
+        _ = b.sync()
+        try b.phone.cancella(mine.id)
+        let mineName = "\(mine.id.uuidString.lowercased()).json"
+        let d = b.sync(conflict: { $0.lastPathComponent == mineName })
+        require(b.has(b.mac.file(mine.id)), "An entry in conflict was deleted in iCloud")
+        require(d.issues.contains { $0.contains("version conflict") }, "The conflict is not reported: \(d.issues)")
+        _ = b.sync()
+        require(!b.has(b.mac.file(mine.id)), "After the conflict, the deleted entry stayed")
     }
 
     // Entries flow both ways once; status does not promise an upload; no temporaries left.
