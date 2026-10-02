@@ -1,6 +1,6 @@
 # Build e collaudo sul secondo Mac
 
-Usa questo percorso dopo aver installato Xcode 26 o successivo completo. Le PR da provare sono [FlowBridge iPhone #8](https://github.com/MiloMilo2121/FlowBridge/pull/8) (`design-system-macos`) e [FlowBridge Mac #3](https://github.com/MiloMilo2121/trascrittore-auto/pull/3) (`flowbridge-icloud-sync`). Lavora in due checkout nuovi: l'archivio delle call e l'app Mac già installata non vanno sostituiti durante il preflight.
+Usa questo percorso dopo aver installato Xcode 26 o successivo completo. Le PR da provare sono [FlowBridge iPhone #8](https://github.com/MiloMilo2121/FlowBridge/pull/8) (`design-system-macos`) e [FlowBridge Mac #3](https://github.com/MiloMilo2121/trascrittore-auto/pull/3) (`flowbridge-icloud-sync`), con le correzioni della sua review in [#4](https://github.com/MiloMilo2121/trascrittore-auto/pull/4) (`flowbridge-icloud-sync-v1`). Lavora in due checkout nuovi: l'archivio delle call e l'app Mac già installata non vanno sostituiti durante il preflight.
 
 ## 1. Preparare Xcode
 
@@ -39,7 +39,15 @@ Collega l'iPhone 17 Air, abilita Developer Mode se richiesto e installa la build
 
 ## 5. Diario Mac ↔ iPhone
 
-In un checkout separato di `MiloMilo2121/trascrittore-auto`, passa a `flowbridge-icloud-sync` ed esegui `cd app && ./scripts/costruisci.sh` senza `--installa`. Prima di installare la nuova app sul Mac che registra davvero, verifica firma, entitlement iCloud e percorso dell'archivio. Usa call sintetiche per la prima prova e confronta gli hash del testo originale prima e dopo l'esportazione. Prova creazione simultanea, offline→online, migrazione ripetuta, lapidi, call e conflitti; controlla lo stato su entrambe le app.
+In un checkout separato di `MiloMilo2121/trascrittore-auto`, passa a `flowbridge-icloud-sync-v1` (la #3 con le correzioni della review). **La build di default del Mac non ha iCloud**: firmati senza un provisioning profile, gli entitlement iCloud fanno uccidere l'app all'avvio, registratore delle call compreso. Con il team Apple Developer, un container registrato e un profilo per `com.marcomilanello.flowbridge.recorder`:
+
+```sh
+cd app
+FLOWBRIDGE_ICLOUD=1 FLOWBRIDGE_PROFILO=<percorso del .provisionprofile> \
+FLOWBRIDGE_IDENTITA="<identità del team>" ./scripts/costruisci.sh
+```
+
+senza `--installa`. Lo script controlla prima di compilare che il profilo copra bundle, container, certificato di firma, scadenza e questo Mac. Prima di installare la nuova app sul Mac che registra davvero, verifica firma, entitlement e percorso dell'archivio: un certificato nuovo fa chiedere di nuovo tutti i permessi. Usa call sintetiche per la prima prova e confronta gli hash del testo originale prima e dopo l'esportazione. Prova creazione simultanea, offline→online, migrazione ripetuta, lapidi su entrambi i lati (il testo cancellato non deve tornare nel contenitore), call e conflitti; controlla lo stato su entrambe le app. Le regole che i due lati devono rispettare sono in [CONTRATTO-DIARIO.md](CONTRATTO-DIARIO.md), «Lo specchio su iCloud».
 
 ## 6. Solo dopo il collaudo
 
