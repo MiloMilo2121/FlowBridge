@@ -78,6 +78,7 @@
 		BAF4CF35D1494B8C92F1DCCD /* ToggleDictationIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95A1A56F4B31CBD5EF94C4DE /* ToggleDictationIntent.swift */; };
 		BCABA4B3C0EED74B8E1B0806 /* SharedContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A094609470340B331D09D78 /* SharedContainer.swift */; };
 		BD9AD1178F3B6F47A9EAA812 /* FlowBridgeError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4096FE560985EB14367364 /* FlowBridgeError.swift */; };
+		BEAD8955718A180E6B0F07A0 /* CallTranscriptVerification.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA633E7E2DB6CC490611D6CB /* CallTranscriptVerification.swift */; };
 		C3E950826C53F75339AE0DF8 /* FlowBridgeJSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = 734D80C86D7A5ED5DD9A6F8F /* FlowBridgeJSON.swift */; };
 		C5F58CD96351A2E32D37CBB2 /* Diario.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37368D838708DF75C0A50853 /* Diario.swift */; };
 		C85F3FCDA9E8779B1D259618 /* TranscriptIntegrityGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48419373585C2FACA53CAB00 /* TranscriptIntegrityGuardTests.swift */; };
@@ -282,6 +283,7 @@
 		DD254DDA27ABED52D80A81F0 /* TranscriptPolisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPolisher.swift; sourceTree = "<group>"; };
 		E1908E7F097D763B6A723A48 /* DiarySyncController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiarySyncController.swift; sourceTree = "<group>"; };
 		E9101AD4F00FA60371792FE4 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		EA633E7E2DB6CC490611D6CB /* CallTranscriptVerification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallTranscriptVerification.swift; sourceTree = "<group>"; };
 		EA7CF10ABEEB3E9B75ACA0CF /* DictationCommandHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationCommandHub.swift; sourceTree = "<group>"; };
 		F66E0DAC1051FC60CF651C98 /* FlowBridgeHomeWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowBridgeHomeWidget.swift; sourceTree = "<group>"; };
 		FCF98DF41D148D8A7BFDD142 /* DictationTextNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationTextNormalizer.swift; sourceTree = "<group>"; };
@@ -471,6 +473,7 @@
 			isa = PBXGroup;
 			children = (
 				D9FCB7173B4C2474162C05C6 /* AudioSafetyBuffer.swift */,
+				EA633E7E2DB6CC490611D6CB /* CallTranscriptVerification.swift */,
 				5578CABA44085834319AB537 /* CloudGate.swift */,
 				C92AC93BA661C8358A14C9E6 /* DarwinNotifier.swift */,
 				37368D838708DF75C0A50853 /* Diario.swift */,
@@ -741,6 +744,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A4A02AACCB81EE23CC7B56E5 /* AudioSafetyBuffer.swift in Sources */,
+				BEAD8955718A180E6B0F07A0 /* CallTranscriptVerification.swift in Sources */,
 				697E740D4747EF049178D365 /* CloudGate.swift in Sources */,
 				3A8D668BDE431733F74748E3 /* ColorePiattaforma.swift in Sources */,
 				0E4B77221AD7F3E263122A21 /* DarwinNotifier.swift in Sources */,
