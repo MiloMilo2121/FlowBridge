@@ -4,6 +4,7 @@
   "id" : "5718B5A9-1B28-88F1-B345-0FD14B41B739",
   "quando" : "2026-09-29T12:01:45+02:00",
   "schema" : 1,
+  "sha256" : "c7c2f116c35bbc2a0f93846d19c71d5ef487ee36e27b45b0b1d657f7d5fb0d89",
   "tipo" : "call",
   "titolo" : "Call di prova sintetica",
   "trascrizione" : "testi/call_di_prova_2026-09-29.txt"

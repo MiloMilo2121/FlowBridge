@@ -8,7 +8,7 @@ struct HistoryView: View {
     @State private var entries: [VoceDiario] = []
     @State private var query = ""
     @State private var selected: VoceDiario?
-    @State private var callText: String?
+    @State private var callText: DiarySyncController.CallText?
     @State private var pinned = Set<String>()
 
     private var visible: [VoceDiario] {
@@ -55,11 +55,14 @@ struct HistoryView: View {
             .sheet(item: $selected) { entry in
                 NavigationStack {
                     ScrollView {
-                        Text(entry.tipo == .call ? (callText ?? "Transcript is syncing from the Mac.")
-                             : (entry.testo ?? ""))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
+                        VStack(alignment: .leading, spacing: 12) {
+                            if entry.tipo == .call, let callText { verificationNote(callText.verification) }
+                            Text(entry.tipo == .call ? (callText?.text ?? "Transcript is syncing from the Mac.")
+                                 : (entry.testo ?? ""))
+                                .textSelection(.enabled)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
                     }
                     .navigationTitle(entry.titolo ?? entry.tipo.rawValue.capitalized)
                     .toolbar {
@@ -68,6 +71,25 @@ struct HistoryView: View {
                     .task(id: entry.id) { callText = await coordinator.diaryCallText(entry) }
                 }
             }
+        }
+    }
+
+    /// Call transcripts are evidence: say when this copy is not the Mac's.
+    @ViewBuilder
+    private func verificationNote(_ verification: CallTranscriptVerification) -> some View {
+        switch verification {
+        case .verified:
+            EmptyView()
+        case .unverifiable:
+            Label("Exported before copies were checked: this copy cannot be verified.", systemImage: "questionmark.circle")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        case .mismatch:
+            Label("This copy does not match the transcript the Mac exported. Do not cite it.",
+                  systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.red)
+                .accessibilityAddTraits(.isStaticText)
         }
     }
 

@@ -66,20 +66,25 @@ public struct VoceDiario: Codable, Equatable, Sendable, Identifiable {
     /// Per le call: la trascrizione, relativa alla radice dei dati
     /// (`testi/<nome>.txt`). Mai il testo.
     public let trascrizione: String?
+    /// Per le call: lo SHA-256 (esadecimale minuscolo) dei byte della
+    /// trascrizione quando il Mac ne ha fatto la copia. Chi legge la copia la
+    /// verifica contro questo. Manca nelle call scritte prima del 3/10/2026:
+    /// allora la copia non e' verificabile, che non vuol dire manomessa.
+    public let sha256: String?
 
     enum CodingKeys: String, CodingKey {
         case schema, id, quando, dispositivo, tipo, testo, titolo, pulizia, cancello, motore, lingua, app
         case testoGrezzo = "testo_grezzo"
         case versioneOS = "versione_os"
         case durataS = "durata_s"
-        case trascrizione
+        case trascrizione, sha256
     }
 
     public init(id: UUID = UUID(), quando: Date = Date(), dispositivo: String, tipo: Tipo,
                 testo: String? = nil, testoGrezzo: String? = nil, titolo: String? = nil,
                 pulizia: Pulizia? = nil, cancello: Cancello? = nil, motore: String? = nil,
                 versioneOS: String? = nil, lingua: String? = nil, durataS: Double? = nil,
-                app: String? = nil, trascrizione: String? = nil) {
+                app: String? = nil, trascrizione: String? = nil, sha256: String? = nil) {
         self.schema = Self.schemaAttuale
         self.id = id; self.quando = quando; self.dispositivo = dispositivo; self.tipo = tipo
         self.testo = testo
@@ -88,15 +93,16 @@ public struct VoceDiario: Codable, Equatable, Sendable, Identifiable {
         self.titolo = titolo; self.pulizia = pulizia; self.cancello = cancello; self.motore = motore
         self.versioneOS = versioneOS; self.lingua = lingua; self.durataS = durataS; self.app = app
         self.trascrizione = trascrizione
+        self.sha256 = sha256
     }
 
     /// Una call vista dal diario: l'id si ricava dal percorso della
     /// trascrizione, cosi' la stessa call ha lo stesso id su ogni dispositivo
     /// e a ogni lettura (niente doppioni).
     public static func call(trascrizione relativa: String, titolo: String, quando: Date,
-                            durataS: Double? = nil) -> VoceDiario {
+                            durataS: Double? = nil, sha256: String? = nil) -> VoceDiario {
         VoceDiario(id: idStabile("call:" + relativa), quando: quando, dispositivo: "mac", tipo: .call,
-                   titolo: titolo, durataS: durataS, trascrizione: relativa)
+                   titolo: titolo, durataS: durataS, trascrizione: relativa, sha256: sha256)
     }
 
     /// Un UUID deterministico da un testo (FNV-1a a 128 bit, versione 8):

@@ -49,6 +49,7 @@ anche per iOS, ed è il file che si porta nell'app iPhone
 | `durata_s` | numero | quando si sa | secondi di audio |
 | `app` | bundle id | dettature | dove è andato il testo |
 | `trascrizione` | percorso relativo | call | `testi/<nome>.txt` |
+| `sha256` | esadecimale minuscolo, 64 caratteri | call, dal 3/10/2026 | lo SHA-256 dei byte della trascrizione quando il Mac ne ha fatto la copia. Chi legge la copia la verifica: diverso = la copia non è quella esportata (non citarla); assente = voce precedente, copia non verificabile |
 
 La lapide: `{schema, id, cancellata_il, dispositivo}`.
 

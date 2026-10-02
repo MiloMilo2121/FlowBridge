@@ -205,6 +205,28 @@ func runSpecchioChecks() throws {
         require(!b.has(b.mac.file(mine.id)), "After the conflict, the deleted entry stayed")
     }
 
+    // The call transcript check: the Mac's hash decides, a missing one is "unverifiable".
+    do {
+        let good = String(repeating: "ab", count: 32)
+        require(CallTranscriptVerification.check(expected: good, actualSHA256: good) == .verified, "Matching hash not verified")
+        require(CallTranscriptVerification.check(expected: good, actualSHA256: good.uppercased()) == .verified,
+                "Case of the computed hash matters")
+        require(CallTranscriptVerification.check(expected: nil, actualSHA256: good) == .unverifiable, "Missing hash")
+        require(CallTranscriptVerification.check(expected: String(repeating: "cd", count: 32), actualSHA256: good) == .mismatch,
+                "A different copy was accepted")
+        require(CallTranscriptVerification.check(expected: good.uppercased(), actualSHA256: good) == .mismatch,
+                "A hash the Mac never writes (uppercase) was accepted")
+        require(CallTranscriptVerification.check(expected: "abc", actualSHA256: good) == .mismatch, "A short hash was accepted")
+        // The fixture call carries the field, and old entries without it still decode.
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Tests/Fixtures/diario")
+        let call = Diario(cartella: fixture, dispositivo: "iphone").voci().first { $0.tipo == .call }
+        require(call?.sha256?.count == 64, "The fixture call has no sha256")
+        let old = #"{"schema": 1, "id": "5718B5A9-1B28-88F1-B345-0FD14B41B739", "quando": "2026-09-29T12:01:45+02:00", "dispositivo": "mac", "tipo": "call", "titolo": "x", "trascrizione": "testi/x.txt"}"#
+        let decoded = try Diario.decodificatore().decode(VoceDiario.self, from: Data(old.utf8))
+        require(decoded.sha256 == nil, "An entry without sha256 did not decode as such")
+    }
+
     // Entries flow both ways once; status does not promise an upload; no temporaries left.
     do {
         let b = Bench()

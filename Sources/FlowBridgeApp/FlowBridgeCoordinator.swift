@@ -262,7 +262,7 @@ final class FlowBridgeCoordinator: ObservableObject {
 
     var history: TranscriptHistoryStore? { historyStore }
     func diaryEntries() async -> [VoceDiario] { await diarySync?.entries() ?? [] }
-    func diaryCallText(_ entry: VoceDiario) async -> String? { await diarySync?.callText(entry) }
+    func diaryCallText(_ entry: VoceDiario) async -> DiarySyncController.CallText? { await diarySync?.callText(entry) }
     func deleteDiaryEntry(_ id: UUID) async throws {
         try await diarySync?.delete(id)
         await diarySync?.sync()

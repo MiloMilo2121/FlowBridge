@@ -1,3 +1,4 @@
+import CryptoKit
 import FlowBridgeShared
 import Foundation
 
@@ -48,11 +49,22 @@ actor DiarySyncController {
 
     func entries() -> [VoceDiario] { local.voci() }
 
-    func callText(_ entry: VoceDiario) -> String? {
+    /// A call transcript and whether it is the copy the Mac exported.
+    struct CallText: Sendable {
+        let text: String
+        let verification: CallTranscriptVerification
+    }
+
+    func callText(_ entry: VoceDiario) -> CallText? {
         guard entry.tipo == .call, let relative = entry.trascrizione,
               // A ".." component, not the substring: "Prices..._2026-07-27.txt" is a valid name.
               relative.hasPrefix("testi/"), !relative.split(separator: "/").contains("..") else { return nil }
-        return try? String(contentsOf: localRoot.appendingPathComponent(relative), encoding: .utf8)
+        guard let data = try? Data(contentsOf: localRoot.appendingPathComponent(relative)),
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        // The hash covers the exact bytes the Mac copied: check them before showing the text.
+        let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return CallText(text: text,
+                        verification: CallTranscriptVerification.check(expected: entry.sha256, actualSHA256: actual))
     }
 
     func delete(_ id: UUID) throws { try local.cancella(id) }
