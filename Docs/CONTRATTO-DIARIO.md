@@ -49,6 +49,7 @@ anche per iOS, ed è il file che si porta nell'app iPhone
 | `durata_s` | numero | quando si sa | secondi di audio |
 | `app` | bundle id | dettature | dove è andato il testo |
 | `trascrizione` | percorso relativo | call | `testi/<nome>.txt` |
+| `sha256` | esadecimale minuscolo, 64 caratteri | call, dal 3/10/2026 | lo SHA-256 dei byte della trascrizione quando il Mac ne ha fatto la copia. Chi legge la copia la verifica: diverso = la copia non è quella esportata (non citarla); assente = voce precedente, copia non verificabile |
 
 La lapide: `{schema, id, cancellata_il, dispositivo}`.
 
@@ -73,6 +74,43 @@ la copia locale è nel container dell'app. Entrambe si rispecchiano nel containe
 `iCloud.com.marcomilanello.flowbridge/Documents/FlowBridge/` con le sottocartelle
 `diario/` e `testi/`. La sincronizzazione è eventuale: senza iCloud Drive i nuovi file
 restano locali e lo stato lo segnala. Serve lo stesso Apple Account su Mac e iPhone.
+
+## Lo specchio su iCloud
+
+Le stesse regole sui due lati. Sul Mac: `app/Sources/Condivisione/Specchio.swift` nel repo del
+trascrittore (prove in `proveCondivisione`). Qui: `Sources/FlowBridgeShared/SpecchioDiario.swift`,
+provato su dati sintetici da `Checks/FlowBridgeSharedCheck/SpecchioChecks.swift`. Basta un lato
+che ricarica ciò che l'altro ha cancellato per rimettere il testo sui server di iCloud a ogni sync.
+
+1. **Si scambiano solo i nomi del contratto**: `<uuid minuscolo>.json` e
+   `<uuid minuscolo>.cancellata.json`. Un altro nome che finisce in `.json` (le copie di
+   conflitto di iCloud, `<id> 2.json`) si segnala e resta fuori.
+2. **Prima di prendere un file lo si guarda**: un oggetto JSON con `schema` intero e `id`
+   uguale al nome (senza maiuscole). Non si decodifica tutta la voce: uno schema futuro passa.
+   Un file che non passa non si copia, e si riprova al giro dopo.
+3. **Si scrive una volta, tutto o niente**: temporaneo nella stessa cartella, poi rename
+   esclusivo. Mai copiare sul nome finale.
+4. **Si legge coordinati, e solo ciò che è già scaricato**: un file di iCloud non ancora sul
+   disco (o un segnaposto `.<nome>.icloud`) si chiede e si aspetta. Un segnaposto vale come file
+   presente: scriverci accanto il «mancante» sarebbe un conflitto in iCloud.
+5. **La lapide vince su entrambi i lati**: se c'è da una parte, si copia dall'altra e il
+   `<id>.json` si toglie da tutte e due, così il testo cancellato non resta nel contenitore.
+   Solo una lapide **valida** (regola 2) cancella: una rotta si segnala e non tocca niente.
+6. **Le call non si cancellano.** Una lapide con l'id di una call (dalla voce; il Mac la riconosce
+   anche dal percorso della trascrizione, se la voce non c'è ancora) si rinomina `<id>.cancellata.json.rifiutata` su
+   ogni lato e si segnala: lasciata com'è, `voci()` nasconderebbe la call ovunque.
+7. **Una voce sparita senza lapide non si ricarica.** Ogni lato tiene l'elenco delle voci che ha
+   visto nel contenitore (sul Mac `diario-visti-in-icloud.json`, qui `seen-in-icloud.json`): se una sparisce
+   da iCloud e la lapide non è ancora arrivata (iCloud non garantisce l'ordine), non la rimette
+   lì e lo segnala.
+8. **Stesso nome, byte diversi: conflitto.** Nessuno dei due si sovrascrive.
+9. **Le call**: le scrive solo il Mac. La copia del testo va in `testi/` (stesso percorso
+   relativo dell'archivio) solo quando la call è stabile, e la voce `call` solo dopo che la copia
+   è identica all'originale. **L'iPhone i testi li scarica e basta**: mai caricarli, mai
+   sovrascriverli; una differenza è un conflitto. Una sottocartella o un file che non è `.txt`
+   si segnala.
+10. **Il Mac segnala chi ricarica**: se una voce che ha già tolto per lapide ricompare nel
+   contenitore, la toglie di nuovo e lo dice.
 
 **Il repo di FlowBridge per iPhone è pubblico**: le fixture qui sono sintetiche, e
 `prove/test_contratto_diario.py` fallisce se una contiene un termine del vocabolario dei clienti.

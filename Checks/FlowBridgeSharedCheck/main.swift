@@ -217,4 +217,6 @@ let toneStore = try ToneContextStore(defaults: defaults)
 toneStore.writeHint(ToneHint(profile: .casual))
 require(toneStore.currentTone() == .casual, "Tone hint was not honored")
 
+try runSpecchioChecks()
+
 print("FlowBridgeSharedCheck passed")

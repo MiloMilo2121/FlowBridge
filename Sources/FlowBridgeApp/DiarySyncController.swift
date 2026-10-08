@@ -1,19 +1,22 @@
+import CryptoKit
 import FlowBridgeShared
 import Foundation
 
 /// Local-first mirror of the shared, immutable diary. iCloud transfer is
 /// eventual; an unavailable account never prevents a dictation from saving.
+/// The mirror rules live in `SpecchioDiario` (FlowBridgeShared), where they
+/// are checked on synthetic data; this actor only finds the container, runs a
+/// pass and keeps the status.
 actor DiarySyncController {
     static let containerID = "iCloud.com.marcomilanello.flowbridge"
     private static let migrationDoneKey = "diaryHistoryMigrated"
 
     private let localRoot: URL
     private let local: Diario
-    private var issues: [String] = []
-    /// Kept apart from `issues` because `sync()` clears those on every run,
-    /// and a failed migration must stay visible until a later launch retries.
+    /// Kept apart from the mirror's issues: a failed migration must stay
+    /// visible until a later launch retries it.
     private var migrationIssues: [String] = []
-    private var cloudAvailable = false
+    private var status = "Diary saved here · waiting for iCloud Drive"
 
     init() throws {
         localRoot = try SharedContainer.containerURL()
@@ -64,81 +67,49 @@ actor DiarySyncController {
 
     func entries() -> [VoceDiario] { local.voci() }
 
-    func callText(_ entry: VoceDiario) -> String? {
+    /// A call transcript and whether it is the copy the Mac exported.
+    struct CallText: Sendable {
+        let text: String
+        let verification: CallTranscriptVerification
+    }
+
+    func callText(_ entry: VoceDiario) -> CallText? {
         guard entry.tipo == .call, let relative = entry.trascrizione,
-              relative.hasPrefix("testi/"), !relative.contains("..") else { return nil }
-        return try? String(contentsOf: localRoot.appendingPathComponent(relative), encoding: .utf8)
+              // A ".." component, not the substring: "Prices..._2026-07-27.txt" is a valid name.
+              relative.hasPrefix("testi/"), !relative.split(separator: "/").contains("..") else { return nil }
+        guard let data = try? Data(contentsOf: localRoot.appendingPathComponent(relative)),
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        // The hash covers the exact bytes the Mac copied: check them before showing the text.
+        let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return CallText(text: text,
+                        verification: CallTranscriptVerification.check(expected: entry.sha256, actualSHA256: actual))
     }
 
     func delete(_ id: UUID) throws { try local.cancella(id) }
 
     func statusText() -> String {
-        if let first = migrationIssues.first ?? issues.first { return "Diary needs attention · \(first)" }
-        return cloudAvailable ? "Diary synced with iCloud Drive" : "Diary saved here · waiting for iCloud Drive"
+        // The first line is the summary; SpecchioDiario lists every issue below it.
+        let summary = status.split(separator: "\n").first.map(String.init) ?? status
+        if let first = migrationIssues.first { return "Diary needs attention · \(first)" }
+        return summary
     }
 
-    func sync() {
-        issues = []
-        guard let container = FileManager.default.url(forUbiquityContainerIdentifier: Self.containerID) else {
-            cloudAvailable = false
-            return
-        }
-        let cloudRoot = container.appendingPathComponent("Documents/FlowBridge", isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: cloudRoot, withIntermediateDirectories: true)
-            for folder in ["diario", "testi"] {
-                let localFolder = localRoot.appendingPathComponent(folder, isDirectory: true)
-                let cloudFolder = cloudRoot.appendingPathComponent(folder, isDirectory: true)
-                try FileManager.default.createDirectory(at: localFolder, withIntermediateDirectories: true)
-                try FileManager.default.createDirectory(at: cloudFolder, withIntermediateDirectories: true)
-                mirror(from: localFolder, to: cloudFolder)
-                mirror(from: cloudFolder, to: localFolder)
-            }
-            cloudAvailable = true
-        } catch {
-            cloudAvailable = false
-            issues.append("iCloud: \(error.localizedDescription)")
-        }
-    }
-
-    private func mirror(from source: URL, to destination: URL) {
-        guard let names = try? FileManager.default.contentsOfDirectory(
-            at: source, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey]) else { return }
-        for from in names {
-            let name = from.lastPathComponent
-            guard !name.hasPrefix("."), !from.isSymbolicLink else { continue }
-            let to = destination.appendingPathComponent(name)
-            if (try? from.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
-                do {
-                    try FileManager.default.createDirectory(at: to, withIntermediateDirectories: true)
-                    mirror(from: from, to: to)
-                } catch { issues.append("Directory \(name): \(error.localizedDescription)") }
-                continue
-            }
-            guard name.hasSuffix(".json") || name.hasSuffix(".txt") else { continue }
-            if !FileManager.default.fileExists(atPath: to.path) {
-                // iCloud may have a placeholder for a document not yet on disk.
-                if source.path.contains("Mobile Documents") {
-                    try? FileManager.default.startDownloadingUbiquitousItem(at: from)
+    /// One mirror pass. `url(forUbiquityContainerIdentifier:)` can block for a
+    /// long time and the pass does coordinated reads and writes: none of it
+    /// runs on Swift's cooperative pool (a detached Task would still be on it).
+    func sync() async {
+        let root = localRoot
+        let result: SpecchioDiario.Esito? = await withCheckedContinuation { reply in
+            DispatchQueue.global(qos: .utility).async {
+                guard let container = FileManager.default
+                    .url(forUbiquityContainerIdentifier: DiarySyncController.containerID) else {
+                    reply.resume(returning: nil); return
                 }
-                do { try FileManager.default.copyItem(at: from, to: to) }
-                catch { issues.append("Sync \(name): \(error.localizedDescription)") }
-            } else if let a = from.fileSize, let b = to.fileSize, a != b {
-                // Diary files are write-once, so a size check is enough to
-                // spot a conflict without reading every file on every sync.
-                let conflict = "Different content for \(name)"
-                if !issues.contains(conflict) { issues.append(conflict) }
+                reply.resume(returning: SpecchioDiario(
+                    localRoot: root, cloudRoot: SpecchioDiario.cloudRoot(inContainer: container)).sincronizza())
             }
         }
+        status = SpecchioDiario.statusText(result, at: Date())
     }
 }
 
-private extension URL {
-    var isSymbolicLink: Bool {
-        (try? resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true
-    }
-
-    var fileSize: Int? {
-        try? resourceValues(forKeys: [.fileSizeKey]).fileSize
-    }
-}

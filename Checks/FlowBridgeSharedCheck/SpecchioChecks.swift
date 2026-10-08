@@ -1,0 +1,248 @@
+import FlowBridgeShared
+import Foundation
+
+/// The iCloud diary mirror on temporary folders: a local iPhone folder and a
+/// fake container that the Mac also writes to. Synthetic data only (this
+/// repository is public).
+private struct Bench {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("check-specchio-\(UUID().uuidString)")
+    var local: URL { root.appendingPathComponent("local") }
+    var cloud: URL { root.appendingPathComponent("cloud/Documents/FlowBridge") }
+    var phone: Diario { Diario(cartella: local.appendingPathComponent("diario"), dispositivo: "iphone") }
+    var mac: Diario { Diario(cartella: cloud.appendingPathComponent("diario"), dispositivo: "mac") }
+
+    func sync(conflict: ((URL) -> Bool)? = nil) -> SpecchioDiario.Esito {
+        SpecchioDiario(localRoot: local, cloudRoot: cloud, conflict: conflict).sincronizza()
+    }
+
+    func has(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
+
+    func names(_ folder: URL) -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).sorted()
+    }
+
+    func allFiles() -> [URL] {
+        guard let e = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else { return [] }
+        return e.compactMap { $0 as? URL }.filter { !$0.hasDirectoryPath }
+    }
+
+    func filesContaining(_ text: String) -> [URL] {
+        allFiles().filter { (try? String(contentsOf: $0, encoding: .utf8))?.contains(text) == true }
+    }
+
+    func tombstoneName(_ id: UUID) -> String { "\(id.uuidString.lowercased()).cancellata.json" }
+}
+
+func runSpecchioChecks() throws {
+    // The bounce: the Mac deletes, the iPhone must not upload the text again.
+    do {
+        let b = Bench()
+        let v = VoceDiario(dispositivo: "iphone", tipo: .dettatura, testo: "deleted on the Mac 8812")
+        try b.phone.scrivi(v)
+        _ = b.sync()
+        require(b.has(b.mac.file(v.id)), "The entry did not reach the container")
+        try b.mac.cancella(v.id)                  // tombstone in iCloud, entry removed there
+        _ = b.sync()
+        _ = b.sync()
+        require(!b.has(b.mac.file(v.id)), "The iPhone uploaded a deleted entry again")
+        require(!b.has(b.phone.file(v.id)), "The deleted text is still on the iPhone")
+        require(b.filesContaining("8812").isEmpty, "The deleted text survived in a file")
+        require(b.phone.voci().isEmpty, "The deleted entry is visible")
+    }
+
+    // A deletion on the iPhone removes the text from the container too.
+    do {
+        let b = Bench()
+        let v = VoceDiario(dispositivo: "iphone", tipo: .nota, testo: "deleted on the iPhone 3307")
+        try b.phone.scrivi(v)
+        _ = b.sync()
+        try b.phone.cancella(v.id)
+        let r = b.sync()
+        require(r.removed == 1, "Expected one removal, got \(r)")
+        require(b.names(b.mac.cartella) == [b.tombstoneName(v.id)], "Only the tombstone should remain in iCloud")
+        require(b.filesContaining("3307").isEmpty, "The deleted text survived in a file")
+    }
+
+    // An invalid tombstone deletes nothing.
+    do {
+        let b = Bench()
+        let v = VoceDiario(dispositivo: "iphone", tipo: .nota, testo: "stays")
+        try b.phone.scrivi(v)
+        _ = b.sync()
+        try Diario.codificatore().encode(Lapide(id: UUID(), dispositivo: "mac"))
+            .write(to: b.mac.cartella.appendingPathComponent(b.tombstoneName(v.id)))
+        let r = b.sync()
+        require(r.issues.contains { $0.hasPrefix("Invalid tombstone") }, "Invalid tombstone not reported: \(r.issues)")
+        require(b.has(b.mac.file(v.id)) && b.has(b.phone.file(v.id)), "An invalid tombstone deleted the entry")
+    }
+
+    // A tombstone on a call is set aside: the call stays visible on both sides.
+    do {
+        let b = Bench()
+        let call = VoceDiario.call(trascrizione: "testi/Synthetic_call_2026-07-27.txt", titolo: "Synthetic call",
+                                   quando: Date())
+        try b.mac.scrivi(call)
+        try Diario.codificatore().encode(Lapide(id: call.id, dispositivo: "iphone"))
+            .write(to: b.mac.cartella.appendingPathComponent(b.tombstoneName(call.id)))
+        let r = b.sync()
+        require(r.issues.contains { $0.hasPrefix("Tombstone on a call") }, "Call tombstone not reported: \(r.issues)")
+        require(b.phone.voci().contains { $0.id == call.id }, "The call is hidden on the iPhone")
+        require(b.mac.voci().contains { $0.id == call.id }, "The call is hidden in iCloud")
+        let second = b.sync(); require(second.issues.isEmpty, "The same call tombstone is reported on every pass: \(second.issues)")
+    }
+
+    // Conflict copies, broken JSON and mismatched ids stay out.
+    do {
+        let b = Bench()
+        try FileManager.default.createDirectory(at: b.mac.cartella, withIntermediateDirectories: true)
+        let broken = UUID().uuidString.lowercased()
+        try Data(#"{"schema": 1, "id": "#.utf8).write(to: b.mac.cartella.appendingPathComponent("\(broken).json"))
+        let other = VoceDiario(dispositivo: "mac", tipo: .nota, testo: "wrong name")
+        try Diario.codificatore().encode(other)
+            .write(to: b.mac.cartella.appendingPathComponent("\(UUID().uuidString.lowercased()).json"))
+        let copy = VoceDiario(dispositivo: "mac", tipo: .nota, testo: "conflict copy")
+        try Diario.codificatore().encode(copy)
+            .write(to: b.mac.cartella.appendingPathComponent("\(copy.id.uuidString.lowercased()) 2.json"))
+        let r = b.sync()
+        require(b.names(b.phone.cartella).isEmpty, "An invalid file entered the iPhone diary")
+        require(r.issues.count == 3, "Not every invalid file was reported: \(r.issues)")
+    }
+
+    // An iCloud placeholder counts as present: nothing is written next to it.
+    do {
+        let b = Bench()
+        let v = VoceDiario(dispositivo: "iphone", tipo: .nota, testo: "already in iCloud")
+        try b.phone.scrivi(v)
+        try FileManager.default.createDirectory(at: b.mac.cartella, withIntermediateDirectories: true)
+        try Data().write(to: b.mac.cartella.appendingPathComponent(".\(v.id.uuidString.lowercased()).json.icloud"))
+        let r = b.sync()
+        require(!b.has(b.mac.file(v.id)), "Written next to a placeholder: a conflict in iCloud")
+        require(r.waiting >= 1 && r.issues.isEmpty, "Placeholder not treated as waiting: \(r)")
+    }
+
+    // An entry that vanished from iCloud without a tombstone is not uploaded again.
+    do {
+        let b = Bench()
+        let v = VoceDiario(dispositivo: "iphone", tipo: .dettatura, testo: "deleted elsewhere 6604")
+        try b.phone.scrivi(v)
+        _ = b.sync()
+        try FileManager.default.removeItem(at: b.mac.file(v.id))
+        let r = b.sync()
+        require(!b.has(b.mac.file(v.id)), "A vanished entry was uploaded again")
+        require(r.issues.contains { $0.hasPrefix("Entry vanished") }, "The vanished entry is not reported")
+    }
+
+    // Call transcripts move down only, written once, never overwritten.
+    do {
+        let b = Bench()
+        let cloudTexts = b.cloud.appendingPathComponent("testi")
+        let localTexts = b.local.appendingPathComponent("testi")
+        try FileManager.default.createDirectory(at: cloudTexts, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: localTexts, withIntermediateDirectories: true)
+        try Data("Speaker A: synthetic 1,6.\n".utf8).write(to: cloudTexts.appendingPathComponent("A_2026-07-27.txt"))
+        try Data("from the Mac\n".utf8).write(to: cloudTexts.appendingPathComponent("B_2026-07-27.txt"))
+        try Data("edited on the phone\n".utf8).write(to: localTexts.appendingPathComponent("B_2026-07-27.txt"))
+        try Data("only on the phone\n".utf8).write(to: localTexts.appendingPathComponent("C_2026-07-27.txt"))
+        try FileManager.default.createDirectory(at: cloudTexts.appendingPathComponent("sub"), withIntermediateDirectories: true)
+        let r = b.sync()
+        let copiedA = try Data(contentsOf: localTexts.appendingPathComponent("A_2026-07-27.txt"))
+        require(copiedA == Data("Speaker A: synthetic 1,6.\n".utf8), "The transcript copy differs")
+        let cloudB = try Data(contentsOf: cloudTexts.appendingPathComponent("B_2026-07-27.txt"))
+        require(cloudB == Data("from the Mac\n".utf8), "The iPhone overwrote a transcript in iCloud")
+        require(r.issues.contains { $0.hasPrefix("Different transcript") }, "The transcript conflict is not reported")
+        require(!b.has(cloudTexts.appendingPathComponent("C_2026-07-27.txt")), "The iPhone uploaded a transcript")
+        require(r.issues.contains { $0.contains("sub") }, "A subfolder in the transcripts is not reported")
+        require(!b.has(localTexts.appendingPathComponent("sub")), "A subfolder was copied")
+        require(b.sync().copied == 0, "A second pass copied again")
+    }
+
+    // An entry over the size limit is not read and does not enter.
+    do {
+        let b = Bench()
+        try FileManager.default.createDirectory(at: b.mac.cartella, withIntermediateDirectories: true)
+        let id = UUID().uuidString.lowercased()
+        let huge = #"{"schema": 1, "id": "\#(id)", "tipo": "nota", "testo": ""#
+            + String(repeating: "x", count: SpecchioDiario.entryLimit) + #""}"#
+        try Data(huge.utf8).write(to: b.mac.cartella.appendingPathComponent("\(id).json"))
+        let r = b.sync()
+        require(b.names(b.phone.cartella).isEmpty, "An oversized entry entered the iPhone diary")
+        require(r.issues.contains { $0.contains("over the limit") }, "The size limit is not reported: \(r.issues)")
+    }
+
+    // A mirror folder that is a symbolic link stops the pass.
+    do {
+        let b = Bench()
+        let elsewhere = b.root.appendingPathComponent("elsewhere")
+        try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: b.cloud, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: b.mac.cartella, withDestinationURL: elsewhere)
+        try b.phone.scrivi(VoceDiario(dispositivo: "iphone", tipo: .nota, testo: "must not leave"))
+        let r = b.sync()
+        require(b.names(elsewhere).isEmpty, "The mirror wrote where the link points")
+        require(r.issues.contains { $0.contains("symbolic link") }, "The link is not reported: \(r.issues)")
+    }
+
+    // A file in an iCloud version conflict is not copied and not deleted.
+    do {
+        let b = Bench()
+        let theirs = VoceDiario(dispositivo: "mac", tipo: .nota, testo: "in conflict")
+        try b.mac.scrivi(theirs)
+        let name = "\(theirs.id.uuidString.lowercased()).json"
+        let r = b.sync(conflict: { $0.lastPathComponent == name })
+        require(!b.has(b.phone.file(theirs.id)), "An entry in conflict entered the iPhone diary")
+        require(r.issues.contains { $0.contains("version conflict") }, "The conflict is not reported: \(r.issues)")
+
+        let mine = VoceDiario(dispositivo: "iphone", tipo: .nota, testo: "deleted, but in conflict in iCloud")
+        try b.phone.scrivi(mine)
+        _ = b.sync()
+        try b.phone.cancella(mine.id)
+        let mineName = "\(mine.id.uuidString.lowercased()).json"
+        let d = b.sync(conflict: { $0.lastPathComponent == mineName })
+        require(b.has(b.mac.file(mine.id)), "An entry in conflict was deleted in iCloud")
+        require(d.issues.contains { $0.contains("version conflict") }, "The conflict is not reported: \(d.issues)")
+        _ = b.sync()
+        require(!b.has(b.mac.file(mine.id)), "After the conflict, the deleted entry stayed")
+    }
+
+    // The call transcript check: the Mac's hash decides, a missing one is "unverifiable".
+    do {
+        let good = String(repeating: "ab", count: 32)
+        require(CallTranscriptVerification.check(expected: good, actualSHA256: good) == .verified, "Matching hash not verified")
+        require(CallTranscriptVerification.check(expected: good, actualSHA256: good.uppercased()) == .verified,
+                "Case of the computed hash matters")
+        require(CallTranscriptVerification.check(expected: nil, actualSHA256: good) == .unverifiable, "Missing hash")
+        require(CallTranscriptVerification.check(expected: String(repeating: "cd", count: 32), actualSHA256: good) == .mismatch,
+                "A different copy was accepted")
+        require(CallTranscriptVerification.check(expected: good.uppercased(), actualSHA256: good) == .mismatch,
+                "A hash the Mac never writes (uppercase) was accepted")
+        require(CallTranscriptVerification.check(expected: "abc", actualSHA256: good) == .mismatch, "A short hash was accepted")
+        // The fixture call carries the field, and old entries without it still decode.
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Tests/Fixtures/diario")
+        let call = Diario(cartella: fixture, dispositivo: "iphone").voci().first { $0.tipo == .call }
+        require(call?.sha256?.count == 64, "The fixture call has no sha256")
+        let old = #"{"schema": 1, "id": "5718B5A9-1B28-88F1-B345-0FD14B41B739", "quando": "2026-09-29T12:01:45+02:00", "dispositivo": "mac", "tipo": "call", "titolo": "x", "trascrizione": "testi/x.txt"}"#
+        let decoded = try Diario.decodificatore().decode(VoceDiario.self, from: Data(old.utf8))
+        require(decoded.sha256 == nil, "An entry without sha256 did not decode as such")
+    }
+
+    // Entries flow both ways once; status does not promise an upload; no temporaries left.
+    do {
+        let b = Bench()
+        let mine = VoceDiario(dispositivo: "iphone", tipo: .dettatura, testo: "from the iPhone")
+        let theirs = VoceDiario(dispositivo: "mac", tipo: .dettatura, testo: "from the Mac")
+        try b.phone.scrivi(mine)
+        try b.mac.scrivi(theirs)
+        require(b.sync().copied == 2, "Entries were not copied both ways")
+        let again = b.sync()
+        require(again.copied == 0 && again.issues.isEmpty, "Second pass not idempotent: \(again)")
+        let phoneBytes = try Data(contentsOf: b.phone.file(theirs.id))
+        let macBytes = try Data(contentsOf: b.mac.file(theirs.id))
+        require(phoneBytes == macBytes, "The copied entry is not byte-identical")
+        require(b.allFiles().allSatisfy { !$0.lastPathComponent.hasSuffix(".tmp") }, "A temporary file was left")
+        let ok = SpecchioDiario.statusText(SpecchioDiario.Esito(), at: Date())
+        require(!ok.lowercased().contains("synced"), "Status promises an upload it cannot see: \(ok)")
+        require(SpecchioDiario.statusText(nil, at: Date()).contains("unavailable"), "No-iCloud status")
+    }
+}
