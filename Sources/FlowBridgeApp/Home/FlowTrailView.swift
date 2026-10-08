@@ -21,17 +21,31 @@ struct FlowTrailView: View {
                 recentSection
             }
         }
-        .task { reload() }
+        .task { await reload() }
         .onChange(of: coordinator.lastTranscript?.id) { _, _ in
-            withAnimation(FlowTheme.Motion.base) { reload() }
+            // `withAnimation`'s body is non-escaping, so the async reload has
+            // to be wrapped in a Task; only the apply step is animated.
+            Task { await reload(animated: true) }
         }
     }
 
     private var isEmpty: Bool { stats.sessions == 0 && recents.isEmpty }
 
-    private func reload() {
-        stats = coordinator.stats?.stats() ?? DictationStatsStore.Stats()
-        recents = Array((coordinator.history?.all() ?? []).prefix(3).map(\.record))
+    /// `TranscriptHistoryStore` is an actor, so reading it suspends: keep the
+    /// animation decision at the apply step rather than around the read.
+    private func reload(animated: Bool = false) async {
+        let entries = await coordinator.history?.all() ?? []
+        let newStats = coordinator.stats?.stats() ?? DictationStatsStore.Stats()
+        let newRecents = Array(entries.prefix(3).map(\.record))
+        if animated {
+            withAnimation(FlowTheme.Motion.base) {
+                stats = newStats
+                recents = newRecents
+            }
+        } else {
+            stats = newStats
+            recents = newRecents
+        }
     }
 
     // MARK: Stats strip

@@ -9,9 +9,12 @@ import Foundation
 /// pass and keeps the status.
 actor DiarySyncController {
     static let containerID = "iCloud.com.marcomilanello.flowbridge"
+    private static let migrationDoneKey = "diaryHistoryMigrated"
 
     private let localRoot: URL
     private let local: Diario
+    /// Kept apart from the mirror's issues: a failed migration must stay
+    /// visible until a later launch retries it.
     private var migrationIssues: [String] = []
     private var status = "Diary saved here · waiting for iCloud Drive"
 
@@ -22,8 +25,20 @@ actor DiarySyncController {
         try FileManager.default.createDirectory(at: local.cartella, withIntermediateDirectories: true)
     }
 
+    /// Copies the legacy `TranscriptHistoryStore` into the diary.
+    ///
+    /// Bails out entirely once it has completed, so a mature install does not
+    /// replay one exclusive write (temp file + failed `renamex_np`) per
+    /// retained record on every launch. `voci()` is cheap enough to use as the
+    /// "already migrated" test; `scrivi` remains the real gate, so records
+    /// that arrive later still land through the normal path. Any failed write
+    /// leaves the flag unset, so the next launch retries just those records.
     func migrate(_ history: [TranscriptHistoryStore.Entry]) {
-        for entry in history {
+        let migrated = UserDefaults.standard.bool(forKey: Self.migrationDoneKey)
+        guard !migrated else { return }
+        migrationIssues = []
+        let known = Set(local.voci().map(\.id))
+        for entry in history where !known.contains(entry.record.id) {
             let record = entry.record
             let voice = VoceDiario(
                 id: record.id, quando: record.createdAt, dispositivo: "iphone", tipo: .dettatura,
@@ -34,6 +49,9 @@ actor DiarySyncController {
             do { try local.scrivi(voice) }
             catch Diario.Errore.esisteGia(_) { /* The migration is idempotent. */ }
             catch { migrationIssues.append("Migration: \(error.localizedDescription)") }
+        }
+        if migrationIssues.isEmpty {
+            UserDefaults.standard.set(true, forKey: Self.migrationDoneKey)
         }
     }
 
