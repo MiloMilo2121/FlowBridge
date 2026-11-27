@@ -34,7 +34,8 @@ public enum FlowBridgeConstants {
     public static let cloudProviderName = "ElevenLabs Scribe"
     public static let cloudSpeechToTextURL = "https://api.elevenlabs.io/v1/speech-to-text"
     public static let cloudModelID = "scribe_v1"
-    public static let cloudRequestTimeoutSeconds: TimeInterval = 60
+    /// Idle timeout: after the last byte the provider transcribes up to 2 hours of audio.
+    public static let cloudRequestTimeoutSeconds: TimeInterval = 10 * 60
     /// Keychain identifiers for the provider API key (never UserDefaults).
     public static let cloudKeychainService = "com.marcomilanello.flowbridge.cloud"
     public static let cloudKeychainAccount = "providerAPIKey"
