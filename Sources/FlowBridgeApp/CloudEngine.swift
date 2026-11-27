@@ -167,9 +167,11 @@ actor CloudEngine {
         let boundary = "flowbridge-\(UUID().uuidString)"
 
         // The multipart body goes to disk and is uploaded with
-        // `upload(for:fromFile:)`: a 2-hour meeting is ~230 MB of 16 kHz PCM,
-        // and materializing the body in memory (plus URLSession's own copy)
-        // would be killed by jetsam. The temp file is removed on every exit.
+        // `upload(for:fromFile:)`: the WAV is 16-bit PCM at the microphone's
+        // native rate, so a 2-hour meeting at 48 kHz is ~690 MB, and holding
+        // the body in memory would be killed by jetsam. The temp file is
+        // removed on every exit.
+        // scorciatoia: WAV + body need ~1.4 GB free for 2 hours; AAC replaces it.
         // Launch-time recovery sweeps bodies orphaned by a kill mid-upload.
         let bodyURL = AudioSafetyBuffer.uploadBodyURL(for: fileURL)
         defer { try? FileManager.default.removeItem(at: bodyURL) }

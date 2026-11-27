@@ -47,6 +47,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     private var liveSnapshotObserver: DarwinNotificationObserver?
     private var lastActivityPreview = ""
     private var lastActivityPushAt = Date.distantPast
+
     init() {
         // Handlers go in here, not in `bootstrap()`: an intent can be the
         // very first code to run in this process, and a start request that
