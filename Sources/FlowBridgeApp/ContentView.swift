@@ -124,7 +124,7 @@ private extension FlowBridgeCoordinator.State {
             return .green
         case .recording:
             return .red
-        case .transcribing:
+        case .starting, .transcribing:
             return .orange
         case .failed:
             return .pink
@@ -135,6 +135,8 @@ private extension FlowBridgeCoordinator.State {
         switch self {
         case .idle:
             return "Ready"
+        case .starting:
+            return "Starting"
         case .recording:
             return "Recording"
         case .transcribing:
@@ -150,7 +152,7 @@ private extension FlowBridgeCoordinator.State {
         switch self {
         case .recording:
             return "Stop"
-        case .transcribing:
+        case .starting, .transcribing:
             return "Working"
         case .idle, .ready, .failed:
             return "Record"
@@ -161,7 +163,7 @@ private extension FlowBridgeCoordinator.State {
         switch self {
         case .recording:
             return "stop.fill"
-        case .transcribing:
+        case .starting, .transcribing:
             return "waveform"
         case .idle, .ready, .failed:
             return "mic.fill"
@@ -170,7 +172,7 @@ private extension FlowBridgeCoordinator.State {
 
     var isBusyWithoutStop: Bool {
         switch self {
-        case .transcribing:
+        case .starting, .transcribing:
             return true
         case .idle, .ready, .recording, .failed:
             return false

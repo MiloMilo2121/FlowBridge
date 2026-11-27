@@ -11,6 +11,9 @@ final class FlowBridgeCoordinator: ObservableObject {
 
     enum State: Equatable {
         case idle
+        /// Set before the first await of a start, so a second start
+        /// (double tap, Action Button pressed twice) is refused.
+        case starting
         case recording(startedAt: Date)
         case transcribing
         case ready
@@ -106,8 +109,8 @@ final class FlowBridgeCoordinator: ObservableObject {
     /// not viable so the intent can fall back to opening the app.
     func startBackgroundDictation() async throws {
         switch state {
-        case .recording:
-            // Already started: the request is satisfied.
+        case .recording, .starting:
+            // Already started (or starting): the request is satisfied.
             return
         case .transcribing:
             // Finishing the previous dictation (or recovering one). Starting
@@ -141,7 +144,7 @@ final class FlowBridgeCoordinator: ObservableObject {
             switch state {
             case .recording:
                 statusMessage = "Live bridge active"
-            case .idle, .ready, .failed, .transcribing:
+            case .idle, .starting, .ready, .failed, .transcribing:
                 break
             }
         case .inactive:
@@ -181,7 +184,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         switch state {
         case .recording:
             await stopRecordingAndTranscribe()
-        case .transcribing:
+        case .starting, .transcribing:
             break
         case .idle, .ready, .failed:
             await startRecording()
@@ -210,9 +213,10 @@ final class FlowBridgeCoordinator: ObservableObject {
         switch state {
         case .idle, .ready, .failed:
             break
-        case .recording, .transcribing:
+        case .starting, .recording, .transcribing:
             return
         }
+        state = .starting
         let startedAt = Date()
         let sessionID = UUID()
         do {
@@ -330,7 +334,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         switch state {
         case .idle, .ready, .failed:
             break
-        case .recording, .transcribing:
+        case .starting, .recording, .transcribing:
             return
         }
 
@@ -453,7 +457,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         switch state {
         case .idle, .ready, .failed:
             break
-        case .recording, .transcribing:
+        case .starting, .recording, .transcribing:
             statusMessage = FlowBridgeError.dictationBusy.errorDescription
             return false
         }
@@ -493,7 +497,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         switch state {
         case .recording:
             await stopRecordingAndTranscribe()
-        case .idle, .ready, .failed, .transcribing:
+        case .idle, .starting, .ready, .failed, .transcribing:
             break
         }
     }
