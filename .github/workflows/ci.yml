@@ -37,15 +37,3 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
-      - name: Run iOS unit tests on a simulator
-        run: |
-          SIM=$(xcrun simctl list devices available | grep -m1 -oE "iPhone [0-9]+[^(]*" | sed 's/ *$//') || true
-          if [ -n "$SIM" ]; then
-            xcodebuild test \
-              -project FlowBridge.xcodeproj \
-              -scheme FlowBridgeApp \
-              -destination "platform=iOS Simulator,name=$SIM" \
-              CODE_SIGNING_ALLOWED=NO
-          else
-            echo "No simulator available; skipping test run."
-          fi

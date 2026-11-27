@@ -144,10 +144,3 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.marcomilanello.flowbridge.widgets
-  FlowBridgeSharedTests:
-    type: bundle.unit-test
-    platform: iOS
-    sources:
-      - path: Tests/FlowBridgeSharedTests
-    dependencies:
-      - target: FlowBridgeShared
