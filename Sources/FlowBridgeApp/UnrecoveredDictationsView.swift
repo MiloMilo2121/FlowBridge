@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Interrupted dictations that automatic recovery gave up on. The audio is
 /// never deleted behind the user's back, so this is where it goes instead:
-/// transcribe it again, export the WAV, or discard it explicitly.
+/// transcribe it again, export the audio, or discard it explicitly.
 struct UnrecoveredDictationsView: View {
     @EnvironmentObject private var coordinator: FlowBridgeCoordinator
 

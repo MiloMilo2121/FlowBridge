@@ -3,35 +3,19 @@ import Foundation
 import XCTest
 
 final class AudioSafetyBufferTests: XCTestCase {
-    func testBeginAppendKeepsValidWavOnDisk() async throws {
+    func testAppendWritesFramesToTheSessionFile() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let buffer = AudioSafetyBuffer(directory: directory, sampleRate: 16_000)
+        let buffer = AudioSafetyBuffer(directory: directory)
         let sessionID = UUID()
         try await buffer.begin(sessionID: sessionID)
-        try await buffer.append([0, 0.5, -0.5, 1.0])
-
-        let url = directory
-            .appendingPathComponent(sessionID.uuidString)
-            .appendingPathExtension("wav")
-        let data = try Data(contentsOf: url)
-
-        XCTAssertEqual(data.count, 44 + 4 * 2)
-        XCTAssertEqual(String(decoding: data[0..<4], as: UTF8.self), "RIFF")
-        XCTAssertEqual(String(decoding: data[8..<12], as: UTF8.self), "WAVE")
-        XCTAssertEqual(String(decoding: data[36..<40], as: UTF8.self), "data")
-
-        let dataSize = data[40..<44].withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }
-        XCTAssertEqual(UInt32(littleEndian: dataSize), 8)
-
-        let riffSize = data[4..<8].withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }
-        XCTAssertEqual(UInt32(littleEndian: riffSize), 36 + 8)
-
-        let firstSample = data[44..<46].withUnsafeBytes { $0.loadUnaligned(as: Int16.self) }
-        XCTAssertEqual(Int16(littleEndian: firstSample), 0)
-
+        try await buffer.append(Data([1, 2, 3]))
+        try await buffer.append(Data([4, 5]))
         await buffer.closeKeepingFile()
+
+        let url = AudioSafetyBuffer.fileURL(for: sessionID, in: directory)
+        XCTAssertEqual(try Data(contentsOf: url), Data([1, 2, 3, 4, 5]))
     }
 
     func testCompleteAndRemoveDeletesFile() async throws {
@@ -40,7 +24,7 @@ final class AudioSafetyBufferTests: XCTestCase {
 
         let buffer = AudioSafetyBuffer(directory: directory)
         try await buffer.begin(sessionID: UUID())
-        try await buffer.append([0.1, 0.2])
+        try await buffer.append(Data([1, 2]))
         await buffer.completeAndRemove()
 
         XCTAssertTrue(AudioSafetyBuffer.pendingRecordings(in: directory).isEmpty)
@@ -50,39 +34,17 @@ final class AudioSafetyBufferTests: XCTestCase {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let sampleRate = 16_000.0
-        let buffer = AudioSafetyBuffer(directory: directory, sampleRate: sampleRate)
+        let buffer = AudioSafetyBuffer(directory: directory)
         try await buffer.begin(sessionID: UUID())
-        try await buffer.append([Float](repeating: 0.25, count: 32_000))
+        try await buffer.append(Data(count: 16_000))
         await buffer.closeKeepingFile()
 
-        let pending = AudioSafetyBuffer.pendingRecordings(in: directory, sampleRate: sampleRate)
+        let pending = AudioSafetyBuffer.pendingRecordings(in: directory)
         XCTAssertEqual(pending.count, 1)
         XCTAssertEqual(pending[0].duration, 2.0, accuracy: 0.001)
 
         AudioSafetyBuffer.remove(pending[0])
         XCTAssertTrue(AudioSafetyBuffer.pendingRecordings(in: directory).isEmpty)
-    }
-
-    func testSamplesAreClampedToValidRange() async throws {
-        let directory = try makeDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-
-        let buffer = AudioSafetyBuffer(directory: directory)
-        let sessionID = UUID()
-        try await buffer.begin(sessionID: sessionID)
-        try await buffer.append([2.0, -2.0])
-        await buffer.closeKeepingFile()
-
-        let url = directory
-            .appendingPathComponent(sessionID.uuidString)
-            .appendingPathExtension("wav")
-        let data = try Data(contentsOf: url)
-
-        let high = data[44..<46].withUnsafeBytes { $0.loadUnaligned(as: Int16.self) }
-        let low = data[46..<48].withUnsafeBytes { $0.loadUnaligned(as: Int16.self) }
-        XCTAssertEqual(Int16(littleEndian: high), Int16.max)
-        XCTAssertEqual(Int16(littleEndian: low), -Int16.max)
     }
 
     // MARK: - Recovery attempts (crash-safety: audio is never destroyed)
@@ -91,10 +53,9 @@ final class AudioSafetyBufferTests: XCTestCase {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let sampleRate = 16_000.0
-        let buffer = AudioSafetyBuffer(directory: directory, sampleRate: sampleRate)
+        let buffer = AudioSafetyBuffer(directory: directory)
         try await buffer.begin(sessionID: UUID())
-        try await buffer.append([Float](repeating: 0.25, count: 16_000))
+        try await buffer.append(Data(count: 8_000))
         await buffer.closeKeepingFile()
 
         let fresh = try XCTUnwrap(AudioSafetyBuffer.pendingRecordings(in: directory).first)
@@ -104,12 +65,12 @@ final class AudioSafetyBufferTests: XCTestCase {
         let marked = try XCTUnwrap(AudioSafetyBuffer.recordRecoveryAttempt(fresh))
         XCTAssertEqual(marked.recoveryAttempt, 1)
 
-        let afterFailure = AudioSafetyBuffer.pendingRecordings(in: directory, sampleRate: sampleRate)
+        let afterFailure = AudioSafetyBuffer.pendingRecordings(in: directory)
         XCTAssertEqual(afterFailure.count, 1, "A failed recovery must not lose the audio")
         XCTAssertEqual(afterFailure[0].recoveryAttempt, 1)
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: afterFailure[0].url.path),
-            "The WAV must survive a failed recovery"
+            "The recording must survive a failed recovery"
         )
         // The rename must not disturb what makes the file recoverable.
         XCTAssertEqual(afterFailure[0].duration, 1.0, accuracy: 0.001)
@@ -121,7 +82,7 @@ final class AudioSafetyBufferTests: XCTestCase {
 
         let buffer = AudioSafetyBuffer(directory: directory)
         try await buffer.begin(sessionID: UUID())
-        try await buffer.append([Float](repeating: 0.25, count: 16_000))
+        try await buffer.append(Data(count: 8_000))
         await buffer.closeKeepingFile()
 
         var pending = try XCTUnwrap(AudioSafetyBuffer.pendingRecordings(in: directory).first)
@@ -147,7 +108,7 @@ final class AudioSafetyBufferTests: XCTestCase {
 
         let buffer = AudioSafetyBuffer(directory: directory)
         try await buffer.begin(sessionID: UUID())
-        try await buffer.append([Float](repeating: 0.25, count: 16_000))
+        try await buffer.append(Data(count: 8_000))
         await buffer.closeKeepingFile()
 
         let pending = try XCTUnwrap(AudioSafetyBuffer.pendingRecordings(in: directory).first)
@@ -158,7 +119,7 @@ final class AudioSafetyBufferTests: XCTestCase {
 
     func testMarkingAMissingFileIsBestEffort() {
         let missing = AudioSafetyBuffer.PendingRecording(
-            url: URL(fileURLWithPath: "/tmp/flowbridge-does-not-exist-\(UUID().uuidString).wav"),
+            url: URL(fileURLWithPath: "/tmp/flowbridge-does-not-exist-\(UUID().uuidString).aac"),
             duration: 1
         )
         XCTAssertNil(
@@ -217,10 +178,10 @@ final class AudioSafetyBufferTests: XCTestCase {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         try await writeOneSecondRecording(in: directory)
-        let wav = try XCTUnwrap(AudioSafetyBuffer.pendingRecordings(in: directory).first)
+        let recording = try XCTUnwrap(AudioSafetyBuffer.pendingRecordings(in: directory).first)
 
-        let stale = AudioSafetyBuffer.uploadBodyURL(for: wav.url)
-        let fresh = AudioSafetyBuffer.uploadBodyURL(for: wav.url)
+        let stale = AudioSafetyBuffer.uploadBodyURL(for: recording.url)
+        let fresh = AudioSafetyBuffer.uploadBodyURL(for: recording.url)
         let unrelated = directory.appendingPathComponent("notes.tmp")
         for url in [stale, fresh, unrelated] {
             try Data("body".utf8).write(to: url)
@@ -230,17 +191,17 @@ final class AudioSafetyBufferTests: XCTestCase {
         try FileManager.default.setAttributes([.modificationDate: twoHoursAgo], ofItemAtPath: unrelated.path)
 
         XCTAssertTrue(
-            AudioSafetyBuffer.pendingRecordings(in: directory).allSatisfy { $0.url.pathExtension == "wav" },
+            AudioSafetyBuffer.pendingRecordings(in: directory).allSatisfy { $0.url.pathExtension == "aac" },
             "Upload bodies must never look like a dictation to recover"
         )
         XCTAssertEqual(AudioSafetyBuffer.removeStaleUploadBodies(in: directory), 1)
         XCTAssertFalse(FileManager.default.fileExists(atPath: stale.path), "The orphan goes")
         XCTAssertTrue(FileManager.default.fileExists(atPath: fresh.path), "An upload in flight stays")
         XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path), "Only upload bodies are touched")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: wav.url.path), "The WAV is never touched")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: recording.url.path), "The recording is never touched")
     }
 
-    func testPendingRecordingsIgnoresNonWavFiles() async throws {
+    func testPendingRecordingsIgnoresOtherFiles() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
@@ -251,7 +212,7 @@ final class AudioSafetyBufferTests: XCTestCase {
     private func writeOneSecondRecording(in directory: URL) async throws {
         let buffer = AudioSafetyBuffer(directory: directory)
         try await buffer.begin(sessionID: UUID())
-        try await buffer.append([Float](repeating: 0.25, count: 16_000))
+        try await buffer.append(Data(count: 8_000))
         await buffer.closeKeepingFile()
     }
 

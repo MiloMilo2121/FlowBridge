@@ -49,7 +49,8 @@ public enum FlowBridgeConstants {
     public static let keyboardSafetyRefreshInterval: TimeInterval = 2.0
 
     public static let safetyBufferDirectoryName = "SafetyBuffer"
-    public static let safetyBufferSampleRate: Double = 16_000
+    /// AAC bitrate: transparent for speech, ~29 MB per hour.
+    public static let recordingBitRate: Double = 64_000
     public static let safetyBufferFlushInterval: TimeInterval = 1.0
     /// Interrupted recordings shorter than this are discarded instead of
     /// recovered: below ~1s there is no usable speech.

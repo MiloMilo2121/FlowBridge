@@ -367,7 +367,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         guard case .idle = state else { return }
         guard let directory = try? AudioSafetyBuffer.defaultDirectory() else { return }
 
-        // Cloud upload bodies orphaned by a kill mid-upload: a copy of a WAV
+        // Cloud upload bodies orphaned by a kill mid-upload: a copy of a recording
         // that is still here, so only disk space is at stake.
         AudioSafetyBuffer.removeStaleUploadBodies(in: directory)
         defer { refreshUnrecoveredDictations() }
@@ -408,7 +408,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         }
     }
 
-    /// Transcribes a safety-buffer WAV and, only once the transcript is
+    /// Transcribes a safety-buffer recording and, only once the transcript is
     /// safely stored, deletes it. On failure the file stays: it is still the
     /// user's dictation and the only copy of it. With `forgiveTransient`, a
     /// transient failure (no network for the cloud engine) gives the attempt

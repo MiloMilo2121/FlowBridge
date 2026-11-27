@@ -1,7 +1,7 @@
 # FlowBridge
 
 FlowBridge is the team's iPhone recorder. Dictation and meetings (up to 2 hours) are recorded on the
-phone into a crash-safe WAV, uploaded for transcription when you stop, and the text lands on the
+phone into a crash-safe AAC file (64 kbps, ~29 MB per hour), uploaded for transcription when you stop, and the text lands on the
 clipboard. A keyboard extension inserts the latest transcript where you type.
 
 Being rebuilt: transcription moves behind the team's cloud pipeline with Google sign-in, and the UI is
@@ -11,7 +11,7 @@ stored in the Keychain.
 ## Architecture
 
 - The main app records and uploads (`CloudEngine`). Extensions never record and never reach the network.
-- Recordings stream into a crash-safe WAV in the App Group (`AudioSafetyBuffer`). An interrupted
+- Recordings stream as ADTS AAC frames (each readable on its own) into the App Group (`AudioSafetyBuffer`). An interrupted
   recording is transcribed on the next launch; the file is deleted only once the transcript is stored.
 - The keyboard reads the latest transcript from the App Group and inserts it through
   `UITextDocumentProxy`. Live updates arrive via Darwin notifications.
