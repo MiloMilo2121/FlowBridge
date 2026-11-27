@@ -43,12 +43,8 @@ public enum FlowBridgeConstants {
     /// streaming; intermediate snapshots are dropped (the next one lands).
     public static let liveActivityMinUpdateInterval: TimeInterval = 0.3
 
-    /// Keyboard live updates are Darwin-notification driven. The legacy
-    /// 250ms polling loop is kept behind this flag as a fallback; when the
-    /// flag is off the keyboard still runs a slow safety refresh so a missed
-    /// notification can never strand a stale transcript.
-    public static let keyboardLegacyPollingEnabled = false
-    public static let keyboardLegacyPollingInterval: TimeInterval = 0.25
+    /// Keyboard live updates are Darwin-notification driven; this slow
+    /// refresh covers a missed notification.
     public static let keyboardSafetyRefreshInterval: TimeInterval = 2.0
 
     public static let safetyBufferDirectoryName = "SafetyBuffer"

@@ -18,6 +18,14 @@ final class FlowBridgeCoordinator: ObservableObject {
         case transcribing
         case ready
         case failed(String)
+
+        /// No work in flight: a new start or job may begin.
+        var isSettled: Bool {
+            switch self {
+            case .idle, .ready, .failed: true
+            case .starting, .recording, .transcribing: false
+            }
+        }
     }
 
     @Published private(set) var state: State = .idle
@@ -210,12 +218,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         // Only a settled coordinator may start: during recording or
         // transcription (including recovery) a start would overwrite the
         // state of the work in flight.
-        switch state {
-        case .idle, .ready, .failed:
-            break
-        case .starting, .recording, .transcribing:
-            return
-        }
+        guard state.isSettled else { return }
         state = .starting
         let startedAt = Date()
         let sessionID = UUID()
@@ -331,12 +334,7 @@ final class FlowBridgeCoordinator: ObservableObject {
         // Never start a file transcription while a live session runs: it
         // would clobber the .recording state, orphaning the Live Activity
         // and the audio session.
-        switch state {
-        case .idle, .ready, .failed:
-            break
-        case .starting, .recording, .transcribing:
-            return
-        }
+        guard state.isSettled else { return }
 
         guard let url = QueuedAudioStore.latestQueuedAudioURL() else { return }
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -454,10 +452,7 @@ final class FlowBridgeCoordinator: ObservableObject {
     /// transcription fails again.
     @discardableResult
     func retryUnrecoveredDictation(_ recording: AudioSafetyBuffer.PendingRecording) async -> Bool {
-        switch state {
-        case .idle, .ready, .failed:
-            break
-        case .starting, .recording, .transcribing:
+        guard state.isSettled else {
             statusMessage = FlowBridgeError.dictationBusy.errorDescription
             return false
         }

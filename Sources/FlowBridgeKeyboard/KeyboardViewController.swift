@@ -133,10 +133,8 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     /// Live updates are push-based: the app posts a Darwin notification after
-    /// every snapshot write and the keyboard reloads on delivery. A timer
-    /// remains as the fallback path — at the legacy 250ms cadence when the
-    /// compatibility flag is on, otherwise as a slow safety refresh that
-    /// covers a missed notification without burning CPU.
+    /// every snapshot write and the keyboard reloads on delivery. A slow
+    /// timer covers a missed notification without burning CPU.
     private func startLiveUpdates() {
         darwinObserver = DarwinNotificationObserver(
             name: FlowBridgeConstants.liveTranscriptDidChangeDarwinName
@@ -146,12 +144,11 @@ final class KeyboardViewController: UIInputViewController {
             }
         }
 
-        let interval = FlowBridgeConstants.keyboardLegacyPollingEnabled
-            ? FlowBridgeConstants.keyboardLegacyPollingInterval
-            : FlowBridgeConstants.keyboardSafetyRefreshInterval
-
         liveTimer?.invalidate()
-        liveTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+        liveTimer = Timer.scheduledTimer(
+            withTimeInterval: FlowBridgeConstants.keyboardSafetyRefreshInterval,
+            repeats: true
+        ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.applyLiveSnapshotIfNeeded()
             }
