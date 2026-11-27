@@ -18,14 +18,9 @@ jobs:
         run: swift build
       - name: Run shared tests
         run: swift test
-      - name: Run runtime checks
-        run: swift run FlowBridgeSharedCheck
 
-  # The real iOS validation: regenerates the Xcode project (the committed one
-  # does not contain the widgets target) and compiles every target for the
-  # simulator, unsigned. The simulator has no ANE/Apple Intelligence, so this
-  # validates code and fallbacks, not model output — device testing stays a
-  # manual gate (see Docs/HANDOFF_NEXT_STEPS.md).
+  # Regenerates the Xcode project and compiles every target for the
+  # simulator, unsigned. Device testing stays a manual gate.
   ios-simulator:
     runs-on: macos-15
     steps:

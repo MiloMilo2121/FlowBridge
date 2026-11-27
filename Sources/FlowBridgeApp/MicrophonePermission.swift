@@ -6,11 +6,7 @@ struct RecordedAudio: Sendable {
     let duration: TimeInterval
 }
 
-/// Microphone permission, and nothing else. Audio capture itself lives in
-/// the engines (`AppleSpeechEngine.startCapture`, WhisperKit's audio
-/// processor) — this used to be a full `AVAudioRecorder` wrapper whose
-/// recording path was never called, which made it read like the component
-/// that records the dictation. It is not.
+/// Microphone permission, and nothing else: capture lives in `CloudEngine`.
 enum MicrophonePermission {
     static func request() async -> Bool {
         await withCheckedContinuation { continuation in

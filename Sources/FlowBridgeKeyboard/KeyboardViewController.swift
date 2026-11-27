@@ -12,7 +12,6 @@ final class KeyboardViewController: UIInputViewController {
     private var lastSessionID: UUID?
     private var lastSequence = 0
     private var completedSessionID: UUID?
-    private var lastPublishedTone: ToneProfile?
     /// Set when the field no longer matches what we inserted (the user
     /// typed, moved the caret, or the host app auto-corrected): from that
     /// moment we stop touching the field for the rest of the session — the
@@ -25,7 +24,6 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        NetworkGuard.install()
         buildInterface()
         refresh()
     }
@@ -33,21 +31,12 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         refresh()
-        publishToneHint()
         startLiveUpdates()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         stopLiveUpdates()
-    }
-
-    override func textDidChange(_ textInput: UITextInput?) {
-        super.textDidChange(textInput)
-        // The user may have moved to a different field without the keyboard
-        // disappearing; keep the tone hint in sync (cached — no-op unless it
-        // actually changed).
-        publishToneHint()
     }
 
     private func buildInterface() {
@@ -132,23 +121,6 @@ final class KeyboardViewController: UIInputViewController {
               let text = TranscriptStore.latest()?.text, !text.isEmpty else { return }
         textDocumentProxy.insertText(text)
         textDocumentProxy.insertText("\n")
-    }
-
-    /// Tone from the active field's traits (public API; keyboards cannot see
-    /// the host app's identity): a "send" return key is a chat box → casual;
-    /// an email-address field belongs to a mail flow → formal.
-    private func publishToneHint() {
-        let profile: ToneProfile
-        if textDocumentProxy.returnKeyType == .send {
-            profile = .casual
-        } else if textDocumentProxy.keyboardType == .emailAddress {
-            profile = .formal
-        } else {
-            profile = .neutral
-        }
-        guard profile != lastPublishedTone else { return }
-        lastPublishedTone = profile
-        (try? ToneContextStore())?.writeHint(ToneHint(profile: profile))
     }
 
     @objc private func toggleLiveMode() {

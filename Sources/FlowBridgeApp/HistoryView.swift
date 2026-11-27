@@ -72,13 +72,6 @@ struct HistoryView: View {
             ShareLink(item: entry.record.text) {
                 Label("Share", systemImage: "square.and.arrow.up")
             }
-            if let raw = entry.record.rawText, raw != entry.record.text {
-                Button {
-                    UIPasteboard.general.string = raw
-                } label: {
-                    Label("Copy verbatim", systemImage: "text.quote")
-                }
-            }
             Button {
                 Task {
                     try? await coordinator.history?.setPinned(!entry.isPinned, id: entry.id)

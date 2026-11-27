@@ -1,9 +1,7 @@
 import UIKit
 
-/// The fixed haptic vocabulary (see KILLER_FEATURES_V2.md §2.2): each event
-/// has exactly one pattern, never reused for another meaning — the app is
-/// fully usable from the pocket. Implemented on UIFeedbackGenerator; a
-/// CoreHaptics/AHAP upgrade can slot in behind the same API.
+/// One haptic pattern per event, never reused for another meaning, so the
+/// app is usable from the pocket.
 @MainActor
 enum HapticPlayer {
     /// "Heartbeat up": two rising taps — I'm listening.

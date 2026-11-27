@@ -2,24 +2,15 @@ import AVFoundation
 import FlowBridgeShared
 import Foundation
 
-/// Opt-in cloud transcription engine (OFF by default).
-///
-/// Positioning: FlowBridge stays on-device by default; this engine exists
-/// for users who deliberately trade "audio never leaves the phone" for the
-/// provider's accuracy. Every layer reminds them: explicit consent screen,
-/// status badge while recording, and `CloudGate`/`NetworkGuard` whitelisting
-/// exactly one host only while the toggle is on.
-///
-/// Shape: audio is captured LOCALLY into the crash-safe WAV (the same
-/// `AudioSafetyBuffer` machinery as the local engines) and uploaded once, on
-/// stop — no streaming partials. If the upload fails, the WAV is kept for
-/// recovery, so even a cloud dictation is never lost: the next launch
-/// re-transcribes it (with whatever engine is then configured).
+/// The only transcription engine: audio is captured locally into the
+/// crash-safe WAV (`AudioSafetyBuffer`) and uploaded once, on stop — no
+/// streaming partials. If the upload fails the WAV is kept, so the next
+/// launch re-transcribes it and a dictation is never lost.
 ///
 /// Provider: ElevenLabs Scribe (best independent Italian WER; configure EU
 /// Data Residency + Zero Retention on the account, and sign the DPA). The
 /// API key lives in the Keychain.
-actor CloudEngine: TranscriptionEngine {
+actor CloudEngine {
     private var audioEngine: AVAudioEngine?
     private var safetyBuffer: AudioSafetyBuffer?
     private var safetyFlushTask: Task<Void, Never>?
@@ -41,7 +32,7 @@ actor CloudEngine: TranscriptionEngine {
         guard audioEngine == nil else {
             throw FlowBridgeError.alreadyRecording
         }
-        guard CloudGate.isCloudEngineEnabled, KeychainStore.loadCloudAPIKey() != nil else {
+        guard KeychainStore.loadCloudAPIKey() != nil else {
             throw FlowBridgeError.transcriptionFailed("Cloud engine is not configured.")
         }
 
@@ -166,9 +157,6 @@ actor CloudEngine: TranscriptionEngine {
     // MARK: - Upload
 
     private func upload(fileURL: URL) async throws -> String {
-        guard CloudGate.isCloudEngineEnabled else {
-            throw FlowBridgeError.transcriptionFailed("Cloud engine is disabled.")
-        }
         guard let apiKey = KeychainStore.loadCloudAPIKey() else {
             throw FlowBridgeError.transcriptionFailed("No cloud API key is configured.")
         }
@@ -179,11 +167,9 @@ actor CloudEngine: TranscriptionEngine {
         let boundary = "flowbridge-\(UUID().uuidString)"
 
         // The multipart body goes to disk and is uploaded with
-        // `upload(for:fromFile:)`: `maxRecordingSeconds` is 600, so a
-        // 10-minute dictation is ~19 MB of 16 kHz PCM, and materializing the
-        // body in memory (plus URLSession's own copy) is a jetsam risk on
-        // exactly the long dictations this engine is for. The temp file is
-        // removed on every exit path, success or failure.
+        // `upload(for:fromFile:)`: a 2-hour meeting is ~230 MB of 16 kHz PCM,
+        // and materializing the body in memory (plus URLSession's own copy)
+        // would be killed by jetsam. The temp file is removed on every exit.
         // Launch-time recovery sweeps bodies orphaned by a kill mid-upload.
         let bodyURL = AudioSafetyBuffer.uploadBodyURL(for: fileURL)
         defer { try? FileManager.default.removeItem(at: bodyURL) }

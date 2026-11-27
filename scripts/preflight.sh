@@ -63,13 +63,6 @@ else
   fail "xcodegen generate failed:"; tail -20 /tmp/fb_xcodegen.log; STATUS=1
 fi
 
-# Whisper model is required at RUNTIME (app fails closed) but not to compile.
-if [ -d "Resources/WhisperModels/WhisperSmall" ]; then
-  pass "Whisper model present"
-else
-  warn "Whisper model missing — run ./scripts/fetch-whisper-small.sh before running on device (compiles fine without it)."
-fi
-
 # 4 — compile all iOS targets for the simulator ----------------------------
 step "4/5  Compile all iOS targets (xcodebuild, simulator)"
 DEST="generic/platform=iOS Simulator"

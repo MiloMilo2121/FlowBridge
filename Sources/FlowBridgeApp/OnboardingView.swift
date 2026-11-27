@@ -25,7 +25,7 @@ struct OnboardingView: View {
         scene(
             symbol: "waveform.circle.fill",
             title: "Speak.",
-            message: "FlowBridge turns your voice into clean text, entirely on this iPhone. No cloud, no account. Try it: allow the microphone and say something."
+            message: "FlowBridge turns your voice into text: it records here and uploads the audio for transcription when you stop. Try it: allow the microphone and say something."
         ) {
             Button {
                 Task {
