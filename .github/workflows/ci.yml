@@ -22,7 +22,7 @@ jobs:
   # Regenerates the Xcode project and compiles every target for the
   # simulator, unsigned. Device testing stays a manual gate.
   ios-simulator:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - name: Install XcodeGen
