@@ -32,9 +32,8 @@ actor CloudEngine {
         guard audioEngine == nil else {
             throw FlowBridgeError.alreadyRecording
         }
-        guard KeychainStore.loadCloudAPIKey() != nil else {
-            throw FlowBridgeError.transcriptionFailed("Cloud engine is not configured.")
-        }
+        // No key check here: without one the recording still happens and the WAV
+        // is kept for a later upload, so a meeting is never refused.
 
         let liveStore = try LiveTranscriptStore()
         liveSessionID = sessionID
