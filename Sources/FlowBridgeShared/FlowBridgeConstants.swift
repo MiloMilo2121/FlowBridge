@@ -5,7 +5,8 @@ public enum FlowBridgeConstants {
     public static let latestTranscriptKey = "latestTranscriptRecord"
     public static let pendingCommandKey = "pendingCommand"
     public static let queuedAudioPathKey = "queuedAudioPath"
-    public static let maxRecordingSeconds: TimeInterval = 600
+    /// A meeting lasts at most 2 hours.
+    public static let maxRecordingSeconds: TimeInterval = 2 * 60 * 60
 
     /// Darwin notification posted whenever a live transcript snapshot is
     /// written to the App Group. Payload-free; readers reload from the store.
