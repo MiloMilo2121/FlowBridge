@@ -2,26 +2,18 @@ import AVFoundation
 import FlowBridgeShared
 import Foundation
 
-/// Opt-in cloud transcription engine (OFF by default).
-///
-/// Positioning: FlowBridge stays on-device by default; this engine exists
-/// for users who deliberately trade "audio never leaves the phone" for the
-/// provider's accuracy. Every layer reminds them: explicit consent screen,
-/// status badge while recording, and `CloudGate`/`NetworkGuard` whitelisting
-/// exactly one host only while the toggle is on.
-///
-/// Shape: audio is captured LOCALLY into the crash-safe WAV (the same
-/// `AudioSafetyBuffer` machinery as the local engines) and uploaded once, on
-/// stop — no streaming partials. If the upload fails, the WAV is kept for
-/// recovery, so even a cloud dictation is never lost: the next launch
-/// re-transcribes it (with whatever engine is then configured).
+/// The only transcription engine: audio is captured locally into the
+/// crash-safe AAC file (`AudioSafetyBuffer`) and uploaded once, on stop — no
+/// streaming partials. If the upload fails the file is kept, so the next
+/// launch re-transcribes it and a dictation is never lost.
 ///
 /// Provider: ElevenLabs Scribe (best independent Italian WER; configure EU
 /// Data Residency + Zero Retention on the account, and sign the DPA). The
 /// API key lives in the Keychain.
-actor CloudEngine: TranscriptionEngine {
+actor CloudEngine {
     private var audioEngine: AVAudioEngine?
     private var safetyBuffer: AudioSafetyBuffer?
+    private var encoder: AACEncoder?
     private var safetyFlushTask: Task<Void, Never>?
     private var recordingFileURL: URL?
     private var liveSessionID: UUID?
@@ -41,9 +33,8 @@ actor CloudEngine: TranscriptionEngine {
         guard audioEngine == nil else {
             throw FlowBridgeError.alreadyRecording
         }
-        guard CloudGate.isCloudEngineEnabled, KeychainStore.loadCloudAPIKey() != nil else {
-            throw FlowBridgeError.transcriptionFailed("Cloud engine is not configured.")
-        }
+        // No key check here: without one the recording still happens and the file
+        // is kept for a later upload, so a meeting is never refused.
 
         let liveStore = try LiveTranscriptStore()
         liveSessionID = sessionID
@@ -67,17 +58,19 @@ actor CloudEngine: TranscriptionEngine {
         let format = input.outputFormat(forBus: 0)
 
         let directory = try AudioSafetyBuffer.defaultDirectory()
-        let buffer = AudioSafetyBuffer(directory: directory, sampleRate: format.sampleRate)
+        let encoder = try AACEncoder(sampleRate: format.sampleRate)
+        let buffer = AudioSafetyBuffer(directory: directory)
         try await buffer.begin(sessionID: sessionID)
         safetyBuffer = buffer
-        recordingFileURL = directory.appendingPathComponent(sessionID.uuidString).appendingPathExtension("wav")
+        self.encoder = encoder
+        recordingFileURL = AudioSafetyBuffer.fileURL(for: sessionID, in: directory)
 
         sampleAccumulator.reset(expectedSamplesPerFlush: Int(format.sampleRate * FlowBridgeConstants.safetyBufferFlushInterval))
         safetyFlushTask = Task { [sampleAccumulator] in
             while !Task.isCancelled {
                 let pending = sampleAccumulator.drain()
                 if !pending.isEmpty {
-                    try? await buffer.append(pending)
+                    try? await buffer.append(await encoder.encode(pending))
                 }
                 try? await Task.sleep(for: .seconds(FlowBridgeConstants.safetyBufferFlushInterval))
             }
@@ -103,17 +96,16 @@ actor CloudEngine: TranscriptionEngine {
         stopCapture()
         liveSessionID = nil
 
+        // Let the flush in progress land first: frames must reach the file in order.
         safetyFlushTask?.cancel()
+        await safetyFlushTask?.value
         safetyFlushTask = nil
 
         guard let buffer = safetyBuffer, let fileURL = recordingFileURL else {
             throw FlowBridgeError.transcriptionFailed("No recording file was produced.")
         }
-        let pending = sampleAccumulator.drain()
-        if !pending.isEmpty {
-            try? await buffer.append(pending)
-        }
-        // Close but KEEP the WAV: it is both the upload payload and the
+        try? await finishEncoding(into: buffer)
+        // Close but KEEP the file: it is both the upload payload and the
         // crash/offline net.
         await buffer.closeKeepingFile()
         safetyBuffer = nil
@@ -131,7 +123,7 @@ actor CloudEngine: TranscriptionEngine {
                 source: .microphone
             )
         } catch {
-            // Upload failed (offline, key revoked, provider down): the WAV
+            // Upload failed (offline, key revoked, provider down): the file
             // stays in the safety folder, so the next launch recovers and
             // re-transcribes this dictation. Nothing is lost.
             liveStore.writeError(sessionID: sessionID, sequence: Int.max, message: "Cloud upload failed — dictation saved for recovery.")
@@ -141,19 +133,26 @@ actor CloudEngine: TranscriptionEngine {
 
     func unload() async {
         stopCapture()
+        // Let the flush in progress land first: frames must reach the file in order.
         safetyFlushTask?.cancel()
+        await safetyFlushTask?.value
         safetyFlushTask = nil
         if let buffer = safetyBuffer {
-            let pending = sampleAccumulator.drain()
-            if !pending.isEmpty {
-                try? await buffer.append(pending)
-            }
-            // Interrupted session: keep the WAV for recovery.
+            try? await finishEncoding(into: buffer)
+            // Interrupted session: keep the file for recovery.
             await buffer.closeKeepingFile()
         }
         safetyBuffer = nil
         recordingFileURL = nil
         liveSessionID = nil
+    }
+
+    /// Encodes what the tap left and flushes the encoder, so the last words
+    /// reach the file.
+    private func finishEncoding(into buffer: AudioSafetyBuffer) async throws {
+        defer { encoder = nil }
+        guard let encoder else { return }
+        try await buffer.append(await encoder.encode(sampleAccumulator.drain(), endOfStream: true))
     }
 
     private func stopCapture() {
@@ -166,9 +165,6 @@ actor CloudEngine: TranscriptionEngine {
     // MARK: - Upload
 
     private func upload(fileURL: URL) async throws -> String {
-        guard CloudGate.isCloudEngineEnabled else {
-            throw FlowBridgeError.transcriptionFailed("Cloud engine is disabled.")
-        }
         guard let apiKey = KeychainStore.loadCloudAPIKey() else {
             throw FlowBridgeError.transcriptionFailed("No cloud API key is configured.")
         }
@@ -179,11 +175,9 @@ actor CloudEngine: TranscriptionEngine {
         let boundary = "flowbridge-\(UUID().uuidString)"
 
         // The multipart body goes to disk and is uploaded with
-        // `upload(for:fromFile:)`: `maxRecordingSeconds` is 600, so a
-        // 10-minute dictation is ~19 MB of 16 kHz PCM, and materializing the
-        // body in memory (plus URLSession's own copy) is a jetsam risk on
-        // exactly the long dictations this engine is for. The temp file is
-        // removed on every exit path, success or failure.
+        // `upload(for:fromFile:)`: a 2-hour meeting is ~60 MB of AAC, and
+        // holding the body in memory (plus URLSession's copy) is a jetsam
+        // risk. The temp file is removed on every exit.
         // Launch-time recovery sweeps bodies orphaned by a kill mid-upload.
         let bodyURL = AudioSafetyBuffer.uploadBodyURL(for: fileURL)
         defer { try? FileManager.default.removeItem(at: bodyURL) }
@@ -219,7 +213,7 @@ actor CloudEngine: TranscriptionEngine {
     }
 
     /// Streams the multipart body to `bodyURL`: the small fields and headers
-    /// in memory, the audio in 1 MB chunks straight from the WAV. Never holds
+    /// in memory, the audio in 1 MB chunks straight from the file. Never holds
     /// the whole payload.
     private func writeMultipartBody(to bodyURL: URL, boundary: String, audioURL: URL) throws {
         FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
@@ -231,7 +225,7 @@ actor CloudEngine: TranscriptionEngine {
         }
 
         try append("--\(boundary)\r\nContent-Disposition: form-data; name=\"model_id\"\r\n\r\n\(FlowBridgeConstants.cloudModelID)\r\n")
-        try append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"dictation.wav\"\r\nContent-Type: audio/wav\r\n\r\n")
+        try append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"dictation.aac\"\r\nContent-Type: audio/aac\r\n\r\n")
 
         let input = try FileHandle(forReadingFrom: audioURL)
         defer { try? input.close() }

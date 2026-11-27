@@ -12,20 +12,18 @@ final class KeyboardViewController: UIInputViewController {
     private var lastSessionID: UUID?
     private var lastSequence = 0
     private var completedSessionID: UUID?
-    private var lastPublishedTone: ToneProfile?
     /// Set when the field no longer matches what we inserted (the user
     /// typed, moved the caret, or the host app auto-corrected): from that
     /// moment we stop touching the field for the rest of the session — the
     /// finished transcript stays available via Insert and the clipboard.
     private var liveInsertAborted = false
 
-    deinit {
+    isolated deinit {
         liveTimer?.invalidate()
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        NetworkGuard.install()
         buildInterface()
         refresh()
     }
@@ -33,21 +31,12 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         refresh()
-        publishToneHint()
         startLiveUpdates()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         stopLiveUpdates()
-    }
-
-    override func textDidChange(_ textInput: UITextInput?) {
-        super.textDidChange(textInput)
-        // The user may have moved to a different field without the keyboard
-        // disappearing; keep the tone hint in sync (cached — no-op unless it
-        // actually changed).
-        publishToneHint()
     }
 
     private func buildInterface() {
@@ -134,23 +123,6 @@ final class KeyboardViewController: UIInputViewController {
         textDocumentProxy.insertText("\n")
     }
 
-    /// Tone from the active field's traits (public API; keyboards cannot see
-    /// the host app's identity): a "send" return key is a chat box → casual;
-    /// an email-address field belongs to a mail flow → formal.
-    private func publishToneHint() {
-        let profile: ToneProfile
-        if textDocumentProxy.returnKeyType == .send {
-            profile = .casual
-        } else if textDocumentProxy.keyboardType == .emailAddress {
-            profile = .formal
-        } else {
-            profile = .neutral
-        }
-        guard profile != lastPublishedTone else { return }
-        lastPublishedTone = profile
-        (try? ToneContextStore())?.writeHint(ToneHint(profile: profile))
-    }
-
     @objc private func toggleLiveMode() {
         liveModeEnabled.toggle()
         refresh()
@@ -161,10 +133,8 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     /// Live updates are push-based: the app posts a Darwin notification after
-    /// every snapshot write and the keyboard reloads on delivery. A timer
-    /// remains as the fallback path — at the legacy 250ms cadence when the
-    /// compatibility flag is on, otherwise as a slow safety refresh that
-    /// covers a missed notification without burning CPU.
+    /// every snapshot write and the keyboard reloads on delivery. A slow
+    /// timer covers a missed notification without burning CPU.
     private func startLiveUpdates() {
         darwinObserver = DarwinNotificationObserver(
             name: FlowBridgeConstants.liveTranscriptDidChangeDarwinName
@@ -174,12 +144,11 @@ final class KeyboardViewController: UIInputViewController {
             }
         }
 
-        let interval = FlowBridgeConstants.keyboardLegacyPollingEnabled
-            ? FlowBridgeConstants.keyboardLegacyPollingInterval
-            : FlowBridgeConstants.keyboardSafetyRefreshInterval
-
         liveTimer?.invalidate()
-        liveTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+        liveTimer = Timer.scheduledTimer(
+            withTimeInterval: FlowBridgeConstants.keyboardSafetyRefreshInterval,
+            repeats: true
+        ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.applyLiveSnapshotIfNeeded()
             }

@@ -1,4 +1,4 @@
-import ActivityKit
+@preconcurrency import ActivityKit
 import FlowBridgeShared
 import Foundation
 
@@ -88,7 +88,7 @@ final class DictationActivityController {
     }
 
     /// Appends `operation` after whatever is already queued, preserving order.
-    private func enqueue(_ operation: @escaping @Sendable () async -> Void) {
+    private func enqueue(_ operation: @escaping @MainActor () async -> Void) {
         let previous = tail
         tail = Task {
             await previous.value

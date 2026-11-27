@@ -5,7 +5,6 @@ import UIKit
 final class ShareViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
-        NetworkGuard.install()
 
         view.backgroundColor = .systemBackground
         Task { await importSharedItem() }

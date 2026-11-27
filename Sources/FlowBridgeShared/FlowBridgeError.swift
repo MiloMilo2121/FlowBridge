@@ -5,13 +5,11 @@ public enum FlowBridgeError: Error, Equatable, LocalizedError, Sendable {
     case alreadyRecording
     case notRecording
     case appGroupUnavailable(String)
-    case modelMissing(String)
     case emptyTranscript
     case queuedAudioMissing
     case unsupportedShareItem
     case recorderFailed(String)
     case transcriptionFailed(String)
-    case warmupTimedOut
     case liveActivityUnavailable
     case noDictationHandler
     case dictationBusy
@@ -26,8 +24,6 @@ public enum FlowBridgeError: Error, Equatable, LocalizedError, Sendable {
             return "No active recording is available."
         case .appGroupUnavailable(let identifier):
             return "App Group is unavailable: \(identifier)."
-        case .modelMissing(let path):
-            return "Whisper model assets are missing at \(path)."
         case .emptyTranscript:
             return "The transcription result was empty."
         case .queuedAudioMissing:
@@ -38,8 +34,6 @@ public enum FlowBridgeError: Error, Equatable, LocalizedError, Sendable {
             return "Recorder failed: \(message)"
         case .transcriptionFailed(let message):
             return "Transcription failed: \(message)"
-        case .warmupTimedOut:
-            return "The speech engine took too long to start."
         case .liveActivityUnavailable:
             return "Live Activities are off, so a background dictation cannot stay alive."
         case .noDictationHandler:

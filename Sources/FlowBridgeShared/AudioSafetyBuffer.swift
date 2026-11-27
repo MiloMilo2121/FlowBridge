@@ -2,10 +2,10 @@ import Foundation
 
 /// Crash-safe audio buffer for live dictation.
 ///
-/// While a live session runs, incoming samples are appended to a WAV file in
-/// the App Group container. The file stays a valid 16-bit PCM WAV after every
-/// append (the header sizes are patched in place), so a session interrupted
-/// by a crash or a system kill leaves behind a playable, transcribable file.
+/// While a live session runs, encoded AAC frames (ADTS, each one readable on
+/// its own) are appended to a file in the App Group container, so a session
+/// interrupted by a crash or a system kill leaves behind a playable,
+/// transcribable file up to the last frame written.
 /// Completing a session removes the file; anything found on the next launch
 /// is an interrupted dictation to recover.
 ///
@@ -37,26 +37,23 @@ public actor AudioSafetyBuffer {
         }
     }
 
-    private static let headerByteCount = 44
-    private static let bytesPerSample = 2
-    /// Filename marker for a WAV that already failed recovery N times:
-    /// `<uuid>.attempt-N.wav`. Lets the next launch give up on a file no
+    /// Recordings are ADTS AAC files.
+    public static let fileExtension = "aac"
+    /// Filename marker for a file that already failed recovery N times:
+    /// `<uuid>.attempt-N.aac`. Lets the next launch give up on a file no
     /// engine can read, without deleting the user's audio.
     private static let attemptMarker = "attempt-"
-    /// Filename marker for a cloud upload body staged next to its WAV:
+    /// Filename marker for a cloud upload body staged next to its recording:
     /// `<uuid>.multipart-XXXXXXXX.tmp`.
     private static let uploadBodyMarker = "multipart-"
     private static let uploadBodyExtension = "tmp"
 
     private let directory: URL
-    private let sampleRate: Double
     private var fileHandle: FileHandle?
     private var fileURL: URL?
-    private var sampleCount = 0
 
-    public init(directory: URL, sampleRate: Double = FlowBridgeConstants.safetyBufferSampleRate) {
+    public init(directory: URL) {
         self.directory = directory
-        self.sampleRate = sampleRate
     }
 
     public static func defaultDirectory() throws -> URL {
@@ -70,33 +67,23 @@ public actor AudioSafetyBuffer {
         closeKeepingFile()
 
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(sessionID.uuidString).appendingPathExtension("wav")
+        let url = Self.fileURL(for: sessionID, in: directory)
         _ = FileManager.default.createFile(atPath: url.path, contents: nil)
 
-        let handle = try FileHandle(forWritingTo: url)
-        sampleCount = 0
-        try handle.write(contentsOf: Self.header(sampleCount: 0, sampleRate: sampleRate))
-
-        fileHandle = handle
+        fileHandle = try FileHandle(forWritingTo: url)
         fileURL = url
     }
 
-    public func append(_ samples: [Float]) throws {
-        guard let fileHandle else { return }
-        guard !samples.isEmpty else { return }
+    public static func fileURL(for sessionID: UUID, in directory: URL) -> URL {
+        directory.appendingPathComponent(sessionID.uuidString).appendingPathExtension(fileExtension)
+    }
 
-        var converted = [Int16]()
-        converted.reserveCapacity(samples.count)
-        for sample in samples {
-            let clamped = max(-1, min(1, sample))
-            converted.append(Int16((clamped * Float(Int16.max)).rounded()).littleEndian)
-        }
-        let data = converted.withUnsafeBufferPointer { Data(buffer: $0) }
-
+    /// Appends encoded frames. Each ADTS frame carries its own header, so
+    /// the file is valid after every append.
+    public func append(_ frames: Data) throws {
+        guard let fileHandle, !frames.isEmpty else { return }
         try fileHandle.seekToEnd()
-        try fileHandle.write(contentsOf: data)
-        sampleCount += samples.count
-        try patchHeaderSizes(on: fileHandle)
+        try fileHandle.write(contentsOf: frames)
     }
 
     /// Ends the session and deletes the file: the dictation finished normally
@@ -109,20 +96,16 @@ public actor AudioSafetyBuffer {
         }
     }
 
-    /// Closes the file handle but leaves the WAV on disk. Used when the
+    /// Closes the file handle but leaves the recording on disk. Used when the
     /// session ends without a transcript (unload under pressure, crash paths)
     /// so the next launch can recover the audio.
     public func closeKeepingFile() {
         try? fileHandle?.close()
         fileHandle = nil
         fileURL = nil
-        sampleCount = 0
     }
 
-    public static func pendingRecordings(
-        in directory: URL,
-        sampleRate fallbackSampleRate: Double = FlowBridgeConstants.safetyBufferSampleRate
-    ) -> [PendingRecording] {
+    public static func pendingRecordings(in directory: URL) -> [PendingRecording] {
         guard let urls = try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.fileSizeKey, .creationDateKey],
@@ -132,15 +115,15 @@ public actor AudioSafetyBuffer {
         }
 
         return urls
-            .filter { $0.pathExtension.lowercased() == "wav" }
+            .filter { $0.pathExtension.lowercased() == fileExtension }
             .compactMap { url in
                 let values = try? url.resourceValues(forKeys: [.fileSizeKey, .creationDateKey])
                 guard let size = values?.fileSize else {
                     return nil
                 }
-                let sampleRate = headerSampleRate(of: url) ?? fallbackSampleRate
-                let payloadBytes = max(0, size - headerByteCount)
-                let duration = Double(payloadBytes / bytesPerSample) / sampleRate
+                // scorciatoia: duration from size at the target bitrate; exact
+                // only for CBR, close enough to show and to skip sub-second files.
+                let duration = Double(size) / (FlowBridgeConstants.recordingBitRate / 8)
                 return PendingRecording(
                     url: url,
                     duration: duration,
@@ -153,11 +136,8 @@ public actor AudioSafetyBuffer {
 
     /// Recordings automatic recovery gave up on, newest first: the list the
     /// user retries or discards by hand.
-    public static func exhaustedRecordings(
-        in directory: URL,
-        sampleRate fallbackSampleRate: Double = FlowBridgeConstants.safetyBufferSampleRate
-    ) -> [PendingRecording] {
-        pendingRecordings(in: directory, sampleRate: fallbackSampleRate)
+    public static func exhaustedRecordings(in directory: URL) -> [PendingRecording] {
+        pendingRecordings(in: directory)
             .filter(\.isExhausted)
             .sorted { ($0.recordedAt ?? .distantPast) > ($1.recordedAt ?? .distantPast) }
     }
@@ -175,7 +155,7 @@ public actor AudioSafetyBuffer {
 
     /// Deletes upload bodies orphaned by a kill mid-upload (the uploader's
     /// `defer` never ran). Only files older than `age` go, so an upload in
-    /// flight is never pulled from under URLSession; WAVs are never touched.
+    /// flight is never pulled from under URLSession; recordings are never touched.
     /// Returns how many were removed.
     @discardableResult
     public static func removeStaleUploadBodies(
@@ -204,20 +184,6 @@ public actor AudioSafetyBuffer {
         return removed
     }
 
-    /// Sample rate as recorded in the WAV header (bytes 24–27), so recovery
-    /// duration stays correct whichever engine wrote the file.
-    private static func headerSampleRate(of url: URL) -> Double? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        guard let header = try? handle.read(upToCount: headerByteCount),
-              header.count == headerByteCount else {
-            return nil
-        }
-        let value = header[24..<28].withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }
-        let sampleRate = Double(UInt32(littleEndian: value))
-        return sampleRate > 0 ? sampleRate : nil
-    }
-
     /// Only call this once the transcript is safely delivered, or when the
     /// user explicitly discards the recording. A file whose recovery failed
     /// is NOT removed: it keeps its attempt count in its name and survives
@@ -227,7 +193,7 @@ public actor AudioSafetyBuffer {
     }
 
     /// Counts a recovery attempt by renaming the file
-    /// `<uuid>.wav` → `<uuid>.attempt-N.wav`. Called *before* the attempt,
+    /// `<uuid>.aac` → `<uuid>.attempt-N.aac`. Called *before* the attempt,
     /// so a recovery that kills the process still counts and a file no
     /// engine can survive stops being retried. Best-effort: returns the
     /// recording under its new name, or nil when the file could not be
@@ -282,41 +248,6 @@ public actor AudioSafetyBuffer {
         return Int(name[marker.upperBound...]) ?? 0
     }
 
-    private func patchHeaderSizes(on handle: FileHandle) throws {
-        let dataSize = UInt32(sampleCount * Self.bytesPerSample)
-        let riffSize = UInt32(Self.headerByteCount - 8) + dataSize
-
-        try handle.seek(toOffset: 4)
-        try handle.write(contentsOf: Self.bytes(of: riffSize))
-        try handle.seek(toOffset: 40)
-        try handle.write(contentsOf: Self.bytes(of: dataSize))
-    }
-
-    private static func header(sampleCount: Int, sampleRate: Double) -> Data {
-        let dataSize = UInt32(sampleCount * bytesPerSample)
-        let sampleRateValue = UInt32(sampleRate)
-        let byteRate = sampleRateValue * UInt32(bytesPerSample)
-
-        var data = Data(capacity: headerByteCount)
-        data.append(contentsOf: Array("RIFF".utf8))
-        data.append(bytes(of: UInt32(headerByteCount - 8) + dataSize))
-        data.append(contentsOf: Array("WAVE".utf8))
-        data.append(contentsOf: Array("fmt ".utf8))
-        data.append(bytes(of: UInt32(16)))
-        data.append(bytes(of: UInt16(1)))
-        data.append(bytes(of: UInt16(1)))
-        data.append(bytes(of: sampleRateValue))
-        data.append(bytes(of: byteRate))
-        data.append(bytes(of: UInt16(bytesPerSample)))
-        data.append(bytes(of: UInt16(bytesPerSample * 8)))
-        data.append(contentsOf: Array("data".utf8))
-        data.append(bytes(of: dataSize))
-        return data
-    }
-
-    private static func bytes<T: FixedWidthInteger>(of value: T) -> Data {
-        withUnsafeBytes(of: value.littleEndian) { Data($0) }
-    }
 }
 
 private extension FileManager {
